@@ -104,6 +104,36 @@ Required device payload fields are stored under `auth.device.*` in config (defau
 - Smoke test: `tools/smoke-oauth.sh`
 - JSON Schemas: `docs/schemas/v1/` (accounts, transactions, insights, plan)
 
+## Heuristics Configuration
+
+All insight heuristics are configurable via `~/.config/sure-cli/config.yaml`:
+
+```yaml
+heuristics:
+  fees:
+    keywords: []  # empty = use 60+ default keywords (EN/ES/DE/FR)
+  subscriptions:
+    period_min_days: 20
+    period_max_days: 40
+    weekly_min_days: 6
+    weekly_max_days: 9
+    stddev_max_days: 3.0
+    amount_stddev_ratio: 0.1
+  leaks:
+    min_count: 3
+    min_total: 15.0
+    max_avg: 10.0
+  rules:
+    min_consistency: 0.7
+    min_occurrences: 2
+```
+
+Inspect current config:
+```bash
+sure-cli config heuristics      # show all heuristic settings
+sure-cli config fee-keywords    # show active fee keywords (60+ defaults)
+```
+
 ## TODO / Open Questions
 
 ### API quirks / gaps (found while testing)
