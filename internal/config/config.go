@@ -34,7 +34,7 @@ func Init(cfgFile string) error {
 	// Device info required by Sure AuthController
 	viper.SetDefault("auth.device.device_id", "sure-cli")
 	viper.SetDefault("auth.device.device_name", "sure-cli")
-	viper.SetDefault("auth.device.device_type", "web")
+	viper.SetDefault("auth.device.device_type", "android")
 	viper.SetDefault("auth.device.os_version", "unknown")
 	viper.SetDefault("auth.device.app_version", "sure-cli")
 

@@ -42,14 +42,18 @@ func Device() models.DeviceInfo {
 	dt := viper.GetString("auth.device.device_type")
 	dt = strings.ToLower(strings.TrimSpace(dt))
 	if dt == "browser" {
-		dt = "web"
+		dt = "android"
+	}
+	if dt == "web" {
+		// Some Sure deployments currently only accept ios|android.
+		dt = "android"
 	}
 	switch dt {
-	case "ios", "android", "web":
+	case "ios", "android":
 		// ok
 	default:
 		// Keep CLI resilient if config is wrong.
-		dt = "web"
+		dt = "android"
 	}
 
 	return models.DeviceInfo{
