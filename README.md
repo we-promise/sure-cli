@@ -66,6 +66,10 @@ sure-cli insights subscriptions --days 120
 sure-cli insights fees --days 120
 sure-cli insights leaks --days 120
 
+# Plan (client-side budget/runway)
+sure-cli plan budget --month 2026-02
+sure-cli plan runway --account-id <id> --days 90
+
 # Sync
 sure-cli sync
 ```
@@ -94,6 +98,7 @@ Required device payload fields are stored under `auth.device.*` in config (defau
 - ADR: `docs/ADR-001-go-agent-first.md`
 - API sign convention note (important): `docs/notes-api-sign-convention.md`
 - Smoke test: `tools/smoke-oauth.sh`
+- JSON Schemas: `docs/schemas/v1/` (accounts, transactions, insights, plan)
 
 ## TODO / Open Questions
 
