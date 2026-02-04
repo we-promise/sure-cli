@@ -15,7 +15,7 @@ func newConfigCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			val := viper.Get(args[0])
-			_ = output.PrintJSON(output.Envelope{Data: map[string]any{"key": args[0], "value": val}})
+			_ = output.Print(format, output.Envelope{Data: map[string]any{"key": args[0], "value": val}})
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
@@ -27,7 +27,7 @@ func newConfigCmd() *cobra.Command {
 			if err := config.Save(); err != nil {
 				output.Fail("config_save_failed", err.Error(), nil)
 			}
-			_ = output.PrintJSON(output.Envelope{Data: map[string]any{"ok": true}})
+			_ = output.Print(format, output.Envelope{Data: map[string]any{"ok": true}})
 		},
 	})
 	return cmd

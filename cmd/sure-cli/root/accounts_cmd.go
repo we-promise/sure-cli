@@ -34,7 +34,7 @@ func newAccountsCmd() *cobra.Command {
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
 			}
-			_ = output.PrintJSON(output.Envelope{Data: res, Meta: map[string]any{"status": r.StatusCode()}})
+			_ = output.Print(format, output.Envelope{Data: res, Meta: map[string]any{"status": r.StatusCode()}})
 		},
 	}
 	list.Flags().IntVar(&page, "page", 1, "page number")
@@ -61,7 +61,7 @@ func newAccountsCmd() *cobra.Command {
 					continue
 				}
 				if m["id"] == args[0] {
-					_ = output.PrintJSON(output.Envelope{Data: m, Meta: map[string]any{"status": r.StatusCode(), "source": "list"}})
+					_ = output.Print(format, output.Envelope{Data: m, Meta: map[string]any{"status": r.StatusCode(), "source": "list"}})
 					return
 				}
 			}
