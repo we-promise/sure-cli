@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dgilperez/sure-cli/internal/models"
 )
@@ -38,7 +39,7 @@ func (c *Client) Login(req LoginRequest) (LoginResponse, error) {
 		return res, err
 	}
 	if r.StatusCode() >= 400 {
-		return res, fmt.Errorf("login failed: status %d", r.StatusCode())
+		return res, fmt.Errorf("login failed: status %d: %s", r.StatusCode(), strings.TrimSpace(r.String()))
 	}
 	return res, nil
 }
@@ -50,7 +51,7 @@ func (c *Client) Refresh(req RefreshRequest) (TokenResponse, error) {
 		return res, err
 	}
 	if r.StatusCode() >= 400 {
-		return res, fmt.Errorf("refresh failed: status %d", r.StatusCode())
+		return res, fmt.Errorf("refresh failed: status %d: %s", r.StatusCode(), strings.TrimSpace(r.String()))
 	}
 	return res, nil
 }

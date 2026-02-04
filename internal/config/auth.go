@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"time"
 
 	"github.com/dgilperez/sure-cli/internal/models"
@@ -38,10 +39,23 @@ func SetTokenExpiresAt(t time.Time) {
 }
 
 func Device() models.DeviceInfo {
+	dt := viper.GetString("auth.device.device_type")
+	dt = strings.ToLower(strings.TrimSpace(dt))
+	if dt == "browser" {
+		dt = "web"
+	}
+	switch dt {
+	case "ios", "android", "web":
+		// ok
+	default:
+		// Keep CLI resilient if config is wrong.
+		dt = "web"
+	}
+
 	return models.DeviceInfo{
 		DeviceID:   viper.GetString("auth.device.device_id"),
 		DeviceName: viper.GetString("auth.device.device_name"),
-		DeviceType: viper.GetString("auth.device.device_type"),
+		DeviceType: dt,
 		OSVersion:  viper.GetString("auth.device.os_version"),
 		AppVersion: viper.GetString("auth.device.app_version"),
 	}
