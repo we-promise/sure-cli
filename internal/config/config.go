@@ -38,6 +38,20 @@ func Init(cfgFile string) error {
 	viper.SetDefault("auth.device.os_version", "unknown")
 	viper.SetDefault("auth.device.app_version", "sure-cli")
 
+	// Heuristics config (insights)
+	viper.SetDefault("heuristics.fees.keywords", []string{}) // empty = use defaults
+	viper.SetDefault("heuristics.subscriptions.period_min_days", 20)
+	viper.SetDefault("heuristics.subscriptions.period_max_days", 40)
+	viper.SetDefault("heuristics.subscriptions.weekly_min_days", 6)
+	viper.SetDefault("heuristics.subscriptions.weekly_max_days", 9)
+	viper.SetDefault("heuristics.subscriptions.stddev_max_days", 3.0)
+	viper.SetDefault("heuristics.subscriptions.amount_stddev_ratio", 0.1)
+	viper.SetDefault("heuristics.leaks.min_count", 3)
+	viper.SetDefault("heuristics.leaks.min_total", 15.0)
+	viper.SetDefault("heuristics.leaks.max_avg", 10.0)
+	viper.SetDefault("heuristics.rules.min_consistency", 0.7)
+	viper.SetDefault("heuristics.rules.min_occurrences", 2)
+
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
 	} else {

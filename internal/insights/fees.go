@@ -17,17 +17,64 @@ type FeeCandidate struct {
 	SuggestedAction string   `json:"suggested_action"`
 }
 
-var defaultFeeKeywords = []string{
-	"fee", "commission", "maintenance", "service", "overdraft", "atm", "charge", "penalty",
-	"comisión", "mantenimiento", "cuota", "cargo", "penal",
+// DefaultFeeKeywords is the comprehensive list of fee-related keywords (EN + ES + common bank terms).
+// Can be overridden via config or CLI flags.
+var DefaultFeeKeywords = []string{
+	// English - general
+	"fee", "fees", "charge", "charges", "commission", "commissions",
+	"penalty", "penalties", "fine", "fines",
+	"surcharge", "markup", "premium",
+	// English - banking
+	"overdraft", "nsf", "insufficient funds",
+	"maintenance", "account maintenance", "monthly fee", "annual fee",
+	"atm", "atm fee", "atm withdrawal", "foreign atm",
+	"wire", "wire fee", "transfer fee", "swift",
+	"foreign transaction", "fx fee", "currency conversion",
+	"card replacement", "statement fee", "paper statement",
+	"inactivity", "dormant", "minimum balance",
+	"returned item", "returned check", "bounced",
+	"late fee", "late payment", "interest charge",
+	"cash advance", "cash advance fee",
+	// English - services
+	"service fee", "service charge", "convenience fee",
+	"processing fee", "handling fee", "admin fee", "administrative",
+	"subscription fee", "membership fee",
+	// Spanish - general
+	"comisión", "comisiones", "cargo", "cargos", "recargo", "recargos",
+	"penalización", "penalizacion", "multa", "multas",
+	"cuota", "cuotas", "tarifa", "tarifas",
+	// Spanish - banking
+	"descubierto", "sobregiro", "números rojos",
+	"mantenimiento", "mantenimiento cuenta", "cuota mensual", "cuota anual",
+	"cajero", "cajero automático", "reintegro cajero",
+	"transferencia", "comisión transferencia", "swift",
+	"cambio divisa", "comisión cambio", "tipo de cambio",
+	"reposición tarjeta", "extracto", "extracto papel",
+	"inactividad", "saldo mínimo",
+	"devolución", "cheque devuelto", "recibo devuelto",
+	"demora", "pago atrasado", "intereses",
+	"anticipo", "disposición efectivo",
+	// Spanish - services
+	"gastos", "gastos de gestión", "gastos administrativos",
+	"comisión servicio", "comisión apertura", "comisión cancelación",
+	// German (common in EU)
+	"gebühr", "gebuhr", "kontoführung", "kontofuhrung",
+	// French (common in EU)
+	"frais", "commission", "agios",
+}
+
+// GetFeeKeywords returns keywords from config or defaults
+func GetFeeKeywords(custom []string) []string {
+	if len(custom) > 0 {
+		return custom
+	}
+	return DefaultFeeKeywords
 }
 
 // DetectFees flags expense transactions that look like bank/service fees.
 // Heuristic: expense + name contains a fee keyword OR absolute amount is small and name contains bank-y words.
 func DetectFees(txs []Transaction, keywords []string) []FeeCandidate {
-	if len(keywords) == 0 {
-		keywords = defaultFeeKeywords
-	}
+	keywords = GetFeeKeywords(keywords)
 
 	byName := map[string][]Transaction{}
 	for _, tx := range txs {

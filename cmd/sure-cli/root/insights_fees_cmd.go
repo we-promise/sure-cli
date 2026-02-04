@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/dgilperez/sure-cli/internal/api"
+	"github.com/dgilperez/sure-cli/internal/config"
 	"github.com/dgilperez/sure-cli/internal/insights"
 	"github.com/dgilperez/sure-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -22,7 +23,9 @@ func newInsightsFeesCmd() *cobra.Command {
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
 			}
-			cands := insights.DetectFees(txs, nil)
+			// Use keywords from config (or defaults if empty)
+			keywords := config.GetFeeKeywords()
+			cands := insights.DetectFees(txs, keywords)
 			if cands == nil {
 				cands = []insights.FeeCandidate{}
 			}
