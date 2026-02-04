@@ -1,14 +1,18 @@
 {
   "data": {
-    "candidates": null,
-    "params": {
-      "max_avg": 10,
-      "min_count": 3,
-      "min_total": 15
-    },
     "window": {
-      "end": "2026-02-04",
-      "start": "2025-02-04"
-    }
+      "start": "2025-02-04",
+      "end": "2026-02-04"
+    },
+    "params": {
+      "min_count": 3,
+      "min_total": 15,
+      "max_avg": 10
+    },
+    "candidates": []
+  },
+  "meta": {
+    "schema": "docs/schemas/v1/insights_leaks.schema.json",
+    "status": 200
   }
 }

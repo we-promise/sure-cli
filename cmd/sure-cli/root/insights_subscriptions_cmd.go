@@ -24,10 +24,13 @@ func newInsightsSubscriptionsCmd() *cobra.Command {
 				output.Fail("request_failed", err.Error(), nil)
 			}
 			cands := insights.DetectSubscriptions(txs)
+			if cands == nil {
+				cands = []insights.SubscriptionCandidate{}
+			}
 			_ = output.Print(format, output.Envelope{Data: map[string]any{
 				"window":     map[string]any{"start": start.Format("2006-01-02"), "end": end.Format("2006-01-02")},
 				"candidates": cands,
-			}})
+			}, Meta: &output.Meta{Schema: "docs/schemas/v1/insights_subscriptions.schema.json"}})
 		},
 	}
 	cmd.Flags().IntVar(&months, "months", 6, "lookback months")

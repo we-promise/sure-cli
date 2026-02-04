@@ -23,10 +23,13 @@ func newInsightsFeesCmd() *cobra.Command {
 				output.Fail("request_failed", err.Error(), nil)
 			}
 			cands := insights.DetectFees(txs, nil)
+			if cands == nil {
+				cands = []insights.FeeCandidate{}
+			}
 			_ = output.Print(format, output.Envelope{Data: map[string]any{
 				"window":     map[string]any{"start": start.Format("2006-01-02"), "end": end.Format("2006-01-02")},
 				"candidates": cands,
-			}})
+			}, Meta: &output.Meta{Schema: "docs/schemas/v1/insights_fees.schema.json"}})
 		},
 	}
 	cmd.Flags().IntVar(&months, "months", 3, "lookback months")

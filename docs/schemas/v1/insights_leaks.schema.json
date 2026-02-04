@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dgilperez/sure-cli/docs/schemas/v1/insights_leaks.schema.json",
+  "title": "sure-cli insights leaks v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": {"type": "string"},
+        "end": {"type": "string"}
+      },
+      "required": ["start", "end"]
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min_count": {"type": "integer"},
+        "min_total": {"type": "number"},
+        "max_avg": {"type": "number"}
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": {"type": "object"}
+    }
+  },
+  "required": ["window", "candidates"]
+}

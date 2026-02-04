@@ -1,9 +1,13 @@
 {
   "data": {
-    "candidates": null,
     "window": {
-      "end": "2026-02-04",
-      "start": "2025-02-04"
-    }
+      "start": "2025-02-04",
+      "end": "2026-02-04"
+    },
+    "candidates": []
+  },
+  "meta": {
+    "schema": "docs/schemas/v1/insights_fees.schema.json",
+    "status": 200
   }
 }

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dgilperez/sure-cli/docs/schemas/v1/insights_fees.schema.json",
+  "title": "sure-cli insights fees v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": {"type": "string"},
+        "end": {"type": "string"}
+      },
+      "required": ["start", "end"]
+    },
+    "candidates": {
+      "type": "array",
+      "items": {"type": "object"}
+    }
+  },
+  "required": ["window", "candidates"]
+}

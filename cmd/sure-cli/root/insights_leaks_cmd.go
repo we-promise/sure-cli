@@ -26,11 +26,14 @@ func newInsightsLeaksCmd() *cobra.Command {
 				output.Fail("request_failed", err.Error(), nil)
 			}
 			cands := insights.DetectLeaks(txs, minCount, minTotal, maxAvg)
+			if cands == nil {
+				cands = []insights.LeakCandidate{}
+			}
 			_ = output.Print(format, output.Envelope{Data: map[string]any{
 				"window":     map[string]any{"start": start.Format("2006-01-02"), "end": end.Format("2006-01-02")},
 				"params":     map[string]any{"min_count": minCount, "min_total": minTotal, "max_avg": maxAvg},
 				"candidates": cands,
-			}})
+			}, Meta: &output.Meta{Schema: "docs/schemas/v1/insights_leaks.schema.json"}})
 		},
 	}
 	cmd.Flags().IntVar(&months, "months", 3, "lookback months")
