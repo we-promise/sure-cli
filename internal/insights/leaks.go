@@ -24,6 +24,8 @@ type LeakCandidate struct {
 // - >= N occurrences (default 3)
 // - total >= minTotal
 // - average <= maxAvg (focus on small but frequent)
+//
+// NOTE: Defaults are intentionally conservative to avoid noise.
 func DetectLeaks(txs []Transaction, minCount int, minTotal float64, maxAvg float64) []LeakCandidate {
 	if minCount <= 0 {
 		minCount = 3
