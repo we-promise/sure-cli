@@ -27,17 +27,29 @@ func newAccountsCmd() *cobra.Command {
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show <id>",
-		Short: "Show account",
+		Short: "Show account (client-side lookup; API show is not implemented upstream yet)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			// NOTE: Sure currently does not implement GET /api/v1/accounts/:id (route exists but controller/view missing).
+			// Workaround: fetch list and find by id.
 			client := api.New()
-			var res any
-			path := fmt.Sprintf("/api/v1/accounts/%s", args[0])
-			r, err := client.Get(path, &res)
+			var res map[string]any
+			r, err := client.Get("/api/v1/accounts", &res)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
 			}
-			_ = output.PrintJSON(output.Envelope{Data: res, Meta: map[string]any{"status": r.StatusCode()}})
+			accounts, _ := res["accounts"].([]any)
+			for _, a := range accounts {
+				m, ok := a.(map[string]any)
+				if !ok {
+					continue
+				}
+				if m["id"] == args[0] {
+					_ = output.PrintJSON(output.Envelope{Data: m, Meta: map[string]any{"status": r.StatusCode(), "source": "list"}})
+					return
+				}
+			}
+			output.Fail("not_found", fmt.Sprintf("account %s not found", args[0]), map[string]any{"hint": "API endpoint GET /api/v1/accounts/:id is not implemented upstream; using list lookup"})
 		},
 	})
 
