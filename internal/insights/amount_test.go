@@ -11,6 +11,8 @@ func TestParseAmountEUR(t *testing.T) {
 		{"-€2.00", -2.0},
 		{"€1,50", 1.5},
 		{" -€12,34 ", -12.34},
+		{"-€2,000.00", -2000.0},
+		{"€10,000.50", 10000.5},
 	}
 	for _, c := range cases {
 		got, err := ParseAmountEUR(c.in)

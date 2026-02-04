@@ -22,8 +22,14 @@ func ParseAmountEUR(s string) (float64, error) {
 	// remove currency symbol and spaces
 	s = strings.ReplaceAll(s, "€", "")
 	s = strings.ReplaceAll(s, " ", "")
-	// normalize decimal comma
-	s = strings.ReplaceAll(s, ",", ".")
+	// Handle separators:
+	// - If both ',' and '.' present, assume ',' is thousands separator (US style: 2,000.00) -> remove commas.
+	// - If only ',' present, assume decimal comma -> replace with '.'
+	if strings.Contains(s, ",") && strings.Contains(s, ".") {
+		s = strings.ReplaceAll(s, ",", "")
+	} else {
+		s = strings.ReplaceAll(s, ",", ".")
+	}
 
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil {
