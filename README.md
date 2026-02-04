@@ -26,11 +26,26 @@ Links:
 - JSON-first output (stable schemas)
 - Safe automation patterns (`--dry-run` / `--apply`)
 
-## Install (dev)
+## Install
 
+**Homebrew (macOS/Linux)**
 ```bash
-go install ./...
+brew install dgilperez/tap/sure-cli
 ```
+
+**One-liner (macOS/Linux)**
+```bash
+curl -sSL https://raw.githubusercontent.com/dgilperez/sure-cli/main/install.sh | bash
+```
+
+**Go install**
+```bash
+go install github.com/dgilperez/sure-cli@latest
+```
+
+**Manual download**
+
+[GitHub Releases](https://github.com/dgilperez/sure-cli/releases)
 
 ## Usage
 
