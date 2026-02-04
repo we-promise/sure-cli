@@ -24,62 +24,42 @@ Sure currently only offers a web UI. Power users, developers, and **LLM agents**
 | "Import my data" | #7 Data import | `sure import` |
 | "Categorize this" | #8 Auto-organize | `sure categorize`, `sure rules` |
 
-## Proposed Commands
+## Current Status (implemented)
 
-### Core Commands
+This PRD started as a broad command sketch. The repo currently ships a working **agent-first** CLI named `sure-cli`.
+
+### Implemented (today)
 
 ```bash
-# Authentication
-sure login                    # Interactive login, stores token
-sure logout                   # Clear stored credentials
-sure whoami                   # Show current user/family
+# Config + auth headers
+sure-cli config set api_url http://localhost:3000
+sure-cli config set token <access_token>      # OAuth bearer token
+sure-cli config set api_key <key>             # API key
 
-# Dashboard/Status
-sure status                   # Net worth, account summary, recent activity
-sure net-worth [--history]    # Net worth with optional time series
+# Read-only core
+sure-cli whoami
+sure-cli accounts list [--page N --per-page N] [--format table|json]
+sure-cli accounts show <account_id>           # falls back to list lookup (upstream 404)
 
-# Accounts
-sure accounts                 # List all accounts with balances
-sure accounts show <id>       # Account details
-sure accounts sync [<id>]     # Trigger sync (all or specific)
+sure-cli transactions list --from YYYY-MM-DD --to YYYY-MM-DD [--page N --per-page N] [--format table|json]
+sure-cli transactions show <tx_id>
 
-# Transactions
-sure transactions             # List recent transactions
-sure transactions --account=X --category=Y --from=DATE --to=DATE
-sure transactions show <id>   # Transaction details
-sure transactions create      # Interactive or --amount --merchant --account
-sure transactions update <id> # Update category, tags, notes
-sure transactions delete <id>
+sure-cli sync
 
-# Categories & Tags
-sure categories               # List categories (tree view)
-sure tags                     # List tags
-sure tags create <name>
-sure tags delete <name>
+# Safe writes (default: --dry-run)
+sure-cli transactions create ... [--apply]
+sure-cli transactions update <tx_id> ... [--apply]
+sure-cli transactions delete <tx_id> --apply
 
-# Search
-sure search "coffee"          # Full-text search across transactions
-
-# Budgets
-sure budget                   # Current month budget status
-sure budget --month=2026-01   # Specific month
-
-# Holdings/Investments
-sure holdings                 # Investment holdings summary
-sure holdings --account=X     # Specific account
-
-# Import
-sure import <file.csv>        # Import transactions from CSV
-sure import --format=mint <file.csv>
-
-# Sync
-sure sync                     # Trigger sync for all connected accounts
-sure sync --account=X         # Sync specific account
-
-# AI Chat (for LLM integration)
-sure chat "What did I spend on groceries last month?"
-sure chat --session=X "Follow up question"
+# Phase 4 (read-only heuristics)
+sure-cli insights subscriptions --months 6
+sure-cli insights fees --months 3
+sure-cli insights leaks --months 3
 ```
+
+### Not implemented yet (next)
+- `sure-cli login` + refresh token flow (device payload required by Sure)
+- Deeper typing + error hardening in the API layer beyond the window fetch helper
 
 ### Output Formats
 
@@ -97,7 +77,7 @@ sure config set api_url https://my-sure-instance.com
 sure config set api_key <key>
 ```
 
-Config stored in `~/.config/sure/config.toml` or `~/.sure.toml`
+Config stored in `~/.config/sure-cli/config.yaml`
 
 ## Intelligent CLI (beyond CRUD)
 
