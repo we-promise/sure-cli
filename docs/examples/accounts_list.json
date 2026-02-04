@@ -1,0 +1,23 @@
+{
+  "data": {
+    "accounts": [
+      {
+        "account_type": "depository",
+        "balance": "€2,120.00",
+        "classification": "asset",
+        "currency": "EUR",
+        "id": "4ef4978e-9f99-4f3d-a180-d8d0c70e156b",
+        "name": "test"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "per_page": 25,
+      "total_count": 1,
+      "total_pages": 1
+    }
+  },
+  "meta": {
+    "status": 200
+  }
+}

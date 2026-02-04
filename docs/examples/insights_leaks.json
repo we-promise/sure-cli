@@ -1,0 +1,14 @@
+{
+  "data": {
+    "candidates": null,
+    "params": {
+      "max_avg": 10,
+      "min_count": 3,
+      "min_total": 15
+    },
+    "window": {
+      "end": "2026-02-04",
+      "start": "2025-02-04"
+    }
+  }
+}

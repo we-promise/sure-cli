@@ -1,0 +1,75 @@
+{
+  "data": {
+    "pagination": {
+      "page": 1,
+      "per_page": 25,
+      "total_count": 3,
+      "total_pages": 1
+    },
+    "transactions": [
+      {
+        "account": {
+          "account_type": "depository",
+          "id": "4ef4978e-9f99-4f3d-a180-d8d0c70e156b",
+          "name": "test"
+        },
+        "amount": "-€2,000.00",
+        "category": null,
+        "classification": "income",
+        "created_at": "2026-02-04T00:45:15Z",
+        "currency": "EUR",
+        "date": "2026-02-04",
+        "id": "2c8c481e-4d73-4edd-b111-14052636040f",
+        "merchant": null,
+        "name": "salary",
+        "notes": "",
+        "tags": [],
+        "transfer": null,
+        "updated_at": "2026-02-04T00:45:15Z"
+      },
+      {
+        "account": {
+          "account_type": "depository",
+          "id": "4ef4978e-9f99-4f3d-a180-d8d0c70e156b",
+          "name": "test"
+        },
+        "amount": "-€2.00",
+        "category": null,
+        "classification": "income",
+        "created_at": "2026-02-04T00:21:36Z",
+        "currency": "EUR",
+        "date": "2026-02-04",
+        "id": "98afe6b1-5ff0-4bb8-b3eb-a2d7172d512f",
+        "merchant": null,
+        "name": "ingreso",
+        "notes": "",
+        "tags": [],
+        "transfer": null,
+        "updated_at": "2026-02-04T00:21:36Z"
+      },
+      {
+        "account": {
+          "account_type": "depository",
+          "id": "4ef4978e-9f99-4f3d-a180-d8d0c70e156b",
+          "name": "test"
+        },
+        "amount": "€1.00",
+        "category": null,
+        "classification": "expense",
+        "created_at": "2026-02-04T00:21:24Z",
+        "currency": "EUR",
+        "date": "2026-02-04",
+        "id": "380954c5-ebc3-4a04-a3b5-5ab6c286d94d",
+        "merchant": null,
+        "name": "gastp",
+        "notes": "",
+        "tags": [],
+        "transfer": null,
+        "updated_at": "2026-02-04T00:21:24Z"
+      }
+    ]
+  },
+  "meta": {
+    "status": 200
+  }
+}
