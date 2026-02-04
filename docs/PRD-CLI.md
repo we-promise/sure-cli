@@ -68,12 +68,26 @@ sure-cli plan forecast --days 30 [--daily]
 
 # Phase 4 - Automation proposals
 sure-cli propose rules --months 3
+sure-cli propose rules --months 3 --apply --min-confidence 0.8
+
+# Export
+sure-cli export transactions --months 12 --format csv --out file.csv
+
+# Status (financial snapshot)
+sure-cli status
+
+# Holdings (scaffolded, requires Sure investment API)
+sure-cli holdings list
+sure-cli holdings performance --period 1m
 ```
 
-### Not implemented yet (next)
-- `propose rules --apply` (execute rule proposals)
-- Holdings/performance endpoints (requires upstream API)
-- Deeper typing + error hardening in the API layer
+### Not implemented yet (future)
+- `insights merchants --top 20` (top merchants by spend)
+- Search (`sure-cli search "coffee"`)
+- Import from CSV/OFX
+- Budgets CRUD (requires upstream API)
+- FIRE/longevity planning
+- Benchmark comparisons (requires external data)
 
 ### Output Formats
 
