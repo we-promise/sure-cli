@@ -90,5 +90,7 @@ func newTransactionsCmd() *cobra.Command {
 		},
 	})
 
+	cmd.AddCommand(newTransactionsCreateCmd())
+
 	return cmd
 }
