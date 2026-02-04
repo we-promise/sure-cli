@@ -109,11 +109,19 @@ Required device payload fields are stored under `auth.device.*` in config (defau
 
 ## Docs
 
-- PRD: `docs/PRD-CLI.md`
+- Roadmap: `docs/ROADMAP.md`
 - ADR: `docs/ADR-001-go-agent-first.md`
-- API sign convention note (important): `docs/notes-api-sign-convention.md`
+- JSON Schemas: `docs/schemas/v1/`
 - Smoke test: `tools/smoke-oauth.sh`
-- JSON Schemas: `docs/schemas/v1/` (accounts, transactions, insights, plan)
+
+## API Sign Convention
+
+Sure API returns amounts with an accounting-style sign that may look inverted:
+
+- `classification=income` can have **negative** `amount` string
+- `classification=expense` can have **positive** `amount` string
+
+**Rule:** treat `classification` as ground truth, not the sign. `sure-cli` normalizes this internally for all insights/heuristics.
 
 ## Heuristics Configuration
 
@@ -145,19 +153,10 @@ sure-cli config heuristics      # show all heuristic settings
 sure-cli config fee-keywords    # show active fee keywords (60+ defaults)
 ```
 
-## TODO / Open Questions
+## Known Upstream Limitations
 
-### API quirks / gaps (found while testing)
-- **`GET /api/v1/accounts/:id` returns 404** upstream (route exists, but controller/view missing). `sure-cli accounts show` currently falls back to list lookup.
-- **Transaction sign mismatch**: UI shows income `+2.00€` and expense `-1.00€`, but API payload returned inverted signs (income as `-€2.00`, expense as `€1.00`). Needs investigation in Sure serializer/formatting.
+- **`GET /api/v1/accounts/:id`** returns 404 upstream. `accounts show` falls back to list lookup.
+- **Holdings API** not yet available. `holdings` commands are scaffolded but blocked.
 
-### CLI features (next)
-- Improve OAuth UX (interactive prompts, safer password input, optional signup flow).
-- Agent-first schemas: add per-command schemas (esp. insights) and validate samples against them.
-- Hardening/refactor: reduce map[string]any parsing; expand typed models; improve error surfaces.
-
-### Intelligent commands (Phase 4)
-- Improve `insights subscriptions/fees/leaks` output richness (confidence, reasons, suggested actions).
-- `plan budget/forecast/runway`
-- `propose rules` + `apply rules --apply`
+See `docs/ROADMAP.md` for planned features.
 
