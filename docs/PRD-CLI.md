@@ -36,6 +36,11 @@ sure-cli config set api_url http://localhost:3000
 sure-cli config set token <access_token>      # OAuth bearer token
 sure-cli config set api_key <key>             # API key
 
+# Auth (OAuth)
+sure-cli login --email you@example.com --password "..."
+sure-cli refresh                               # manual token refresh
+# Auto-refresh: API client auto-refreshes when token near expiry
+
 # Read-only core
 sure-cli whoami
 sure-cli accounts list [--page N --per-page N] [--format table|json]
@@ -51,15 +56,24 @@ sure-cli transactions create ... [--apply]
 sure-cli transactions update <tx_id> ... [--apply]
 sure-cli transactions delete <tx_id> --apply
 
-# Phase 4 (read-only heuristics)
+# Phase 4 - Insights (read-only heuristics with confidence/reason/suggested_action)
 sure-cli insights subscriptions --months 6
 sure-cli insights fees --months 3
 sure-cli insights leaks --months 3
+
+# Phase 4 - Planning (client-side forecasting)
+sure-cli plan budget --month 2026-02
+sure-cli plan runway --account-id <id> --days 90
+sure-cli plan forecast --days 30 [--daily]
+
+# Phase 4 - Automation proposals
+sure-cli propose rules --months 3
 ```
 
 ### Not implemented yet (next)
-- Auto-refresh behavior (optional): refresh token automatically when `expires_at` is reached.
-- Deeper typing + error hardening in the API layer beyond the window fetch helper
+- `propose rules --apply` (execute rule proposals)
+- Holdings/performance endpoints (requires upstream API)
+- Deeper typing + error hardening in the API layer
 
 ### Output Formats
 
