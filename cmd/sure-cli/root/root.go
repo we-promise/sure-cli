@@ -37,6 +37,7 @@ func New() *cobra.Command {
 	cmd.AddCommand(newTransactionsCmd())
 	cmd.AddCommand(newSyncCmd())
 	cmd.AddCommand(newInsightsCmd())
+	cmd.AddCommand(newPlanCmd())
 
 	return cmd
 }
