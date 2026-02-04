@@ -40,6 +40,7 @@ func New() *cobra.Command {
 	cmd.AddCommand(newPlanCmd())
 	cmd.AddCommand(newProposeCmd())
 	cmd.AddCommand(newExportCmd())
+	cmd.AddCommand(newStatusCmd())
 
 	return cmd
 }
