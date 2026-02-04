@@ -56,11 +56,29 @@ func Device() models.DeviceInfo {
 		dt = "android"
 	}
 
+	id := strings.TrimSpace(viper.GetString("auth.device.device_id"))
+	name := strings.TrimSpace(viper.GetString("auth.device.device_name"))
+	osv := strings.TrimSpace(viper.GetString("auth.device.os_version"))
+	appv := strings.TrimSpace(viper.GetString("auth.device.app_version"))
+
+	if id == "" {
+		id = "sure-cli"
+	}
+	if name == "" {
+		name = "sure-cli"
+	}
+	if osv == "" {
+		osv = "unknown"
+	}
+	if appv == "" {
+		appv = "sure-cli"
+	}
+
 	return models.DeviceInfo{
-		DeviceID:   viper.GetString("auth.device.device_id"),
-		DeviceName: viper.GetString("auth.device.device_name"),
+		DeviceID:   id,
+		DeviceName: name,
 		DeviceType: dt,
-		OSVersion:  viper.GetString("auth.device.os_version"),
-		AppVersion: viper.GetString("auth.device.app_version"),
+		OSVersion:  osv,
+		AppVersion: appv,
 	}
 }
