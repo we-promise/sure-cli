@@ -39,7 +39,11 @@ sure-cli --help
 
 # Configure
 sure-cli config set api_url http://localhost:3000
-sure-cli config set token <access_token>
+
+# Auth
+sure-cli config set api_key <key>
+# or OAuth:
+sure-cli login --email you@example.com --password "..." [--otp 123456]
 
 # Accounts
 sure-cli accounts list --format=table
@@ -88,6 +92,8 @@ Required device payload fields are stored under `auth.device.*` in config (defau
 
 - PRD: `docs/PRD-CLI.md`
 - ADR: `docs/ADR-001-go-agent-first.md`
+- API sign convention note (important): `docs/notes-api-sign-convention.md`
+- Smoke test: `tools/smoke-oauth.sh`
 
 ## TODO / Open Questions
 
@@ -97,6 +103,7 @@ Required device payload fields are stored under `auth.device.*` in config (defau
 
 ### CLI features (next)
 - Improve OAuth UX (interactive prompts, safer password input, optional signup flow).
+- Agent-first schemas: add per-command schemas (esp. insights) and validate samples against them.
 - Hardening/refactor: reduce map[string]any parsing; expand typed models; improve error surfaces.
 
 ### Intelligent commands (Phase 4)
