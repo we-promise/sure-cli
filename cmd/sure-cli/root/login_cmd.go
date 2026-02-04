@@ -30,6 +30,7 @@ func newLoginCmd() *cobra.Command {
 				output.Fail("login_failed", err.Error(), nil)
 			}
 
+			config.SetAuthMode("bearer")
 			config.SetToken(res.AccessToken)
 			config.SetRefreshToken(res.RefreshToken)
 			config.SetTokenExpiresAt(time.Now().Add(time.Duration(res.ExpiresIn) * time.Second))

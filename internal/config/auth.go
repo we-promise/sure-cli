@@ -21,6 +21,10 @@ func TokenExpiresAt() (time.Time, bool) {
 	return t, true
 }
 
+func SetAuthMode(mode string) {
+	viper.Set("auth.mode", mode)
+}
+
 func SetToken(token string) {
 	viper.Set("auth.token", token)
 }
