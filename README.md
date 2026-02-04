@@ -10,6 +10,16 @@
 
 Agent-first CLI for **Sure** (we-promise/sure) — self-hosted personal finance app.
 
+## Agent-first contract
+
+- **Default output is JSON** (`--format=json`) wrapped in a stable **Envelope**: `{data, meta, error}`
+- **Write operations are safe by default**: `--dry-run` is the default; use `--apply` to execute
+- **Schemas are versioned** under `docs/schemas/v1/` and should remain backward compatible
+
+Links:
+- ADR: `docs/ADR-001-go-agent-first.md`
+- Schemas: `docs/schemas/README.md`
+
 ## Goals
 
 - Deterministic, scriptable commands for agents and power users
