@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dgilperez/sure-cli/docs/schemas/v1/accounts_list.schema.json",
+  "title": "sure-cli accounts list data v1",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "accounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"},
+          "account_type": {"type": "string"},
+          "currency": {"type": "string"},
+          "balance": {"type": "string"},
+          "classification": {"type": "string"}
+        },
+        "required": ["id", "name", "account_type", "currency"]
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "page": {"type": "integer"},
+        "per_page": {"type": "integer"},
+        "total_count": {"type": "integer"},
+        "total_pages": {"type": "integer"}
+      },
+      "required": ["page", "per_page", "total_count", "total_pages"]
+    }
+  },
+  "required": ["accounts", "pagination"]
+}

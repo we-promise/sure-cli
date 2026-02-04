@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dgilperez/sure-cli/docs/schemas/v1/transactions_list.schema.json",
+  "title": "sure-cli transactions list data v1",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "transactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"},
+          "date": {"type": "string"},
+          "classification": {"type": "string"},
+          "amount": {"type": "string"},
+          "currency": {"type": "string"}
+        },
+        "required": ["id", "name", "date", "classification", "amount"]
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "page": {"type": "integer"},
+        "per_page": {"type": "integer"},
+        "total_count": {"type": "integer"},
+        "total_pages": {"type": "integer"}
+      },
+      "required": ["page", "per_page", "total_count", "total_pages"]
+    }
+  },
+  "required": ["transactions", "pagination"]
+}

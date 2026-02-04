@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dgilperez/sure-cli/docs/schemas/v1/dry_run_request.schema.json",
+  "title": "sure-cli dry-run request data v1",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "dry_run": {"type": "boolean"},
+    "request": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "method": {"type": "string"},
+        "path": {"type": "string"},
+        "body": {}
+      },
+      "required": ["method", "path"]
+    }
+  },
+  "required": ["dry_run", "request"]
+}

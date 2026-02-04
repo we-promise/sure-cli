@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dgilperez/sure-cli/docs/schemas/v1/envelope.schema.json",
+  "title": "sure-cli Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "data": {},
+    "meta": {},
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {"type": "string"},
+        "message": {"type": "string"},
+        "details": {}
+      },
+      "required": ["code", "message"]
+    }
+  },
+  "anyOf": [
+    {"required": ["data"]},
+    {"required": ["error"]}
+  ]
+}
