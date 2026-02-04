@@ -16,7 +16,7 @@ type Client struct {
 func New() *Client {
 	c := resty.New().
 		SetBaseURL(strings.TrimRight(config.APIURL(), "/")).
-		SetTimeout(30 * time.Second).
+		SetTimeout(30*time.Second).
 		SetHeader("Accept", "application/json")
 
 	// Auth
@@ -44,6 +44,14 @@ func (c *Client) Post(path string, body any, out any) (*resty.Response, error) {
 		req = req.SetResult(out)
 	}
 	return req.Post(path)
+}
+
+func (c *Client) Put(path string, body any, out any) (*resty.Response, error) {
+	req := c.http.R().SetBody(body)
+	if out != nil {
+		req = req.SetResult(out)
+	}
+	return req.Put(path)
 }
 
 func (c *Client) Delete(path string, out any) (*resty.Response, error) {
