@@ -58,7 +58,7 @@ sure-cli insights leaks --months 3
 ```
 
 ### Not implemented yet (next)
-- `sure-cli login` + refresh token flow (device payload required by Sure)
+- Auto-refresh behavior (optional): refresh token automatically when `expires_at` is reached.
 - Deeper typing + error hardening in the API layer beyond the window fetch helper
 
 ### Output Formats

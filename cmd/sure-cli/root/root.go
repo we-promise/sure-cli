@@ -30,6 +30,8 @@ func New() *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&trace, "trace", false, "include request tracing information")
 
 	cmd.AddCommand(newConfigCmd())
+	cmd.AddCommand(newLoginCmd())
+	cmd.AddCommand(newRefreshCmd())
 	cmd.AddCommand(newWhoamiCmd())
 	cmd.AddCommand(newAccountsCmd())
 	cmd.AddCommand(newTransactionsCmd())

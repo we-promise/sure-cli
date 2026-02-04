@@ -73,7 +73,16 @@ Sure supports OAuth bearer tokens and API keys.
 - OAuth: `Authorization: Bearer <token>`
 - API key: `X-Api-Key: <key>`
 
-`sure-cli login` (planned) will call `/api/v1/auth/login` and store token + refresh token.
+## OAuth login + refresh
+
+```bash
+sure-cli login --email you@example.com --password "..." [--otp 123456]
+
+# Later (refresh access token using stored refresh token)
+sure-cli refresh
+```
+
+Required device payload fields are stored under `auth.device.*` in config (defaults are provided).
 
 ## Docs
 

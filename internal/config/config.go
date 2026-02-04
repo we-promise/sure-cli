@@ -11,7 +11,7 @@ import (
 const (
 	DefaultConfigName = "config"
 	DefaultConfigType = "yaml"
-	DefaultAppDir      = "sure-cli"
+	DefaultAppDir     = "sure-cli"
 )
 
 func defaultConfigPath() (string, error) {
@@ -27,7 +27,16 @@ func Init(cfgFile string) error {
 	viper.SetDefault("api_url", "http://localhost:3000")
 	viper.SetDefault("auth.mode", "bearer") // bearer|api_key
 	viper.SetDefault("auth.token", "")
+	viper.SetDefault("auth.refresh_token", "")
+	viper.SetDefault("auth.token_expires_at", "") // RFC3339
 	viper.SetDefault("auth.api_key", "")
+
+	// Device info required by Sure AuthController
+	viper.SetDefault("auth.device.device_id", "sure-cli")
+	viper.SetDefault("auth.device.device_name", "sure-cli")
+	viper.SetDefault("auth.device.device_type", "web")
+	viper.SetDefault("auth.device.os_version", "")
+	viper.SetDefault("auth.device.app_version", "")
 
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
