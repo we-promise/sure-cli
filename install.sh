@@ -5,7 +5,14 @@ set -e
 # Usage: curl -sSL https://raw.githubusercontent.com/dgilperez/sure-cli/main/install.sh | bash
 
 REPO="dgilperez/sure-cli"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
+
+# Default install dir: /usr/local/bin on macOS (always in PATH), ~/.local/bin elsewhere
+if [ "$(uname -s)" = "Darwin" ]; then
+  DEFAULT_DIR="/usr/local/bin"
+else
+  DEFAULT_DIR="$HOME/.local/bin"
+fi
+INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_DIR}"
 
 # Detect OS and arch
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
