@@ -41,6 +41,7 @@ func New() *cobra.Command {
 	cmd.AddCommand(newProposeCmd())
 	cmd.AddCommand(newExportCmd())
 	cmd.AddCommand(newStatusCmd())
+	cmd.AddCommand(newHoldingsCmd())
 
 	return cmd
 }
