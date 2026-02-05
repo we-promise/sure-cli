@@ -51,7 +51,7 @@ changelog:
 
 release:
   github:
-    owner: dgilperez
+    owner: we-promise
     name: sure-cli
   draft: false
   prerelease: auto
@@ -59,10 +59,10 @@ release:
 brews:
   - name: sure-cli
     repository:
-      owner: dgilperez
+      owner: we-promise
       name: homebrew-tap
     directory: Formula
-    homepage: https://github.com/dgilperez/sure-cli
+    homepage: https://github.com/we-promise/sure-cli
     description: Agent-first CLI for Sure personal finance
     license: MIT
     install: |
