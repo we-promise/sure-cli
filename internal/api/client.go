@@ -115,6 +115,9 @@ func (c *Client) PostMultipart(path string, fields map[string]string, fileField,
 	if err := c.ensureFreshToken(); err != nil {
 		return nil, err
 	}
+	if (fileField == "") != (filePath == "") {
+		return nil, fmt.Errorf("fileField and filePath must be provided together")
+	}
 	req := c.http.R()
 	if len(fields) > 0 {
 		req = req.SetFormData(fields)

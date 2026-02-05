@@ -14,11 +14,11 @@ import (
 )
 
 type importCreateOpts struct {
-	File      string
-	Source    string
-	AccountID string
-	Format    string
-	Apply     bool
+	File       string
+	Source     string
+	AccountID  string
+	FileFormat string
+	Apply      bool
 }
 
 func newImportsCmd() *cobra.Command {
@@ -51,17 +51,17 @@ func newImportsCmd() *cobra.Command {
 				q.Set("limit", fmt.Sprintf("%d", limit))
 			}
 
-			path := "/api/v1/imports"
-			if enc := strings.TrimPrefix(q.Encode(), ""); enc != "" {
-				path = path + "?" + enc
-			}
+			u := url.URL{Path: "/api/v1/imports", RawQuery: q.Encode()}
+			path := u.String()
 
 			var res any
 			r, err := client.Get(path, &res)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
 			}
-			_ = output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}})
+			if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
+				output.Fail("output_failed", err.Error(), nil)
+			}
 		},
 	}
 
@@ -84,7 +84,9 @@ func newImportsCmd() *cobra.Command {
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
 			}
-			_ = output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}})
+			if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
+				output.Fail("output_failed", err.Error(), nil)
+			}
 		},
 	})
 
@@ -107,14 +109,16 @@ func newImportsCreateCmd() *cobra.Command {
 			}
 
 			if !o.Apply {
-				_ = output.Print(format, output.Envelope{Data: map[string]any{
+				if err := output.Print(format, output.Envelope{Data: map[string]any{
 					"dry_run": true,
 					"request": map[string]any{
 						"method": "POST",
 						"path":   "/api/v1/imports",
 						"body":   payload,
 					},
-				}})
+				}}); err != nil {
+					output.Fail("output_failed", err.Error(), nil)
+				}
 				return
 			}
 
@@ -124,17 +128,21 @@ func newImportsCreateCmd() *cobra.Command {
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
 			}
-			_ = output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}})
+			if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
+				output.Fail("output_failed", err.Error(), nil)
+			}
 		},
 	}
 
 	cmd.Flags().StringVar(&o.File, "file", "", "path to import file (required)")
-	cmd.Flags().StringVar(&o.Format, "format", "", "import format (e.g. csv|ofx)")
+	cmd.Flags().StringVar(&o.FileFormat, "file-format", "", "import format (e.g. csv|ofx)")
 	cmd.Flags().StringVar(&o.Source, "source", "", "import source (optional)")
 	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "account id (optional)")
 	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the create (otherwise dry-run)")
 
-	_ = cmd.MarkFlagRequired("file")
+	if err := cmd.MarkFlagRequired("file"); err != nil {
+		panic(err)
+	}
 
 	return cmd
 }
@@ -151,13 +159,15 @@ func newImportsDeleteCmd() *cobra.Command {
 			path := fmt.Sprintf("/api/v1/imports/%s", id)
 
 			if !apply {
-				_ = output.Print(format, output.Envelope{Data: map[string]any{
+				if err := output.Print(format, output.Envelope{Data: map[string]any{
 					"dry_run": true,
 					"request": map[string]any{
 						"method": "DELETE",
 						"path":   path,
 					},
-				}})
+				}}); err != nil {
+					output.Fail("output_failed", err.Error(), nil)
+				}
 				return
 			}
 
@@ -167,7 +177,9 @@ func newImportsDeleteCmd() *cobra.Command {
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
 			}
-			_ = output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}})
+			if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
+				output.Fail("output_failed", err.Error(), nil)
+			}
 		},
 	}
 
@@ -193,17 +205,17 @@ func buildImportCreatePayload(o importCreateOpts) (importCreatePayload, error) {
 		return importCreatePayload{}, errors.New("file must be a regular file")
 	}
 
-	format := o.Format
-	if format == "" {
+	fileFormat := o.FileFormat
+	if fileFormat == "" {
 		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(o.File)), ".")
 		if ext != "" {
-			format = ext
+			fileFormat = ext
 		}
 	}
 
 	fields := map[string]string{}
-	if format != "" {
-		fields["format"] = format
+	if fileFormat != "" {
+		fields["format"] = fileFormat
 	}
 	if o.Source != "" {
 		fields["source"] = o.Source
