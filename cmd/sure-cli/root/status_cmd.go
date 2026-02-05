@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dgilperez/sure-cli/internal/api"
-	"github.com/dgilperez/sure-cli/internal/insights"
-	"github.com/dgilperez/sure-cli/internal/output"
-	"github.com/dgilperez/sure-cli/internal/plan"
+	"github.com/we-promise/sure-cli/internal/api"
+	"github.com/we-promise/sure-cli/internal/insights"
+	"github.com/we-promise/sure-cli/internal/output"
+	"github.com/we-promise/sure-cli/internal/plan"
 	"github.com/spf13/cobra"
 )
 

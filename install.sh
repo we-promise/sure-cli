@@ -2,9 +2,9 @@
 set -e
 
 # sure-cli installer
-# Usage: curl -sSL https://raw.githubusercontent.com/dgilperez/sure-cli/main/install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/we-promise/sure-cli/main/install.sh | bash
 
-REPO="dgilperez/sure-cli"
+REPO="we-promise/sure-cli"
 
 # Default install dir with fallback
 if [ -z "$INSTALL_DIR" ]; then

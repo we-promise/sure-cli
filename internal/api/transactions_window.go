@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/dgilperez/sure-cli/internal/models"
+	"github.com/we-promise/sure-cli/internal/models"
 )
 
 // FetchTransactionsWindow pulls all transactions within [start,end] by paging the Sure API.

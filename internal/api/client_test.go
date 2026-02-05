@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgilperez/sure-cli/internal/config"
+	"github.com/we-promise/sure-cli/internal/config"
 	"github.com/spf13/viper"
 )
 

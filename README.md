@@ -30,22 +30,22 @@ Links:
 
 **Homebrew (macOS/Linux)**
 ```bash
-brew install dgilperez/tap/sure-cli
+brew install we-promise/tap/sure-cli
 ```
 
 **One-liner (macOS/Linux)**
 ```bash
-curl -sSL https://raw.githubusercontent.com/dgilperez/sure-cli/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/we-promise/sure-cli/main/install.sh | bash
 ```
 
 **Go install**
 ```bash
-go install github.com/dgilperez/sure-cli@latest
+go install github.com/we-promise/sure-cli@latest
 ```
 
 **Manual download**
 
-[GitHub Releases](https://github.com/dgilperez/sure-cli/releases)
+[GitHub Releases](https://github.com/we-promise/sure-cli/releases)
 
 ## Upgrade
 
@@ -56,12 +56,12 @@ brew update && brew upgrade sure-cli
 
 **One-liner** (re-run installer)
 ```bash
-curl -sSL https://raw.githubusercontent.com/dgilperez/sure-cli/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/we-promise/sure-cli/main/install.sh | bash
 ```
 
 **Go install**
 ```bash
-go install github.com/dgilperez/sure-cli@latest
+go install github.com/we-promise/sure-cli@latest
 ```
 
 ## Usage

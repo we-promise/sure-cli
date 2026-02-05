@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dgilperez/sure-cli/internal/schema"
+	"github.com/we-promise/sure-cli/internal/schema"
 )
 
 func main() {

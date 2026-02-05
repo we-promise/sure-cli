@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgilperez/sure-cli/internal/models"
+	"github.com/we-promise/sure-cli/internal/models"
 )
 
 func TestProposeRules_ConsistentCategory(t *testing.T) {

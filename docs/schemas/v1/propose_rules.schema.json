@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/dgilperez/sure-cli/docs/schemas/v1/propose_rules.schema.json",
+  "$id": "https://github.com/we-promise/sure-cli/docs/schemas/v1/propose_rules.schema.json",
   "title": "sure-cli propose rules v1",
   "type": "object",
   "additionalProperties": false,
