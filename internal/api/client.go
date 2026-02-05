@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/we-promise/sure-cli/internal/config"
 	"github.com/go-resty/resty/v2"
+	"github.com/we-promise/sure-cli/internal/config"
 )
 
 type Client struct {
@@ -105,6 +105,23 @@ func (c *Client) Post(path string, body any, out any) (*resty.Response, error) {
 		return nil, err
 	}
 	req := c.http.R().SetBody(body)
+	if out != nil {
+		req = req.SetResult(out)
+	}
+	return req.Post(path)
+}
+
+func (c *Client) PostMultipart(path string, fields map[string]string, fileField, filePath string, out any) (*resty.Response, error) {
+	if err := c.ensureFreshToken(); err != nil {
+		return nil, err
+	}
+	req := c.http.R()
+	if len(fields) > 0 {
+		req = req.SetFormData(fields)
+	}
+	if fileField != "" && filePath != "" {
+		req = req.SetFile(fileField, filePath)
+	}
 	if out != nil {
 		req = req.SetResult(out)
 	}

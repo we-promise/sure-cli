@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/we-promise/sure-cli/internal/config"
 	"github.com/spf13/cobra"
+	"github.com/we-promise/sure-cli/internal/config"
 )
 
 var (
@@ -47,6 +47,7 @@ func New() *cobra.Command {
 	cmd.AddCommand(newWhoamiCmd())
 	cmd.AddCommand(newAccountsCmd())
 	cmd.AddCommand(newTransactionsCmd())
+	cmd.AddCommand(newImportsCmd())
 	cmd.AddCommand(newSyncCmd())
 	cmd.AddCommand(newInsightsCmd())
 	cmd.AddCommand(newPlanCmd())
