@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/dgilperez/sure-cli/internal/api"
-	"github.com/dgilperez/sure-cli/internal/models"
-	"github.com/dgilperez/sure-cli/internal/output"
+	"github.com/we-promise/sure-cli/internal/api"
+	"github.com/we-promise/sure-cli/internal/models"
+	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 

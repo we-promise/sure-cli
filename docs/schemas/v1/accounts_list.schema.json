@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/dgilperez/sure-cli/docs/schemas/v1/accounts_list.schema.json",
+  "$id": "https://github.com/we-promise/sure-cli/docs/schemas/v1/accounts_list.schema.json",
   "title": "sure-cli accounts list data v1",
   "type": "object",
   "additionalProperties": true,

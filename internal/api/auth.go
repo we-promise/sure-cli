@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dgilperez/sure-cli/internal/models"
+	"github.com/we-promise/sure-cli/internal/models"
 )
 
 type LoginRequest struct {

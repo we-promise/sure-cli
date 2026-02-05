@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgilperez/sure-cli/internal/config"
+	"github.com/we-promise/sure-cli/internal/config"
 	"github.com/go-resty/resty/v2"
 )
 

@@ -1,4 +1,4 @@
-module github.com/dgilperez/sure-cli
+module github.com/we-promise/sure-cli
 
 go 1.23.0
 

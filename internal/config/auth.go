@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgilperez/sure-cli/internal/models"
+	"github.com/we-promise/sure-cli/internal/models"
 	"github.com/spf13/viper"
 )
 

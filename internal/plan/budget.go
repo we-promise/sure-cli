@@ -3,8 +3,8 @@ package plan
 import (
 	"time"
 
-	"github.com/dgilperez/sure-cli/internal/insights"
-	"github.com/dgilperez/sure-cli/internal/models"
+	"github.com/we-promise/sure-cli/internal/insights"
+	"github.com/we-promise/sure-cli/internal/models"
 )
 
 type BudgetSummary struct {

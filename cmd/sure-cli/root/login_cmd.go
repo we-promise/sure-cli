@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dgilperez/sure-cli/internal/api"
-	"github.com/dgilperez/sure-cli/internal/config"
-	"github.com/dgilperez/sure-cli/internal/output"
+	"github.com/we-promise/sure-cli/internal/api"
+	"github.com/we-promise/sure-cli/internal/config"
+	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
