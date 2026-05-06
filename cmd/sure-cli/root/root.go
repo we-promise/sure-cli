@@ -48,6 +48,7 @@ func New() *cobra.Command {
 	cmd.AddCommand(newAccountsCmd())
 	cmd.AddCommand(newTransactionsCmd())
 	cmd.AddCommand(newImportsCmd())
+	cmd.AddCommand(newFamilyExportsCmd())
 	cmd.AddCommand(newSyncCmd())
 	cmd.AddCommand(newInsightsCmd())
 	cmd.AddCommand(newPlanCmd())

@@ -16,7 +16,7 @@ func TestImportsList_Flags(t *testing.T) {
 	}
 
 	// Verify expected flags exist
-	expectedFlags := []string{"status", "account-id", "page", "per-page", "limit"}
+	expectedFlags := []string{"status", "type", "page", "per-page"}
 	for _, name := range expectedFlags {
 		if list.Flags().Lookup(name) == nil {
 			t.Fatalf("expected flag %q to exist", name)
@@ -53,14 +53,13 @@ func TestImportsCreate_Flags(t *testing.T) {
 	}
 
 	// Verify expected flags exist
-	expectedFlags := []string{"file", "file-format", "source", "account-id", "apply"}
+	expectedFlags := []string{"file", "raw-file-content", "type", "file-format", "source", "account-id", "publish", "date-col-label", "amount-col-label", "apply"}
 	for _, name := range expectedFlags {
 		if create.Flags().Lookup(name) == nil {
 			t.Fatalf("expected flag %q to exist", name)
 		}
 	}
 
-	// Verify --file is required
 	s := create.Flags().FlagUsages()
 	if !strings.Contains(s, "file") {
 		t.Fatalf("expected file in usage")
@@ -84,21 +83,22 @@ func TestImportsCreate_NoFormatCollision(t *testing.T) {
 	}
 }
 
-func TestImportsDelete_Flags(t *testing.T) {
+func TestImportsRows_Flags(t *testing.T) {
 	cmd := newImportsCmd()
 
-	del, _, err := cmd.Find([]string{"delete"})
+	rows, _, err := cmd.Find([]string{"rows"})
 	if err != nil {
-		t.Fatalf("find delete subcommand: %v", err)
+		t.Fatalf("find rows subcommand: %v", err)
 	}
 
-	// Verify --apply flag exists
-	if del.Flags().Lookup("apply") == nil {
-		t.Fatal("expected apply flag to exist")
+	for _, name := range []string{"page", "per-page"} {
+		if rows.Flags().Lookup(name) == nil {
+			t.Fatalf("expected flag %q to exist", name)
+		}
 	}
 
 	// Verify it requires exactly 1 argument
-	if del.Args == nil {
+	if rows.Args == nil {
 		t.Fatal("expected Args validator to be set")
 	}
 }
@@ -169,7 +169,29 @@ func TestBuildImportCreatePayload_MissingFile(t *testing.T) {
 
 	_, err := buildImportCreatePayload(opts)
 	if err == nil {
-		t.Fatal("expected error for missing file")
+		t.Fatal("expected error for missing file or raw content")
+	}
+}
+
+func TestBuildImportCreatePayload_SureImportRawContent(t *testing.T) {
+	opts := importCreateOpts{
+		Type:           "SureImport",
+		RawFileContent: `{"type":"sure_export"}`,
+		Publish:        true,
+	}
+
+	payload, err := buildImportCreatePayload(opts)
+	if err != nil {
+		t.Fatalf("buildImportCreatePayload: %v", err)
+	}
+	if payload.RawFileContent == "" {
+		t.Fatal("expected raw content to be preserved")
+	}
+	if payload.Fields["type"] != "SureImport" {
+		t.Fatalf("expected type SureImport, got %q", payload.Fields["type"])
+	}
+	if payload.Fields["publish"] != "true" {
+		t.Fatalf("expected publish=true, got %q", payload.Fields["publish"])
 	}
 }
 

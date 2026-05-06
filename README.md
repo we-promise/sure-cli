@@ -93,6 +93,15 @@ sure-cli transactions create --amount "-12.34" --date 2026-02-04 --name "Coffee"
 sure-cli transactions update <tx_id> --name "Coffee (fixed)" --dry-run
 sure-cli transactions delete <tx_id> --apply
 
+# Imports and family exports
+sure-cli imports list --type TransactionImport
+sure-cli imports rows <import_id>
+sure-cli imports create --file data.csv --date-col-label Date --amount-col-label Amount --name-col-label Name
+sure-cli imports create --file backup.ndjson --type SureImport --publish --apply
+sure-cli family-exports create
+sure-cli family-exports create --apply
+sure-cli family-exports download <export_id> --out sure-export.zip
+
 # Phase 4 (read-only heuristics)
 sure-cli insights subscriptions --days 120
 sure-cli insights fees --days 120
