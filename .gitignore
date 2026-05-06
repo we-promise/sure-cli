@@ -1,5 +1,5 @@
 # Binaries
-sure-cli
+/sure-cli
 *.exe
 *.exe~
 *.dll
