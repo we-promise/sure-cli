@@ -142,6 +142,17 @@ func (c *Client) Put(path string, body any, out any) (*resty.Response, error) {
 	return req.Put(path)
 }
 
+func (c *Client) Patch(path string, body any, out any) (*resty.Response, error) {
+	if err := c.ensureFreshToken(); err != nil {
+		return nil, err
+	}
+	req := c.http.R().SetBody(body)
+	if out != nil {
+		req = req.SetResult(out)
+	}
+	return req.Patch(path)
+}
+
 func (c *Client) Delete(path string, out any) (*resty.Response, error) {
 	if err := c.ensureFreshToken(); err != nil {
 		return nil, err
@@ -151,4 +162,11 @@ func (c *Client) Delete(path string, out any) (*resty.Response, error) {
 		req = req.SetResult(out)
 	}
 	return req.Delete(path)
+}
+
+func (c *Client) GetToFile(path, outputPath string) (*resty.Response, error) {
+	if err := c.ensureFreshToken(); err != nil {
+		return nil, err
+	}
+	return c.http.R().SetOutput(outputPath).Get(path)
 }

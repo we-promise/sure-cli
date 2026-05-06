@@ -3,10 +3,10 @@ package root
 import (
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/config"
 	"github.com/we-promise/sure-cli/internal/output"
-	"github.com/spf13/cobra"
 )
 
 func newRefreshCmd() *cobra.Command {

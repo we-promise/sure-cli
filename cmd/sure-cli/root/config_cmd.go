@@ -1,11 +1,11 @@
 package root
 
 import (
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/we-promise/sure-cli/internal/config"
 	"github.com/we-promise/sure-cli/internal/insights"
 	"github.com/we-promise/sure-cli/internal/output"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func newConfigCmd() *cobra.Command {

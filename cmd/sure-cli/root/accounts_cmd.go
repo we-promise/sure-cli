@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/output"
-	"github.com/spf13/cobra"
 )
 
 func newAccountsCmd() *cobra.Command {
@@ -43,29 +43,17 @@ func newAccountsCmd() *cobra.Command {
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show <id>",
-		Short: "Show account (client-side lookup; API show is not implemented upstream yet)",
+		Short: "Show account",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			// NOTE: Sure currently does not implement GET /api/v1/accounts/:id (route exists but controller/view missing).
-			// Workaround: fetch list and find by id.
 			client := api.New()
-			var res map[string]any
-			r, err := client.Get("/api/v1/accounts", &res)
+			var res any
+			path := fmt.Sprintf("/api/v1/accounts/%s", args[0])
+			r, err := client.Get(path, &res)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
 			}
-			accounts, _ := res["accounts"].([]any)
-			for _, a := range accounts {
-				m, ok := a.(map[string]any)
-				if !ok {
-					continue
-				}
-				if m["id"] == args[0] {
-					_ = output.Print(format, output.Envelope{Data: m, Meta: &output.Meta{Status: r.StatusCode()}})
-					return
-				}
-			}
-			output.Fail("not_found", fmt.Sprintf("account %s not found", args[0]), map[string]any{"hint": "API endpoint GET /api/v1/accounts/:id is not implemented upstream; using list lookup"})
+			_ = output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}})
 		},
 	})
 

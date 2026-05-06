@@ -11,10 +11,6 @@ Future features and ideas for `sure-cli`.
 ### Search
 - `search "query"` — full-text search across transactions
 
-### Import
-- `import csv --file data.csv` — import from CSV
-- `import ofx --file data.ofx` — import from OFX/QFX
-
 ### Budgets
 - `budgets list/show/create/update` — budget CRUD (requires upstream API)
 
@@ -39,5 +35,8 @@ Future features and ideas for `sure-cli`.
 - Monte Carlo plugin (retirement simulations)
 
 ## Completed
+
+- Current Sure API parity commands for accounts, transactions, imports, family exports, tags, categories, merchants, rules, rule runs, balance sheet, balance history, family settings, valuations, holdings, securities, security prices, trades, recurring transactions, and user reset/delete operations.
+- CSV and Sure NDJSON import creation via `imports create`.
 
 See [CHANGELOG](../CHANGELOG.md) or GitHub releases for shipped features.

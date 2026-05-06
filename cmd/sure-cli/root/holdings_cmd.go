@@ -2,77 +2,60 @@ package root
 
 import (
 	"fmt"
+	"net/url"
 
-	"github.com/we-promise/sure-cli/internal/api"
-	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
 func newHoldingsCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "holdings", Short: "Investment holdings (requires Sure API support)"}
 	cmd.AddCommand(newHoldingsListCmd())
-	cmd.AddCommand(newHoldingsPerformanceCmd())
+	cmd.AddCommand(&cobra.Command{
+		Use:   "show <id>",
+		Short: "Show investment holding",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			printGet(fmt.Sprintf("/api/v1/holdings/%s", args[0]))
+		},
+	})
 	return cmd
 }
 
 func newHoldingsListCmd() *cobra.Command {
+	var page, perPage int
+	var accountID, date, startDate, endDate, securityID string
+	var accountIDs []string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List investment holdings",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := api.New()
-
-			// Try the holdings endpoint (may not exist in all Sure versions)
-			var res any
-			r, err := client.Get("/api/v1/holdings", &res)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
+			q := url.Values{}
+			addPagingQuery(q, page, perPage)
+			if accountID != "" {
+				q.Set("account_id", accountID)
 			}
-
-			if r.StatusCode() == 404 {
-				output.Fail("not_implemented", "Holdings API not available. This requires Sure with investment account support.", map[string]any{
-					"endpoint": "/api/v1/holdings",
-					"hint":     "Ensure your Sure instance supports investment accounts",
-				})
+			addRepeatedQuery(q, "account_ids", accountIDs)
+			if date != "" {
+				q.Set("date", date)
 			}
-
-			_ = output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}})
+			if startDate != "" {
+				q.Set("start_date", startDate)
+			}
+			if endDate != "" {
+				q.Set("end_date", endDate)
+			}
+			if securityID != "" {
+				q.Set("security_id", securityID)
+			}
+			printGet(pathWithQuery("/api/v1/holdings", q))
 		},
 	}
-	return cmd
-}
-
-func newHoldingsPerformanceCmd() *cobra.Command {
-	var period string
-
-	cmd := &cobra.Command{
-		Use:   "performance",
-		Short: "Investment performance summary",
-		Run: func(cmd *cobra.Command, args []string) {
-			client := api.New()
-
-			// Try the performance endpoint
-			path := "/api/v1/holdings/performance"
-			if period != "" {
-				path = fmt.Sprintf("%s?period=%s", path, period)
-			}
-
-			var res any
-			r, err := client.Get(path, &res)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-			}
-
-			if r.StatusCode() == 404 {
-				output.Fail("not_implemented", "Holdings performance API not available.", map[string]any{
-					"endpoint": path,
-					"hint":     "This feature requires Sure with investment tracking enabled",
-				})
-			}
-
-			_ = output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}})
-		},
-	}
-	cmd.Flags().StringVar(&period, "period", "1m", "performance period (1w|1m|3m|6m|1y|ytd|all)")
+	addPagingFlags(cmd, &page, &perPage)
+	cmd.Flags().StringVar(&accountID, "account-id", "", "account id")
+	cmd.Flags().StringSliceVar(&accountIDs, "account-ids", nil, "account ids (repeat or comma-separated)")
+	cmd.Flags().StringVar(&date, "date", "", "exact holding date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&startDate, "start-date", "", "start date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&endDate, "end-date", "", "end date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&securityID, "security-id", "", "security id")
 	return cmd
 }

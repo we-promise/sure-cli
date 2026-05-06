@@ -73,7 +73,8 @@ sure-cli --help
 sure-cli config set api_url http://localhost:3000
 
 # Auth
-sure-cli config set api_key <key>
+sure-cli config set auth.mode api_key
+sure-cli config set auth.api_key <key>
 # or OAuth:
 sure-cli login --email you@example.com --password "..." [--otp 123456]
 
@@ -83,15 +84,32 @@ sure-cli accounts list --format=json
 sure-cli accounts show <account_id>
 
 # Transactions
-sure-cli transactions list --from 2026-01-01 --to 2026-02-01 --per-page 50 --format=table
+sure-cli transactions list --start-date 2026-01-01 --end-date 2026-02-01 --per-page 50 --format=table
 sure-cli transactions show <transaction_id>
 
 # Safe writes (default is --dry-run)
 sure-cli transactions create --amount "-12.34" --date 2026-02-04 --name "Coffee" --account-id <id>
 sure-cli transactions create --amount "-12.34" --date 2026-02-04 --name "Coffee" --account-id <id> --apply
 
-sure-cli transactions update <tx_id> --name "Coffee (fixed)" --dry-run
+sure-cli transactions update <tx_id> --name "Coffee (fixed)"
 sure-cli transactions delete <tx_id> --apply
+
+# Reference data and rules
+sure-cli categories list --roots-only
+sure-cli merchants list
+sure-cli tags create --name Travel --color '#3b82f6'
+sure-cli tags create --name Travel --color '#3b82f6' --apply
+sure-cli rules list --active true
+sure-cli rule-runs list --status success
+
+# Imports and exports
+sure-cli imports list --type TransactionImport
+sure-cli imports rows <import_id>
+sure-cli imports create --file data.csv --date-col-label Date --amount-col-label Amount --name-col-label Name
+sure-cli imports create --file backup.ndjson --type SureImport --publish --apply
+sure-cli family-exports create
+sure-cli family-exports create --apply
+sure-cli family-exports download <export_id> --out sure-export.zip
 
 # Phase 4 (read-only heuristics)
 sure-cli insights subscriptions --days 120
@@ -113,13 +131,36 @@ sure-cli export transactions --months 12 --format csv --out transactions.csv
 # Status (financial snapshot)
 sure-cli status
 
+# Financial history
+sure-cli balance-sheet show
+sure-cli balances list --account-id <id>
+sure-cli family-settings show
+sure-cli valuations create --account-id <id> --amount 12345.67 --date 2026-02-04 --upsert
+sure-cli valuations update <valuation_id> --notes "Reviewed" --apply
+
 # Holdings (requires Sure investment API)
-sure-cli holdings list
-sure-cli holdings performance --period 1m
+sure-cli holdings list --account-id <id>
+sure-cli holdings show <holding_id>
+sure-cli securities list --ticker VTI
+sure-cli security-prices list --security-id <security_id>
 
 # Trades (requires Sure investment API)
 sure-cli trades list
 sure-cli trades show <trade_id>
+sure-cli trades create --account-id <id> --type buy --date 2026-02-04 --qty 1 --price 100 --ticker VTI
+sure-cli trades update <trade_id> --qty 2 --price 101 --type buy --apply
+sure-cli trades delete <trade_id> --apply
+
+# Recurring transactions
+sure-cli recurring-transactions list --status active
+sure-cli recurring-transactions create --name Rent --amount 1200 --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01
+sure-cli recurring-transactions update <id> --status inactive --apply
+
+# Account reset and deletion
+sure-cli users reset
+sure-cli users reset --apply
+sure-cli users reset status
+sure-cli users delete-me
 
 # Sync
 sure-cli sync
@@ -193,9 +234,5 @@ Inspect current config:
 sure-cli config heuristics      # show all heuristic settings
 sure-cli config fee-keywords    # show active fee keywords (60+ defaults)
 ```
-
-## Known Upstream Limitations
-
-- **`GET /api/v1/accounts/:id`** returns 404 upstream. `accounts show` falls back to list lookup.
 
 See `docs/ROADMAP.md` for planned features.

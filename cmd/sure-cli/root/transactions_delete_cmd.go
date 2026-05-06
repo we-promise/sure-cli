@@ -3,9 +3,9 @@ package root
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/output"
-	"github.com/spf13/cobra"
 )
 
 type txDeleteOpts struct {
