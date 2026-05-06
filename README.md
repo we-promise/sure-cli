@@ -121,6 +121,12 @@ sure-cli holdings performance --period 1m
 sure-cli trades list
 sure-cli trades show <trade_id>
 
+# Account reset and deletion
+sure-cli users reset
+sure-cli users reset --apply
+sure-cli users reset status
+sure-cli users delete-me
+
 # Sync
 sure-cli sync
 ```
