@@ -163,6 +163,7 @@ sure-cli users reset
 sure-cli users reset --apply
 sure-cli users reset status
 sure-cli users delete-me
+sure-cli users delete-me --apply
 
 # Sync
 sure-cli sync
