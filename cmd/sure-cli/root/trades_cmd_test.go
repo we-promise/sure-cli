@@ -44,3 +44,27 @@ func TestTradesShow_Args(t *testing.T) {
 		t.Fatal("expected Args validator to be set")
 	}
 }
+
+func TestBuildTradeCreatePayloadRequiresSecurityIdentifier(t *testing.T) {
+	_, err := buildTradeCreatePayload(tradeCreateOpts{
+		AccountID: "acc_123",
+		Date:      "2026-05-01",
+		Type:      "buy",
+		Qty:       "1",
+		Price:     "10",
+	})
+	if err == nil {
+		t.Fatal("expected missing security identifier error")
+	}
+}
+
+func TestBuildTradeUpdatePayload(t *testing.T) {
+	payload, err := buildTradeUpdatePayload(tradeUpdateOpts{Qty: "2", Price: "11.50", Type: "sell"})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	trade := payload["trade"].(map[string]any)
+	if trade["qty"] != "2" || trade["price"] != "11.50" || trade["type"] != "sell" {
+		t.Fatalf("unexpected trade payload: %#v", trade)
+	}
+}

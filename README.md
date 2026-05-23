@@ -139,12 +139,24 @@ sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026
 sure-cli status
 
 # Holdings (requires Sure investment API)
-sure-cli holdings list
-sure-cli holdings performance --period 1m
+sure-cli holdings list --account-id <account_id> --date 2026-05-01
+sure-cli holdings show <holding_id>
+
+# Securities and prices
+sure-cli securities list --ticker AAPL
+sure-cli securities show <security_id>
+sure-cli security-prices list --security-id <security_id> --start-date 2026-01-01
 
 # Trades (requires Sure investment API)
 sure-cli trades list
 sure-cli trades show <trade_id>
+sure-cli trades create --account-id <account_id> --date 2026-05-01 --type buy --qty 1 --price 100 --security-id <security_id>
+sure-cli trades create --account-id <account_id> --date 2026-05-01 --type buy --qty 1 --price 100 --security-id <security_id> --apply
+
+# Recurring transactions
+sure-cli recurring-transactions list --status active
+sure-cli recurring-transactions create --name Rent --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01
+sure-cli recurring-transactions create --name Rent --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01 --apply
 
 # Account reset and deletion
 sure-cli users reset
