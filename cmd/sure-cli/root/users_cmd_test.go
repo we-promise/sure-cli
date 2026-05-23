@@ -28,3 +28,23 @@ func TestUsersCommandRegistered(t *testing.T) {
 		}
 	}
 }
+
+func TestUsersDestructiveCmds_RejectPositionalArgs(t *testing.T) {
+	// reset, reset status, and delete-me must reject any positional argument
+	// so a typo (e.g. `users reset --apply oops`) is caught instead of
+	// silently running the destructive call.
+	cmd := newUsersCmd()
+	for _, path := range [][]string{
+		{"reset", "extra"},
+		{"reset", "status", "extra"},
+		{"delete-me", "extra"},
+	} {
+		sub, _, err := cmd.Find(path[:len(path)-1])
+		if err != nil {
+			t.Fatalf("find %v: %v", path[:len(path)-1], err)
+		}
+		if err := sub.Args(sub, []string{path[len(path)-1]}); err == nil {
+			t.Fatalf("%v: expected NoArgs to reject a positional argument", path)
+		}
+	}
+}

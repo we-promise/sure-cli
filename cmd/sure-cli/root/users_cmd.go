@@ -13,6 +13,7 @@ func newUsersCmd() *cobra.Command {
 	reset := &cobra.Command{
 		Use:   "reset",
 		Short: "Queue account reset (default dry-run; use --apply to execute)",
+		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			path := "/api/v1/users/reset"
 			if !applyReset {
@@ -26,6 +27,7 @@ func newUsersCmd() *cobra.Command {
 	reset.AddCommand(&cobra.Command{
 		Use:   "status",
 		Short: "Show reset status",
+		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			printUsersGet("/api/v1/users/reset/status")
 		},
@@ -36,6 +38,7 @@ func newUsersCmd() *cobra.Command {
 	deleteMe := &cobra.Command{
 		Use:   "delete-me",
 		Short: "Delete current user account (default dry-run; use --apply to execute)",
+		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			path := "/api/v1/users/me"
 			if !applyDelete {
