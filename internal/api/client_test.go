@@ -201,3 +201,31 @@ func TestClient_PostMultipart_MismatchedArgs(t *testing.T) {
 		t.Fatal("expected error for mismatched file arguments")
 	}
 }
+
+func TestClient_Patch(t *testing.T) {
+	viper.Reset()
+	viper.Set("auth.mode", "api_key")
+	viper.Set("auth.api_key", "key_456")
+	_ = config.Init("/tmp/does-not-exist.yaml")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	viper.Set("api_url", srv.URL)
+	c := New()
+	var out map[string]any
+	_, err := c.Patch("/api/v1/transactions/tx_123", map[string]any{"transaction": map[string]any{"name": "x"}}, &out)
+	if err != nil {
+		t.Fatalf("Patch failed: %v", err)
+	}
+	if out["ok"] != true {
+		t.Fatalf("expected ok response, got %#v", out)
+	}
+}
