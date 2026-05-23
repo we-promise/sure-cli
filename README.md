@@ -171,7 +171,7 @@ sure-cli users reset status
 sure-cli users delete-me
 sure-cli users delete-me --apply
 
-# Sync
+# Sync (trigger a one-shot sync)
 sure-cli sync
 
 # Transfers (categorized transfers, payments, loan payments)
@@ -181,6 +181,19 @@ sure-cli transfers show <transfer_id>
 # Rejected transfer suggestions
 sure-cli rejected-transfers list --account-id <account_id>
 sure-cli rejected-transfers show <rejected_id>
+
+# Sync history (list/inspect background syncs)
+sure-cli syncs list --per-page 25
+sure-cli syncs latest
+sure-cli syncs show <sync_id>
+
+# API usage + rate-limit info (singleton)
+sure-cli usage show
+
+# Import preflight (validate config + content before creating)
+sure-cli imports preflight --type TransactionImport --file data.csv \
+  --date-col-label Date --amount-col-label Amount --name-col-label Name
+sure-cli imports preflight --type SureImport --raw-file-content "$(cat backup.ndjson)"
 ```
 
 ## Auth

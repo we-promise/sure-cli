@@ -103,6 +103,7 @@ func newImportsCmd() *cobra.Command {
 
 	cmd.AddCommand(newImportsCreateCmd())
 	cmd.AddCommand(newImportsRowsCmd())
+	cmd.AddCommand(newImportsPreflightCmd())
 
 	return cmd
 }
