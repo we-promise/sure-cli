@@ -44,14 +44,24 @@ func TestBudgetCategoriesCommandShape(t *testing.T) {
 
 func TestBudgetsCommandsRegistered(t *testing.T) {
 	cmd := New()
-	for _, args := range [][]string{
-		{"budgets", "list"},
-		{"budgets", "show"},
-		{"budget-categories", "list"},
-		{"budget-categories", "show"},
-	} {
-		if _, _, err := cmd.Find(args); err != nil {
-			t.Fatalf("expected command %v: %v", args, err)
+	// cobra's Find silently returns the nearest matching ancestor when a leaf
+	// is missing, so compare the resolved cmd's Name to the expected leaf.
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"budgets", "list"}, "list"},
+		{[]string{"budgets", "show"}, "show"},
+		{[]string{"budget-categories", "list"}, "list"},
+		{[]string{"budget-categories", "show"}, "show"},
+	}
+	for _, c := range cases {
+		got, _, err := cmd.Find(c.args)
+		if err != nil {
+			t.Fatalf("expected command %v: %v", c.args, err)
+		}
+		if got.Name() != c.want {
+			t.Fatalf("path %v resolved to %q, want %q", c.args, got.Name(), c.want)
 		}
 	}
 }
