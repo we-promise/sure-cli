@@ -39,5 +39,6 @@ Future features and ideas for `sure-cli`.
 - Import row diagnostics via `imports rows`.
 - CSV and Sure NDJSON import creation via `imports create`.
 - Family export list/show/create/download commands.
+- Transfer review surface via `transfers list/show` and `rejected-transfers list/show`.
 
 See [CHANGELOG](../CHANGELOG.md) or GitHub releases for shipped features.

@@ -173,6 +173,14 @@ sure-cli users delete-me --apply
 
 # Sync
 sure-cli sync
+
+# Transfers (categorized transfers, payments, loan payments)
+sure-cli transfers list --status pending --account-id <account_id> --start-date 2026-01-01
+sure-cli transfers show <transfer_id>
+
+# Rejected transfer suggestions
+sure-cli rejected-transfers list --account-id <account_id>
+sure-cli rejected-transfers show <rejected_id>
 ```
 
 ## Auth
