@@ -3,6 +3,7 @@ package root
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -34,9 +35,10 @@ func newTransactionsUpdateCmd() *cobra.Command {
 			payload, err := buildTxUpdatePayload(o)
 			if err != nil {
 				output.Fail("validation_failed", err.Error(), nil)
+				return
 			}
 
-			path := fmt.Sprintf("/api/v1/transactions/%s", o.ID)
+			path := fmt.Sprintf("/api/v1/transactions/%s", url.PathEscape(o.ID))
 			if !o.Apply {
 				_ = output.Print(format, output.Envelope{Data: map[string]any{
 					"dry_run": true,
@@ -52,10 +54,7 @@ func newTransactionsUpdateCmd() *cobra.Command {
 			client := api.New()
 			var res any
 			r, err := client.Patch(path, payload, &res)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-			}
-			_ = output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}})
+			respond(r, err, res)
 		},
 	}
 

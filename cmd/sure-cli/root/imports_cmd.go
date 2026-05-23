@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/output"
@@ -53,8 +54,6 @@ func newImportsCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List imports",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := api.New()
-
 			q := url.Values{}
 			if status != "" {
 				q.Set("status", status)
@@ -63,18 +62,7 @@ func newImportsCmd() *cobra.Command {
 				q.Set("type", importType)
 			}
 			addImportPagingQuery(q, page, perPage)
-
-			u := url.URL{Path: "/api/v1/imports", RawQuery: q.Encode()}
-			path := u.String()
-
-			var res any
-			r, err := client.Get(path, &res)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-			}
-			if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			printImportGet(importPathWithQuery("/api/v1/imports", q))
 		},
 	}
 
@@ -88,16 +76,7 @@ func newImportsCmd() *cobra.Command {
 		Short: "Show import",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			client := api.New()
-			var res any
-			path := fmt.Sprintf("/api/v1/imports/%s", url.PathEscape(args[0]))
-			r, err := client.Get(path, &res)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-			}
-			if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			printImportGet(fmt.Sprintf("/api/v1/imports/%s", url.PathEscape(args[0])))
 		},
 	})
 
@@ -153,23 +132,13 @@ func newImportsCreateCmd() *cobra.Command {
 
 			client := api.New()
 			var res any
-			var rStatus int
+			var r *resty.Response
 			if payload.RawFileContent != "" {
-				r, err := client.Post("/api/v1/imports", payload.Fields, &res)
-				if err != nil {
-					output.Fail("request_failed", err.Error(), nil)
-				}
-				rStatus = r.StatusCode()
+				r, err = client.Post("/api/v1/imports", payload.Fields, &res)
 			} else {
-				r, err := client.PostMultipart("/api/v1/imports", payload.Fields, payload.FileField, payload.FilePath, &res)
-				if err != nil {
-					output.Fail("request_failed", err.Error(), nil)
-				}
-				rStatus = r.StatusCode()
+				r, err = client.PostMultipart("/api/v1/imports", payload.Fields, payload.FileField, payload.FilePath, &res)
 			}
-			if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: rStatus}}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			respond(r, err, res)
 		},
 	}
 
@@ -319,10 +288,5 @@ func printImportGet(path string) {
 	client := api.New()
 	var res any
 	r, err := client.Get(path, &res)
-	if err != nil {
-		output.Fail("request_failed", err.Error(), nil)
-	}
-	if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-	}
+	respond(r, err, res)
 }

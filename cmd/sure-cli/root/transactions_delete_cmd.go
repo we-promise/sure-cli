@@ -2,10 +2,12 @@ package root
 
 import (
 	"fmt"
+	"net/url"
+
+	"github.com/spf13/cobra"
 
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/output"
-	"github.com/spf13/cobra"
 )
 
 type txDeleteOpts struct {
@@ -21,7 +23,7 @@ func newTransactionsDeleteCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			id := args[0]
-			path := fmt.Sprintf("/api/v1/transactions/%s", id)
+			path := fmt.Sprintf("/api/v1/transactions/%s", url.PathEscape(id))
 
 			if !o.Apply {
 				_ = output.Print(format, output.Envelope{Data: map[string]any{
@@ -37,10 +39,7 @@ func newTransactionsDeleteCmd() *cobra.Command {
 			client := api.New()
 			var res any
 			r, err := client.Delete(path, &res)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-			}
-			_ = output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}})
+			respond(r, err, res)
 		},
 	}
 

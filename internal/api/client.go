@@ -72,24 +72,37 @@ func (c *Client) ensureFreshToken() error {
 	defer func() { c.refreshing = false }()
 
 	var res TokenResponse
-	_, err := c.http.R().
+	r, err := c.http.R().
 		SetBody(RefreshRequest{RefreshToken: rt, Device: config.Device()}).
 		SetResult(&res).
 		Post("/api/v1/auth/refresh")
 	if err != nil {
 		return err
 	}
+	// Treat any 4xx/5xx as a refresh failure. Without this guard, a 401 body
+	// would decode into an empty TokenResponse and we'd persist empty tokens,
+	// silently logging the user out and corrupting saved state.
+	if r != nil && r.StatusCode() >= 400 {
+		return fmt.Errorf("token refresh failed: HTTP %d", r.StatusCode())
+	}
+	if res.AccessToken == "" {
+		return fmt.Errorf("token refresh returned empty access token")
+	}
 
-	// Persist + update header
+	// Persist + update header. Guard each rotation field so that a partial
+	// response (e.g. server omits refresh_token if rotation is off) doesn't
+	// wipe the saved value.
 	config.SetToken(res.AccessToken)
-	config.SetRefreshToken(res.RefreshToken)
-	config.SetTokenExpiresAt(time.Now().Add(time.Duration(res.ExpiresIn) * time.Second))
+	if res.RefreshToken != "" {
+		config.SetRefreshToken(res.RefreshToken)
+	}
+	if res.ExpiresIn > 0 {
+		config.SetTokenExpiresAt(time.Now().Add(time.Duration(res.ExpiresIn) * time.Second))
+	}
 	if err := config.Save(); err != nil {
 		return err
 	}
-	if res.AccessToken != "" {
-		c.http.SetHeader("Authorization", fmt.Sprintf("Bearer %s", res.AccessToken))
-	}
+	c.http.SetHeader("Authorization", fmt.Sprintf("Bearer %s", res.AccessToken))
 	return nil
 }
 

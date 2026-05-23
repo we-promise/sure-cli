@@ -33,8 +33,10 @@ echo "[smoke] signup response (trunc): ${RESP:0:120}"
 # Configure CLI
 "$BIN" config set api_url "$API_URL" >/dev/null
 
-# Login
-"$BIN" login --email "$EMAIL" --password "$PASS" --format=json | head -c 300; echo
+# Login — pipe password to stdin so it never appears in argv/ps/shell history.
+# `login_cmd.go` reads password from stdin via term.ReadPassword; when stdin
+# is not a TTY (as here under bash pipe) it falls back to a plain read.
+printf '%s\n' "$PASS" | "$BIN" login --email "$EMAIL" --format=json | head -c 300; echo
 
 # whoami should show oauth
 "$BIN" whoami --format=json | head -c 240; echo

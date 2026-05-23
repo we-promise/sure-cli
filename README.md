@@ -135,7 +135,7 @@ sure-cli propose rules --months 3
 sure-cli propose rules --months 3 --apply --min-confidence 0.8
 
 # Export
-sure-cli export transactions --months 12 --format csv --out transactions.csv
+sure-cli export transactions --months 12 --out-format csv --out transactions.csv
 
 # Financial history
 sure-cli balance-sheet show

@@ -2,12 +2,14 @@ package root
 
 import (
 	"fmt"
+	"net/url"
 	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/we-promise/sure-cli/internal/rules"
-	"github.com/spf13/cobra"
 )
 
 func newProposeCmd() *cobra.Command {
@@ -35,6 +37,7 @@ func newProposeRulesCmd() *cobra.Command {
 			txs, err := api.FetchTransactionsWindow(client, start, end, 500)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
+				return
 			}
 
 			result := rules.ProposeRules(txs)
@@ -74,7 +77,7 @@ func newProposeRulesCmd() *cobra.Command {
 
 				// Apply to all affected transactions
 				for _, txID := range p.AffectedTxIDs {
-					path := fmt.Sprintf("/api/v1/transactions/%s", txID)
+					path := fmt.Sprintf("/api/v1/transactions/%s", url.PathEscape(txID))
 					payload := map[string]any{
 						"transaction": map[string]any{
 							"category_id": p.ValueID,

@@ -3,6 +3,7 @@ package root
 import (
 	"errors"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/output"
@@ -51,23 +52,13 @@ func newImportsPreflightCmd() *cobra.Command {
 
 			client := api.New()
 			var res any
-			var status int
+			var r *resty.Response
 			if payload.RawFileContent != "" {
-				r, err := client.Post("/api/v1/imports/preflight", payload.Fields, &res)
-				if err != nil {
-					output.Fail("request_failed", err.Error(), nil)
-				}
-				status = r.StatusCode()
+				r, err = client.Post("/api/v1/imports/preflight", payload.Fields, &res)
 			} else {
-				r, err := client.PostMultipart("/api/v1/imports/preflight", payload.Fields, payload.FileField, payload.FilePath, &res)
-				if err != nil {
-					output.Fail("request_failed", err.Error(), nil)
-				}
-				status = r.StatusCode()
+				r, err = client.PostMultipart("/api/v1/imports/preflight", payload.Fields, payload.FileField, payload.FilePath, &res)
 			}
-			if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: status}}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			respond(r, err, res)
 		},
 	}
 

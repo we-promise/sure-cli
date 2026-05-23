@@ -364,48 +364,28 @@ func printGet(path string) {
 	client := api.New()
 	var res any
 	r, err := client.Get(path, &res)
-	if err != nil {
-		output.Fail("request_failed", err.Error(), nil)
-	}
-	if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-	}
+	respond(r, err, res)
 }
 
 func printPost(path string, body any) {
 	client := api.New()
 	var res any
 	r, err := client.Post(path, body, &res)
-	if err != nil {
-		output.Fail("request_failed", err.Error(), nil)
-	}
-	if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-	}
+	respond(r, err, res)
 }
 
 func printPatch(path string, body any) {
 	client := api.New()
 	var res any
 	r, err := client.Patch(path, body, &res)
-	if err != nil {
-		output.Fail("request_failed", err.Error(), nil)
-	}
-	if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-	}
+	respond(r, err, res)
 }
 
 func printDelete(path string) {
 	client := api.New()
 	var res any
 	r, err := client.Delete(path, &res)
-	if err != nil {
-		output.Fail("request_failed", err.Error(), nil)
-	}
-	if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-	}
+	respond(r, err, res)
 }
 
 // dispatchWrite is the canonical entry point for write commands that share the

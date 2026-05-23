@@ -42,56 +42,28 @@ func printInvestmentGet(path string) {
 	client := api.New()
 	var res any
 	r, err := client.Get(path, &res)
-	if err != nil {
-		output.Fail("request_failed", err.Error(), nil)
-		return
-	}
-	if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-		return
-	}
+	respond(r, err, res)
 }
 
 func printInvestmentPost(path string, body any) {
 	client := api.New()
 	var res any
 	r, err := client.Post(path, body, &res)
-	if err != nil {
-		output.Fail("request_failed", err.Error(), nil)
-		return
-	}
-	if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-		return
-	}
+	respond(r, err, res)
 }
 
 func printInvestmentPatch(path string, body any) {
 	client := api.New()
 	var res any
 	r, err := client.Patch(path, body, &res)
-	if err != nil {
-		output.Fail("request_failed", err.Error(), nil)
-		return
-	}
-	if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-		return
-	}
+	respond(r, err, res)
 }
 
 func printInvestmentDelete(path string) {
 	client := api.New()
 	var res any
 	r, err := client.Delete(path, &res)
-	if err != nil {
-		output.Fail("request_failed", err.Error(), nil)
-		return
-	}
-	if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-		return
-	}
+	respond(r, err, res)
 }
 
 func printInvestmentDryRun(method, path string, body any) {

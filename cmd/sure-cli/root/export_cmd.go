@@ -22,6 +22,10 @@ func newExportCmd() *cobra.Command {
 func newExportTransactionsCmd() *cobra.Command {
 	var months int
 	var outFile string
+	// Local --out-format avoids colliding with the persistent --format
+	// (json|table) declared on the root command. Previously both flags were
+	// named --format and only worked because they happened to be read from
+	// different package-level variables.
 	var exportFormat string
 
 	cmd := &cobra.Command{
@@ -38,6 +42,7 @@ func newExportTransactionsCmd() *cobra.Command {
 			txs, err := api.FetchTransactionsWindow(client, start, end, 1000)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
+				return
 			}
 
 			if outFile == "" {
@@ -48,26 +53,29 @@ func newExportTransactionsCmd() *cobra.Command {
 			case "csv":
 				if err := exportTransactionsCSV(txs, outFile); err != nil {
 					output.Fail("export_failed", err.Error(), nil)
+					return
 				}
 			case "json":
 				if err := exportTransactionsJSON(txs, outFile); err != nil {
 					output.Fail("export_failed", err.Error(), nil)
+					return
 				}
 			default:
-				output.Fail("invalid_format", "format must be csv or json", nil)
+				output.Fail("invalid_format", "out-format must be csv or json", nil)
+				return
 			}
 
 			_ = output.Print(format, output.Envelope{Data: map[string]any{
 				"exported":   len(txs),
 				"file":       outFile,
-				"format":     exportFormat,
+				"out_format": exportFormat,
 				"date_range": map[string]string{"start": start.Format("2006-01-02"), "end": end.Format("2006-01-02")},
 			}, Meta: &output.Meta{Status: 200}})
 		},
 	}
 	cmd.Flags().IntVar(&months, "months", 12, "lookback months")
 	cmd.Flags().StringVar(&outFile, "out", "", "output file (default: transactions_DATE.FORMAT)")
-	cmd.Flags().StringVar(&exportFormat, "format", "csv", "export format (csv|json)")
+	cmd.Flags().StringVar(&exportFormat, "out-format", "csv", "output file format (csv|json)")
 	return cmd
 }
 

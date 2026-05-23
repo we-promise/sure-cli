@@ -11,8 +11,6 @@ import (
 var (
 	cfgFile string
 	format  string
-	quiet   bool
-	trace   bool
 
 	// Version info (set by main via SetVersion)
 	version = "dev"
@@ -38,8 +36,6 @@ func New() *cobra.Command {
 
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.config/sure-cli/config.yaml)")
 	cmd.PersistentFlags().StringVar(&format, "format", "json", "output format: json|table")
-	cmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "suppress non-essential output")
-	cmd.PersistentFlags().BoolVar(&trace, "trace", false, "include request tracing information")
 
 	cmd.AddCommand(newConfigCmd())
 	cmd.AddCommand(newLoginCmd())

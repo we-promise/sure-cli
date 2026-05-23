@@ -20,10 +20,8 @@ func newStatusCmd() *cobra.Command {
 
 			// 1. Get accounts
 			var accountsRes map[string]any
-			_, err := client.Get("/api/v1/accounts", &accountsRes)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-			}
+			r, err := client.Get("/api/v1/accounts", &accountsRes)
+			checkResponse(r, err)
 
 			accounts, _ := accountsRes["accounts"].([]any)
 			var totalBalance float64
@@ -69,6 +67,7 @@ func newStatusCmd() *cobra.Command {
 			txs, err := api.FetchTransactionsWindow(client, start, end, 500)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
+				return
 			}
 
 			// Calculate monthly spend

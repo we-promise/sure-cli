@@ -57,12 +57,7 @@ func newFamilyExportsCmd() *cobra.Command {
 			client := api.New()
 			var res any
 			r, err := client.Post(path, map[string]any{}, &res)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-			}
-			if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			respond(r, err, res)
 		},
 	}
 	create.Flags().BoolVar(&apply, "apply", false, "execute the create (otherwise dry-run)")
@@ -81,12 +76,9 @@ func newFamilyExportsCmd() *cobra.Command {
 			client := api.New()
 			path := fmt.Sprintf("/api/v1/family_exports/%s/download", url.PathEscape(args[0]))
 			r, err := client.GetToFile(path, outFile)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-			}
-			if err := output.Print(format, output.Envelope{Data: map[string]any{"file": outFile}, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			// Download returns the file path as the data payload on success;
+			// error/status routing matches every other GET via respond.
+			respond(r, err, map[string]any{"file": outFile})
 		},
 	}
 	download.Flags().StringVar(&outFile, "out", "", "output file path (required)")
@@ -99,12 +91,7 @@ func printFamilyExportGet(path string) {
 	client := api.New()
 	var res any
 	r, err := client.Get(path, &res)
-	if err != nil {
-		output.Fail("request_failed", err.Error(), nil)
-	}
-	if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-	}
+	respond(r, err, res)
 }
 
 func printFamilyExportDryRun(method, path string, body any) {

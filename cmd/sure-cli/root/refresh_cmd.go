@@ -17,6 +17,7 @@ func newRefreshCmd() *cobra.Command {
 			rt := config.RefreshToken()
 			if rt == "" {
 				output.Fail("missing_refresh_token", "no refresh token stored; run sure-cli login", nil)
+				return
 			}
 
 			client := api.New()
@@ -26,14 +27,26 @@ func newRefreshCmd() *cobra.Command {
 			})
 			if err != nil {
 				output.Fail("refresh_failed", err.Error(), nil)
+				return
+			}
+			if res.AccessToken == "" {
+				output.Fail("refresh_failed", "refresh response returned empty access token", nil)
+				return
 			}
 
 			config.SetAuthMode("bearer")
 			config.SetToken(res.AccessToken)
-			config.SetRefreshToken(res.RefreshToken)
-			config.SetTokenExpiresAt(time.Now().Add(time.Duration(res.ExpiresIn) * time.Second))
+			// Guard rotation fields so a partial server response doesn't wipe
+			// the saved values and silently log the user out.
+			if res.RefreshToken != "" {
+				config.SetRefreshToken(res.RefreshToken)
+			}
+			if res.ExpiresIn > 0 {
+				config.SetTokenExpiresAt(time.Now().Add(time.Duration(res.ExpiresIn) * time.Second))
+			}
 			if err := config.Save(); err != nil {
 				output.Fail("config_save_failed", err.Error(), nil)
+				return
 			}
 
 			_ = output.Print(format, output.Envelope{Data: map[string]any{

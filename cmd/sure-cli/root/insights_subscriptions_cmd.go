@@ -22,6 +22,7 @@ func newInsightsSubscriptionsCmd() *cobra.Command {
 			txs, err := api.FetchTransactionsWindow(api.New(), start, end, 100)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
+				return
 			}
 			cands := insights.DetectSubscriptions(txs)
 			if cands == nil {

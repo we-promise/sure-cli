@@ -38,6 +38,7 @@ func newPlanForecastCmd() *cobra.Command {
 			txs, err := api.FetchTransactionsWindow(client, start, end, 500)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
+				return
 			}
 
 			result := plan.ComputeForecast(txs, days, includeDaily)
@@ -61,6 +62,7 @@ func newPlanBudgetCmd() *cobra.Command {
 				mm, err := time.Parse("2006-01", monthStr)
 				if err != nil {
 					output.Fail("invalid_month", "month must be YYYY-MM", nil)
+					return
 				}
 				m = mm
 			}
@@ -71,10 +73,12 @@ func newPlanBudgetCmd() *cobra.Command {
 			txs, err := api.FetchTransactionsWindow(client, start, end, 200)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
+				return
 			}
 			res, err := plan.ComputeMonthlyBudget(m, txs)
 			if err != nil {
 				output.Fail("compute_failed", err.Error(), nil)
+				return
 			}
 			_ = output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Schema: "docs/schemas/v1/plan_budget.schema.json", Status: 200}})
 		},
@@ -92,15 +96,14 @@ func newPlanRunwayCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			if accountID == "" {
 				output.Fail("missing_account", "--account-id is required", nil)
+				return
 			}
 			client := api.New()
 
 			// Find account balance by listing accounts (Sure API quirks: show may 404)
 			var res map[string]any
-			_, err := client.Get("/api/v1/accounts", &res)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-			}
+			r, err := client.Get("/api/v1/accounts", &res)
+			checkResponse(r, err)
 			bal := ""
 			if arr, ok := res["accounts"].([]any); ok {
 				for _, it := range arr {
@@ -113,6 +116,7 @@ func newPlanRunwayCmd() *cobra.Command {
 			}
 			if bal == "" {
 				output.Fail("account_not_found", "account not found in accounts list", map[string]any{"account_id": accountID})
+				return
 			}
 
 			if windowDays <= 0 {
@@ -124,11 +128,13 @@ func newPlanRunwayCmd() *cobra.Command {
 			txs, err := api.FetchTransactionsWindow(client, start, end, 200)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
+				return
 			}
 
 			out, err := plan.ComputeRunway(bal, txs, windowDays)
 			if err != nil {
 				output.Fail("compute_failed", err.Error(), nil)
+				return
 			}
 			_ = output.Print(format, output.Envelope{Data: out, Meta: &output.Meta{Schema: "docs/schemas/v1/plan_runway.schema.json", Status: 200}})
 		},

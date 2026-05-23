@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
 	"github.com/we-promise/sure-cli/internal/api"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newTransactionsCmd() *cobra.Command {
@@ -97,10 +97,7 @@ func newTransactionsCmd() *cobra.Command {
 
 			var res any
 			r, err := client.Get(path, &res)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-			}
-			_ = output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}})
+			respond(r, err, res)
 		},
 	}
 
@@ -135,10 +132,7 @@ func newTransactionsCmd() *cobra.Command {
 			var res any
 			path := fmt.Sprintf("/api/v1/transactions/%s", url.PathEscape(args[0]))
 			r, err := client.Get(path, &res)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-			}
-			_ = output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}})
+			respond(r, err, res)
 		},
 	})
 

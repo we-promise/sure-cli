@@ -24,6 +24,7 @@ func newInsightsLeaksCmd() *cobra.Command {
 			txs, err := api.FetchTransactionsWindow(api.New(), start, end, 100)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
+				return
 			}
 			cands := insights.DetectLeaks(txs, minCount, minTotal, maxAvg)
 			if cands == nil {

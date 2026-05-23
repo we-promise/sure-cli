@@ -22,6 +22,7 @@ func newInsightsFeesCmd() *cobra.Command {
 			txs, err := api.FetchTransactionsWindow(api.New(), start, end, 100)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
+				return
 			}
 			// Use keywords from config (or defaults if empty)
 			keywords := config.GetFeeKeywords()
