@@ -49,13 +49,20 @@ func newCategoriesCmd() *cobra.Command {
 
 func newMerchantsCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "merchants", Short: "Merchants"}
-	cmd.AddCommand(&cobra.Command{
+
+	var page, perPage int
+	list := &cobra.Command{
 		Use:   "list",
 		Short: "List merchants",
 		Run: func(cmd *cobra.Command, args []string) {
-			printGet("/api/v1/merchants")
+			q := url.Values{}
+			addPagingQuery(q, page, perPage)
+			printGet(pathWithQuery("/api/v1/merchants", q))
 		},
-	})
+	}
+	addPagingFlags(list, &page, &perPage)
+	cmd.AddCommand(list)
+
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show <id>",
 		Short: "Show merchant",
@@ -75,13 +82,20 @@ type tagWriteOpts struct {
 
 func newTagsCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "tags", Short: "Tags"}
-	cmd.AddCommand(&cobra.Command{
+
+	var page, perPage int
+	list := &cobra.Command{
 		Use:   "list",
 		Short: "List tags",
 		Run: func(cmd *cobra.Command, args []string) {
-			printGet("/api/v1/tags")
+			q := url.Values{}
+			addPagingQuery(q, page, perPage)
+			printGet(pathWithQuery("/api/v1/tags", q))
 		},
-	})
+	}
+	addPagingFlags(list, &page, &perPage)
+	cmd.AddCommand(list)
+
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show <id>",
 		Short: "Show tag",

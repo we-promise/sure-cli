@@ -10,7 +10,10 @@ func TestBuildTagPayload_CreateRequiresName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	tag := payload["tag"].(map[string]any)
+	tag, ok := payload["tag"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected payload[\"tag\"] to be map[string]any, got %T: %#v", payload["tag"], payload)
+	}
 	if tag["name"] != "Travel" || tag["color"] != "#3b82f6" {
 		t.Fatalf("unexpected tag payload: %#v", tag)
 	}
