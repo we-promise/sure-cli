@@ -197,6 +197,23 @@ sure-cli usage show
 sure-cli imports preflight --type TransactionImport --file data.csv \
   --date-col-label Date --amount-col-label Amount --name-col-label Name
 sure-cli imports preflight --type SureImport --raw-file-content "$(cat backup.ndjson)"
+
+# Provider connections (aggregator status)
+sure-cli provider-connections list
+
+# AI chats (requires AI enabled on the account)
+sure-cli chats list --page 1
+sure-cli chats show <chat_id> --page 1
+sure-cli chats create --title "Tax planning" --apply
+sure-cli chats create --title "Brainstorm" --message "Let's start" --model gpt-4o --apply
+sure-cli chats update <chat_id> --title "Renamed" --apply
+sure-cli chats delete <chat_id> --apply
+sure-cli chats messages create --chat-id <chat_id> --content "Hello" --apply
+sure-cli chats messages retry --chat-id <chat_id> --apply
+
+# Auth (account-level writes)
+sure-cli auth enable-ai           # dry-run
+sure-cli auth enable-ai --apply
 ```
 
 ## Auth

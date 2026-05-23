@@ -44,5 +44,8 @@ Future features and ideas for `sure-cli`.
 - Transfer review surface via `transfers list/show` and `rejected-transfers list/show`.
 - Sync history surface via `syncs list/latest/show`.
 - API usage / rate-limit visibility via `usage show`.
+- Provider connection inspection via `provider-connections list`.
+- AI chats CRUD + message send/retry via `chats` subtree.
+- Account-level AI enable via `auth enable-ai`.
 
 See [CHANGELOG](../CHANGELOG.md) or GitHub releases for shipped features.
