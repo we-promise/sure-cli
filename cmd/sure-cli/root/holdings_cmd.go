@@ -15,7 +15,7 @@ func newHoldingsCmd() *cobra.Command {
 		Short: "Show investment holding",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			printInvestmentGet(fmt.Sprintf("/api/v1/holdings/%s", url.PathEscape(args[0])))
+			printGet(fmt.Sprintf("/api/v1/holdings/%s", url.PathEscape(args[0])))
 		},
 	})
 	return cmd
@@ -30,11 +30,11 @@ func newHoldingsListCmd() *cobra.Command {
 		Short: "List investment holdings",
 		Run: func(cmd *cobra.Command, args []string) {
 			q := url.Values{}
-			addInvestmentPagingQuery(q, page, perPage)
+			addPagingQuery(q, page, perPage)
 			if accountID != "" {
 				q.Set("account_id", accountID)
 			}
-			addRepeatedInvestmentQuery(q, "account_ids", accountIDs)
+			addRepeatedQuery(q, "account_ids", accountIDs)
 			if date != "" {
 				q.Set("date", date)
 			}
@@ -47,10 +47,10 @@ func newHoldingsListCmd() *cobra.Command {
 			if securityID != "" {
 				q.Set("security_id", securityID)
 			}
-			printInvestmentGet(investmentPathWithQuery("/api/v1/holdings", q))
+			printGet(pathWithQuery("/api/v1/holdings", q))
 		},
 	}
-	addInvestmentPagingFlags(cmd, &page, &perPage)
+	addPagingFlags(cmd, &page, &perPage)
 	cmd.Flags().StringVar(&accountID, "account-id", "", "account id")
 	cmd.Flags().StringSliceVar(&accountIDs, "account-ids", nil, "account ids (repeat or comma-separated)")
 	cmd.Flags().StringVar(&date, "date", "", "exact holding date (YYYY-MM-DD)")

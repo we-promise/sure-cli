@@ -40,11 +40,11 @@ func newTradesCmd() *cobra.Command {
 			if accountID != "" {
 				q.Set("account_id", accountID)
 			}
-			addRepeatedInvestmentQuery(q, "account_ids", accountIDs)
-			addInvestmentPagingQuery(q, page, perPage)
+			addRepeatedQuery(q, "account_ids", accountIDs)
+			addPagingQuery(q, page, perPage)
 
 			u := url.URL{Path: "/api/v1/trades", RawQuery: q.Encode()}
-			printInvestmentGet(u.String())
+			printGet(u.String())
 		},
 	}
 
@@ -55,7 +55,7 @@ func newTradesCmd() *cobra.Command {
 	list.Flags().StringVar(&account, "account", "", "account id (alias for --account-id)")
 	list.Flags().StringVar(&accountID, "account-id", "", "account id")
 	list.Flags().StringSliceVar(&accountIDs, "account-ids", nil, "account ids (repeat or comma-separated)")
-	addInvestmentPagingFlags(list, &page, &perPage)
+	addPagingFlags(list, &page, &perPage)
 	cmd.AddCommand(list)
 
 	cmd.AddCommand(&cobra.Command{
@@ -64,7 +64,7 @@ func newTradesCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			path := fmt.Sprintf("/api/v1/trades/%s", url.PathEscape(args[0]))
-			printInvestmentGet(path)
+			printGet(path)
 		},
 	})
 
@@ -116,12 +116,7 @@ func newTradesCreateCmd() *cobra.Command {
 				output.Fail("validation_failed", err.Error(), nil)
 				return
 			}
-			path := "/api/v1/trades"
-			if !o.Apply {
-				printInvestmentDryRun("POST", path, payload)
-				return
-			}
-			printInvestmentPost(path, payload)
+			dispatchWrite(o.Apply, "POST", "/api/v1/trades", payload)
 		},
 	}
 	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "account id (required)")
@@ -151,12 +146,7 @@ func newTradesUpdateCmd() *cobra.Command {
 				output.Fail("validation_failed", err.Error(), nil)
 				return
 			}
-			path := fmt.Sprintf("/api/v1/trades/%s", url.PathEscape(args[0]))
-			if !o.Apply {
-				printInvestmentDryRun("PATCH", path, payload)
-				return
-			}
-			printInvestmentPatch(path, payload)
+			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/trades/%s", url.PathEscape(args[0])), payload)
 		},
 	}
 	cmd.Flags().StringVar(&o.Name, "name", "", "name")
@@ -181,12 +171,7 @@ func newTradesDeleteCmd() *cobra.Command {
 		Short: "Delete trade (default dry-run; use --apply to execute)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			path := fmt.Sprintf("/api/v1/trades/%s", url.PathEscape(args[0]))
-			if !apply {
-				printInvestmentDryRun("DELETE", path, nil)
-				return
-			}
-			printInvestmentDelete(path)
+			dispatchWrite(apply, "DELETE", fmt.Sprintf("/api/v1/trades/%s", url.PathEscape(args[0])), nil)
 		},
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "execute the delete (otherwise dry-run)")

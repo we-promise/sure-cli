@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/we-promise/sure-cli/internal/api"
+
 	"github.com/we-promise/sure-cli/internal/output"
 )
 
@@ -16,7 +16,7 @@ func newBalanceSheetCmd() *cobra.Command {
 		Use:   "show",
 		Short: "Show balance sheet",
 		Run: func(cmd *cobra.Command, args []string) {
-			printFinancialGet("/api/v1/balance_sheet")
+			printGet("/api/v1/balance_sheet")
 		},
 	})
 	return cmd
@@ -32,7 +32,7 @@ func newBalancesCmd() *cobra.Command {
 		Short: "List balance history records",
 		Run: func(cmd *cobra.Command, args []string) {
 			q := url.Values{}
-			addFinancialPagingQuery(q, page, perPage)
+			addPagingQuery(q, page, perPage)
 			if accountID != "" {
 				q.Set("account_id", accountID)
 			}
@@ -45,10 +45,10 @@ func newBalancesCmd() *cobra.Command {
 			if endDate != "" {
 				q.Set("end_date", endDate)
 			}
-			printFinancialGet(financialPathWithQuery("/api/v1/balances", q))
+			printGet(pathWithQuery("/api/v1/balances", q))
 		},
 	}
-	addFinancialPagingFlags(list, &page, &perPage)
+	addPagingFlags(list, &page, &perPage)
 	list.Flags().StringVar(&accountID, "account-id", "", "account id")
 	list.Flags().StringVar(&currency, "currency", "", "currency")
 	list.Flags().StringVar(&startDate, "start-date", "", "start date (YYYY-MM-DD)")
@@ -60,7 +60,7 @@ func newBalancesCmd() *cobra.Command {
 		Short: "Show balance history record",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			printFinancialGet(fmt.Sprintf("/api/v1/balances/%s", url.PathEscape(args[0])))
+			printGet(fmt.Sprintf("/api/v1/balances/%s", url.PathEscape(args[0])))
 		},
 	})
 	return cmd
@@ -72,7 +72,7 @@ func newFamilySettingsCmd() *cobra.Command {
 		Use:   "show",
 		Short: "Show family settings",
 		Run: func(cmd *cobra.Command, args []string) {
-			printFinancialGet("/api/v1/family_settings")
+			printGet("/api/v1/family_settings")
 		},
 	})
 	return cmd
@@ -104,7 +104,7 @@ func newValuationsCmd() *cobra.Command {
 		Short: "List valuations",
 		Run: func(cmd *cobra.Command, args []string) {
 			q := url.Values{}
-			addFinancialPagingQuery(q, page, perPage)
+			addPagingQuery(q, page, perPage)
 			if accountID != "" {
 				q.Set("account_id", accountID)
 			}
@@ -114,10 +114,10 @@ func newValuationsCmd() *cobra.Command {
 			if endDate != "" {
 				q.Set("end_date", endDate)
 			}
-			printFinancialGet(financialPathWithQuery("/api/v1/valuations", q))
+			printGet(pathWithQuery("/api/v1/valuations", q))
 		},
 	}
-	addFinancialPagingFlags(list, &page, &perPage)
+	addPagingFlags(list, &page, &perPage)
 	list.Flags().StringVar(&accountID, "account-id", "", "account id")
 	list.Flags().StringVar(&startDate, "start-date", "", "start date (YYYY-MM-DD)")
 	list.Flags().StringVar(&endDate, "end-date", "", "end date (YYYY-MM-DD)")
@@ -128,7 +128,7 @@ func newValuationsCmd() *cobra.Command {
 		Short: "Show valuation",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			printFinancialGet(fmt.Sprintf("/api/v1/valuations/%s", url.PathEscape(args[0])))
+			printGet(fmt.Sprintf("/api/v1/valuations/%s", url.PathEscape(args[0])))
 		},
 	})
 
@@ -146,13 +146,9 @@ func newValuationsCreateCmd() *cobra.Command {
 			payload, err := buildValuationCreatePayload(o)
 			if err != nil {
 				output.Fail("validation_failed", err.Error(), nil)
-			}
-			path := "/api/v1/valuations"
-			if !o.Apply {
-				printFinancialDryRun("POST", path, payload)
 				return
 			}
-			printFinancialPost(path, payload)
+			dispatchWrite(o.Apply, "POST", "/api/v1/valuations", payload)
 		},
 	}
 	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "account id (required)")
@@ -174,13 +170,9 @@ func newValuationsUpdateCmd() *cobra.Command {
 			payload, err := buildValuationUpdatePayload(o)
 			if err != nil {
 				output.Fail("validation_failed", err.Error(), nil)
-			}
-			path := fmt.Sprintf("/api/v1/valuations/%s", url.PathEscape(args[0]))
-			if !o.Apply {
-				printFinancialDryRun("PATCH", path, payload)
 				return
 			}
-			printFinancialPatch(path, payload)
+			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/valuations/%s", url.PathEscape(args[0])), payload)
 		},
 	}
 	cmd.Flags().StringVar(&o.Amount, "amount", "", "valuation amount")
@@ -234,62 +226,4 @@ func buildValuationUpdatePayload(o valuationUpdateOpts) (map[string]any, error) 
 		valuation["notes"] = o.Notes
 	}
 	return map[string]any{"valuation": valuation}, nil
-}
-
-func addFinancialPagingFlags(cmd *cobra.Command, page, perPage *int) {
-	cmd.Flags().IntVar(page, "page", 1, "page number")
-	cmd.Flags().IntVar(perPage, "per-page", 25, "items per page (maps to per_page)")
-}
-
-func addFinancialPagingQuery(q url.Values, page, perPage int) {
-	if page > 0 {
-		q.Set("page", fmt.Sprintf("%d", page))
-	}
-	if perPage > 0 {
-		q.Set("per_page", fmt.Sprintf("%d", perPage))
-	}
-}
-
-func financialPathWithQuery(path string, q url.Values) string {
-	if encoded := q.Encode(); encoded != "" {
-		return path + "?" + encoded
-	}
-	return path
-}
-
-func printFinancialGet(path string) {
-	client := api.New()
-	var res any
-	r, err := client.Get(path, &res)
-	respond(r, err, res)
-}
-
-func printFinancialPost(path string, body any) {
-	client := api.New()
-	var res any
-	r, err := client.Post(path, body, &res)
-	respond(r, err, res)
-}
-
-func printFinancialPatch(path string, body any) {
-	client := api.New()
-	var res any
-	r, err := client.Patch(path, body, &res)
-	respond(r, err, res)
-}
-
-func printFinancialDryRun(method, path string, body any) {
-	request := map[string]any{
-		"method": method,
-		"path":   path,
-	}
-	if body != nil {
-		request["body"] = body
-	}
-	if err := output.Print(format, output.Envelope{Data: map[string]any{
-		"dry_run": true,
-		"request": request,
-	}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-	}
 }

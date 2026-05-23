@@ -183,7 +183,7 @@ func newTagsCreateCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Create tag (default dry-run; use --apply to execute)",
 		Run: func(cmd *cobra.Command, args []string) {
-			payload, err := buildTagPayload(o, true)
+			payload, err := buildTagCreatePayload(o)
 			if err != nil {
 				failValidation(err)
 			}
@@ -203,7 +203,7 @@ func newTagsUpdateCmd() *cobra.Command {
 		Short: "Update tag (default dry-run; use --apply to execute)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			payload, err := buildTagPayload(o, false)
+			payload, err := buildTagUpdatePayload(o)
 			if err != nil {
 				failValidation(err)
 			}
@@ -230,10 +230,18 @@ func newTagsDeleteCmd() *cobra.Command {
 	return cmd
 }
 
-func buildTagPayload(o tagWriteOpts, requireName bool) (map[string]any, error) {
-	if requireName && o.Name == "" {
+func buildTagCreatePayload(o tagWriteOpts) (map[string]any, error) {
+	if o.Name == "" {
 		return nil, fmt.Errorf("name is required")
 	}
+	tag := map[string]any{"name": o.Name}
+	if o.Color != "" {
+		tag["color"] = o.Color
+	}
+	return map[string]any{"tag": tag}, nil
+}
+
+func buildTagUpdatePayload(o tagWriteOpts) (map[string]any, error) {
 	tag := map[string]any{}
 	if o.Name != "" {
 		tag["name"] = o.Name
@@ -242,7 +250,7 @@ func buildTagPayload(o tagWriteOpts, requireName bool) (map[string]any, error) {
 		tag["color"] = o.Color
 	}
 	if len(tag) == 0 {
-		return nil, fmt.Errorf("no fields provided")
+		return nil, fmt.Errorf("no fields provided to update")
 	}
 	return map[string]any{"tag": tag}, nil
 }

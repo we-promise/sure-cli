@@ -61,14 +61,14 @@ func newImportsCmd() *cobra.Command {
 			if importType != "" {
 				q.Set("type", importType)
 			}
-			addImportPagingQuery(q, page, perPage)
-			printImportGet(importPathWithQuery("/api/v1/imports", q))
+			addPagingQuery(q, page, perPage)
+			printGet(pathWithQuery("/api/v1/imports", q))
 		},
 	}
 
 	list.Flags().StringVar(&status, "status", "", "filter by status")
 	list.Flags().StringVar(&importType, "type", "", "filter by import type")
-	addImportPagingFlags(list, &page, &perPage)
+	addPagingFlags(list, &page, &perPage)
 	cmd.AddCommand(list)
 
 	cmd.AddCommand(&cobra.Command{
@@ -76,7 +76,7 @@ func newImportsCmd() *cobra.Command {
 		Short: "Show import",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			printImportGet(fmt.Sprintf("/api/v1/imports/%s", url.PathEscape(args[0])))
+			printGet(fmt.Sprintf("/api/v1/imports/%s", url.PathEscape(args[0])))
 		},
 	})
 
@@ -96,11 +96,11 @@ func newImportsRowsCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			q := url.Values{}
-			addImportPagingQuery(q, page, perPage)
-			printImportGet(importPathWithQuery(fmt.Sprintf("/api/v1/imports/%s/rows", url.PathEscape(args[0])), q))
+			addPagingQuery(q, page, perPage)
+			printGet(pathWithQuery(fmt.Sprintf("/api/v1/imports/%s/rows", url.PathEscape(args[0])), q))
 		},
 	}
-	addImportPagingFlags(cmd, &page, &perPage)
+	addPagingFlags(cmd, &page, &perPage)
 	return cmd
 }
 
@@ -261,32 +261,4 @@ func addImportField(fields map[string]string, name, value string) {
 	if value != "" {
 		fields[name] = value
 	}
-}
-
-func addImportPagingFlags(cmd *cobra.Command, page, perPage *int) {
-	cmd.Flags().IntVar(page, "page", 1, "page number")
-	cmd.Flags().IntVar(perPage, "per-page", 25, "items per page (maps to per_page)")
-}
-
-func addImportPagingQuery(q url.Values, page, perPage int) {
-	if page > 0 {
-		q.Set("page", fmt.Sprintf("%d", page))
-	}
-	if perPage > 0 {
-		q.Set("per_page", fmt.Sprintf("%d", perPage))
-	}
-}
-
-func importPathWithQuery(path string, q url.Values) string {
-	if encoded := q.Encode(); encoded != "" {
-		return path + "?" + encoded
-	}
-	return path
-}
-
-func printImportGet(path string) {
-	client := api.New()
-	var res any
-	r, err := client.Get(path, &res)
-	respond(r, err, res)
 }

@@ -2,18 +2,7 @@ package root
 
 import (
 	"testing"
-
-	"github.com/spf13/cobra"
 )
-
-func findSub(t *testing.T, cmd *cobra.Command, name string) *cobra.Command {
-	t.Helper()
-	sub, _, err := cmd.Find([]string{name})
-	if err != nil {
-		t.Fatalf("find %q: %v", name, err)
-	}
-	return sub
-}
 
 func TestTransfersCommandShape(t *testing.T) {
 	cmd := newTransfersCmd()

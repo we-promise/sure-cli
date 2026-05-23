@@ -2,8 +2,6 @@ package root
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/we-promise/sure-cli/internal/api"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newUsersCmd() *cobra.Command {
@@ -15,12 +13,7 @@ func newUsersCmd() *cobra.Command {
 		Short: "Queue account reset (default dry-run; use --apply to execute)",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			path := "/api/v1/users/reset"
-			if !applyReset {
-				printUsersDryRun("DELETE", path, nil)
-				return
-			}
-			printUsersDelete(path)
+			dispatchWrite(applyReset, "DELETE", "/api/v1/users/reset", nil)
 		},
 	}
 	reset.Flags().BoolVar(&applyReset, "apply", false, "execute the reset (otherwise dry-run)")
@@ -29,7 +22,7 @@ func newUsersCmd() *cobra.Command {
 		Short: "Show reset status",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			printUsersGet("/api/v1/users/reset/status")
+			printGet("/api/v1/users/reset/status")
 		},
 	})
 	cmd.AddCommand(reset)
@@ -40,47 +33,11 @@ func newUsersCmd() *cobra.Command {
 		Short: "Delete current user account (default dry-run; use --apply to execute)",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			path := "/api/v1/users/me"
-			if !applyDelete {
-				printUsersDryRun("DELETE", path, nil)
-				return
-			}
-			printUsersDelete(path)
+			dispatchWrite(applyDelete, "DELETE", "/api/v1/users/me", nil)
 		},
 	}
 	deleteMe.Flags().BoolVar(&applyDelete, "apply", false, "execute the account deletion (otherwise dry-run)")
 	cmd.AddCommand(deleteMe)
 
 	return cmd
-}
-
-func printUsersGet(path string) {
-	client := api.New()
-	var res any
-	r, err := client.Get(path, &res)
-	respond(r, err, res)
-}
-
-func printUsersDelete(path string) {
-	client := api.New()
-	var res any
-	r, err := client.Delete(path, &res)
-	respond(r, err, res)
-}
-
-func printUsersDryRun(method, path string, body any) {
-	request := map[string]any{
-		"method": method,
-		"path":   path,
-	}
-	if body != nil {
-		request["body"] = body
-	}
-	if err := output.Print(format, output.Envelope{Data: map[string]any{
-		"dry_run": true,
-		"request": request,
-	}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-		return
-	}
 }

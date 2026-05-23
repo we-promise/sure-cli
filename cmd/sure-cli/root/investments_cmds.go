@@ -18,7 +18,7 @@ func newSecuritiesCmd() *cobra.Command {
 		Short: "List securities",
 		Run: func(cmd *cobra.Command, args []string) {
 			q := url.Values{}
-			addInvestmentPagingQuery(q, page, perPage)
+			addPagingQuery(q, page, perPage)
 			if ticker != "" {
 				q.Set("ticker", ticker)
 			}
@@ -31,10 +31,10 @@ func newSecuritiesCmd() *cobra.Command {
 			if offline != "" {
 				q.Set("offline", offline)
 			}
-			printInvestmentGet(investmentPathWithQuery("/api/v1/securities", q))
+			printGet(pathWithQuery("/api/v1/securities", q))
 		},
 	}
-	addInvestmentPagingFlags(list, &page, &perPage)
+	addPagingFlags(list, &page, &perPage)
 	list.Flags().StringVar(&ticker, "ticker", "", "ticker filter")
 	list.Flags().StringVar(&exchangeOperatingMIC, "exchange-operating-mic", "", "exchange operating MIC filter")
 	list.Flags().StringVar(&kind, "kind", "", "security kind filter")
@@ -46,7 +46,7 @@ func newSecuritiesCmd() *cobra.Command {
 		Short: "Show security",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			printInvestmentGet(fmt.Sprintf("/api/v1/securities/%s", url.PathEscape(args[0])))
+			printGet(fmt.Sprintf("/api/v1/securities/%s", url.PathEscape(args[0])))
 		},
 	})
 	return cmd
@@ -62,7 +62,7 @@ func newSecurityPricesCmd() *cobra.Command {
 		Short: "List security price history",
 		Run: func(cmd *cobra.Command, args []string) {
 			q := url.Values{}
-			addInvestmentPagingQuery(q, page, perPage)
+			addPagingQuery(q, page, perPage)
 			if securityID != "" {
 				q.Set("security_id", securityID)
 			}
@@ -78,10 +78,10 @@ func newSecurityPricesCmd() *cobra.Command {
 			if provisional != "" {
 				q.Set("provisional", provisional)
 			}
-			printInvestmentGet(investmentPathWithQuery("/api/v1/security_prices", q))
+			printGet(pathWithQuery("/api/v1/security_prices", q))
 		},
 	}
-	addInvestmentPagingFlags(list, &page, &perPage)
+	addPagingFlags(list, &page, &perPage)
 	list.Flags().StringVar(&securityID, "security-id", "", "security id")
 	list.Flags().StringVar(&currency, "currency", "", "currency")
 	list.Flags().StringVar(&startDate, "start-date", "", "start date (YYYY-MM-DD)")
@@ -94,7 +94,7 @@ func newSecurityPricesCmd() *cobra.Command {
 		Short: "Show security price",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			printInvestmentGet(fmt.Sprintf("/api/v1/security_prices/%s", url.PathEscape(args[0])))
+			printGet(fmt.Sprintf("/api/v1/security_prices/%s", url.PathEscape(args[0])))
 		},
 	})
 	return cmd
@@ -135,17 +135,17 @@ func newRecurringTransactionsCmd() *cobra.Command {
 		Short: "List recurring transactions",
 		Run: func(cmd *cobra.Command, args []string) {
 			q := url.Values{}
-			addInvestmentPagingQuery(q, page, perPage)
+			addPagingQuery(q, page, perPage)
 			if status != "" {
 				q.Set("status", status)
 			}
 			if accountID != "" {
 				q.Set("account_id", accountID)
 			}
-			printInvestmentGet(investmentPathWithQuery("/api/v1/recurring_transactions", q))
+			printGet(pathWithQuery("/api/v1/recurring_transactions", q))
 		},
 	}
-	addInvestmentPagingFlags(list, &page, &perPage)
+	addPagingFlags(list, &page, &perPage)
 	list.Flags().StringVar(&status, "status", "", "status filter")
 	list.Flags().StringVar(&accountID, "account-id", "", "account id filter")
 	cmd.AddCommand(list)
@@ -155,7 +155,7 @@ func newRecurringTransactionsCmd() *cobra.Command {
 		Short: "Show recurring transaction",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			printInvestmentGet(fmt.Sprintf("/api/v1/recurring_transactions/%s", url.PathEscape(args[0])))
+			printGet(fmt.Sprintf("/api/v1/recurring_transactions/%s", url.PathEscape(args[0])))
 		},
 	})
 	cmd.AddCommand(newRecurringTransactionsCreateCmd())
@@ -175,12 +175,7 @@ func newRecurringTransactionsCreateCmd() *cobra.Command {
 				output.Fail("validation_failed", err.Error(), nil)
 				return
 			}
-			path := "/api/v1/recurring_transactions"
-			if !o.Apply {
-				printInvestmentDryRun("POST", path, payload)
-				return
-			}
-			printInvestmentPost(path, payload)
+			dispatchWrite(o.Apply, "POST", "/api/v1/recurring_transactions", payload)
 		},
 	}
 	cmd.Flags().StringVar(&o.Name, "name", "", "name")
@@ -213,12 +208,7 @@ func newRecurringTransactionsUpdateCmd() *cobra.Command {
 				output.Fail("validation_failed", err.Error(), nil)
 				return
 			}
-			path := fmt.Sprintf("/api/v1/recurring_transactions/%s", url.PathEscape(args[0]))
-			if !o.Apply {
-				printInvestmentDryRun("PATCH", path, payload)
-				return
-			}
-			printInvestmentPatch(path, payload)
+			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/recurring_transactions/%s", url.PathEscape(args[0])), payload)
 		},
 	}
 	cmd.Flags().StringVar(&o.Status, "status", "", "status")
@@ -235,12 +225,7 @@ func newRecurringTransactionsDeleteCmd() *cobra.Command {
 		Short: "Delete recurring transaction (default dry-run; use --apply to execute)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			path := fmt.Sprintf("/api/v1/recurring_transactions/%s", url.PathEscape(args[0]))
-			if !apply {
-				printInvestmentDryRun("DELETE", path, nil)
-				return
-			}
-			printInvestmentDelete(path)
+			dispatchWrite(apply, "DELETE", fmt.Sprintf("/api/v1/recurring_transactions/%s", url.PathEscape(args[0])), nil)
 		},
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "execute the delete (otherwise dry-run)")

@@ -5,6 +5,7 @@ import (
 	"net/url"
 
 	"github.com/spf13/cobra"
+
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/output"
 )
@@ -18,21 +19,11 @@ func newFamilyExportsCmd() *cobra.Command {
 		Short: "List family exports",
 		Run: func(cmd *cobra.Command, args []string) {
 			q := url.Values{}
-			if page > 0 {
-				q.Set("page", fmt.Sprintf("%d", page))
-			}
-			if perPage > 0 {
-				q.Set("per_page", fmt.Sprintf("%d", perPage))
-			}
-			path := "/api/v1/family_exports"
-			if encoded := q.Encode(); encoded != "" {
-				path = path + "?" + encoded
-			}
-			printFamilyExportGet(path)
+			addPagingQuery(q, page, perPage)
+			printGet(pathWithQuery("/api/v1/family_exports", q))
 		},
 	}
-	list.Flags().IntVar(&page, "page", 1, "page number")
-	list.Flags().IntVar(&perPage, "per-page", 25, "items per page (maps to per_page)")
+	addPagingFlags(list, &page, &perPage)
 	cmd.AddCommand(list)
 
 	cmd.AddCommand(&cobra.Command{
@@ -40,7 +31,7 @@ func newFamilyExportsCmd() *cobra.Command {
 		Short: "Show family export",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			printFamilyExportGet(fmt.Sprintf("/api/v1/family_exports/%s", url.PathEscape(args[0])))
+			printGet(fmt.Sprintf("/api/v1/family_exports/%s", url.PathEscape(args[0])))
 		},
 	})
 
@@ -49,15 +40,15 @@ func newFamilyExportsCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Queue a family export (default dry-run; use --apply to execute)",
 		Run: func(cmd *cobra.Command, args []string) {
-			path := "/api/v1/family_exports"
+			// Upstream Api::V1::FamilyExportsController#create ignores the body
+			// (it queues a job per current_resource_owner.family); send {} on
+			// apply and pass nil for dry-run to keep the previous envelope
+			// shape (no body key under request).
 			if !apply {
-				printFamilyExportDryRun("POST", path, nil)
+				dispatchWrite(apply, "POST", "/api/v1/family_exports", nil)
 				return
 			}
-			client := api.New()
-			var res any
-			r, err := client.Post(path, map[string]any{}, &res)
-			respond(r, err, res)
+			dispatchWrite(true, "POST", "/api/v1/family_exports", map[string]any{})
 		},
 	}
 	create.Flags().BoolVar(&apply, "apply", false, "execute the create (otherwise dry-run)")
@@ -85,27 +76,4 @@ func newFamilyExportsCmd() *cobra.Command {
 	cmd.AddCommand(download)
 
 	return cmd
-}
-
-func printFamilyExportGet(path string) {
-	client := api.New()
-	var res any
-	r, err := client.Get(path, &res)
-	respond(r, err, res)
-}
-
-func printFamilyExportDryRun(method, path string, body any) {
-	request := map[string]any{
-		"method": method,
-		"path":   path,
-	}
-	if body != nil {
-		request["body"] = body
-	}
-	if err := output.Print(format, output.Envelope{Data: map[string]any{
-		"dry_run": true,
-		"request": request,
-	}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-	}
 }
