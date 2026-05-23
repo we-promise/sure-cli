@@ -56,7 +56,7 @@ func newImportsPreflightCmd() *cobra.Command {
 			if payload.RawFileContent != "" {
 				r, err = client.Post("/api/v1/imports/preflight", payload.Fields, &res)
 			} else {
-				r, err = client.PostMultipart("/api/v1/imports/preflight", payload.Fields, payload.FileField, payload.FilePath, &res)
+				r, err = client.PostMultipart("/api/v1/imports/preflight", payload.Fields, payload.FileField, payload.FilePath, mimeForImportFile(payload.FilePath), &res)
 			}
 			respond(r, err, res)
 		},

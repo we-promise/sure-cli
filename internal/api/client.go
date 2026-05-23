@@ -2,6 +2,8 @@ package api
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -124,7 +126,14 @@ func (c *Client) Post(path string, body any, out any) (*resty.Response, error) {
 	return req.Post(path)
 }
 
-func (c *Client) PostMultipart(path string, fields map[string]string, fileField, filePath string, out any) (*resty.Response, error) {
+// PostMultipart sends a multipart/form-data POST. fileContentType, when
+// non-empty, sets an explicit Content-Type on the file part — required for
+// Sure's import endpoints, whose Import::ALLOWED_CSV_MIME_TYPES and
+// SureImport::ALLOWED_NDJSON_CONTENT_TYPES allow-lists do exact-match
+// `include?` checks that reject the charset suffix resty's default
+// auto-detection emits (e.g. "text/plain; charset=utf-8"). Pass "" to keep
+// the default detection behavior.
+func (c *Client) PostMultipart(path string, fields map[string]string, fileField, filePath, fileContentType string, out any) (*resty.Response, error) {
 	if err := c.ensureFreshToken(); err != nil {
 		return nil, err
 	}
@@ -136,7 +145,18 @@ func (c *Client) PostMultipart(path string, fields map[string]string, fileField,
 		req = req.SetFormData(fields)
 	}
 	if fileField != "" && filePath != "" {
-		req = req.SetFile(fileField, filePath)
+		if fileContentType != "" {
+			// SetMultipartField requires an io.Reader; open the file and let
+			// resty close it via the request lifecycle.
+			f, err := os.Open(filePath)
+			if err != nil {
+				return nil, fmt.Errorf("open file: %w", err)
+			}
+			defer f.Close()
+			req = req.SetMultipartField(fileField, filepath.Base(filePath), fileContentType, f)
+		} else {
+			req = req.SetFile(fileField, filePath)
+		}
 	}
 	if out != nil {
 		req = req.SetResult(out)

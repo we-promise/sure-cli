@@ -136,7 +136,7 @@ func newImportsCreateCmd() *cobra.Command {
 			if payload.RawFileContent != "" {
 				r, err = client.Post("/api/v1/imports", payload.Fields, &res)
 			} else {
-				r, err = client.PostMultipart("/api/v1/imports", payload.Fields, payload.FileField, payload.FilePath, &res)
+				r, err = client.PostMultipart("/api/v1/imports", payload.Fields, payload.FileField, payload.FilePath, mimeForImportFile(payload.FilePath), &res)
 			}
 			respond(r, err, res)
 		},
@@ -260,5 +260,26 @@ func buildImportCreatePayload(o importCreateOpts) (importCreatePayload, error) {
 func addImportField(fields map[string]string, name, value string) {
 	if value != "" {
 		fields[name] = value
+	}
+}
+
+// mimeForImportFile picks a parameter-free Content-Type for a multipart file
+// part based on its extension. Sure's import controllers do exact-match
+// `include?` checks against ALLOWED_CSV_MIME_TYPES /
+// ALLOWED_NDJSON_CONTENT_TYPES, so the charset-suffixed value resty would
+// auto-detect ("text/plain; charset=utf-8") is rejected. Returning "" lets
+// resty fall back to detection for unknown extensions (current behavior).
+func mimeForImportFile(filePath string) string {
+	switch strings.ToLower(filepath.Ext(filePath)) {
+	case ".csv":
+		return "text/csv"
+	case ".ndjson":
+		return "application/x-ndjson"
+	case ".json":
+		// SureImport accepts application/json; non-Sure imports won't reach
+		// this branch since filePath is empty for raw-content paths.
+		return "application/json"
+	default:
+		return ""
 	}
 }

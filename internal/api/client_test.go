@@ -170,7 +170,7 @@ func TestClient_PostMultipart(t *testing.T) {
 	}
 
 	var out map[string]any
-	_, err := c.PostMultipart("/api/v1/imports", fields, "file", tmpFile, &out)
+	_, err := c.PostMultipart("/api/v1/imports", fields, "file", tmpFile, "", &out)
 	if err != nil {
 		t.Fatalf("PostMultipart failed: %v", err)
 	}
@@ -190,15 +190,97 @@ func TestClient_PostMultipart_MismatchedArgs(t *testing.T) {
 	c := New()
 
 	// fileField set but filePath empty
-	_, err := c.PostMultipart("/api/v1/imports", nil, "file", "", nil)
+	_, err := c.PostMultipart("/api/v1/imports", nil, "file", "", "", nil)
 	if err == nil {
 		t.Fatal("expected error for mismatched file arguments")
 	}
 
 	// filePath set but fileField empty
-	_, err = c.PostMultipart("/api/v1/imports", nil, "", "/some/path", nil)
+	_, err = c.PostMultipart("/api/v1/imports", nil, "", "/some/path", "", nil)
 	if err == nil {
 		t.Fatal("expected error for mismatched file arguments")
+	}
+}
+
+// TestClient_PostMultipart_ExplicitContentType locks in the fix for the
+// imports preflight bug: resty's default SetFile sniffs CSV content as
+// "text/plain; charset=utf-8", and Sure's exact-match content-type
+// allow-list (Import::ALLOWED_CSV_MIME_TYPES) rejects the charset suffix.
+// Passing an explicit content-type forces the multipart part header so the
+// upstream check sees a parameter-free value.
+func TestClient_PostMultipart_ExplicitContentType(t *testing.T) {
+	viper.Reset()
+	viper.Set("auth.mode", "api_key")
+	viper.Set("auth.api_key", "key_456")
+	_ = config.Init("/tmp/does-not-exist.yaml")
+
+	var capturedCT string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		fhs := r.MultipartForm.File["file"]
+		if len(fhs) != 1 {
+			t.Fatalf("expected one file part, got %d", len(fhs))
+		}
+		capturedCT = fhs[0].Header.Get("Content-Type")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	viper.Set("api_url", srv.URL)
+	tmpFile := t.TempDir() + "/test.csv"
+	if err := os.WriteFile(tmpFile, []byte("col1,col2\nval1,val2"), 0644); err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+
+	c := New()
+	if _, err := c.PostMultipart("/api/v1/imports/preflight", nil, "file", tmpFile, "text/csv", nil); err != nil {
+		t.Fatalf("PostMultipart failed: %v", err)
+	}
+	if capturedCT != "text/csv" {
+		t.Fatalf("expected Content-Type=text/csv (parameter-free, to satisfy Sure's exact-match allow-list), got %q", capturedCT)
+	}
+}
+
+// TestClient_PostMultipart_DefaultContentType confirms that passing "" for
+// the content type preserves the pre-fix behavior (resty detects from content),
+// so existing call sites that don't need the explicit override remain unchanged.
+func TestClient_PostMultipart_DefaultContentType(t *testing.T) {
+	viper.Reset()
+	viper.Set("auth.mode", "api_key")
+	viper.Set("auth.api_key", "key_456")
+	_ = config.Init("/tmp/does-not-exist.yaml")
+
+	var capturedCT string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseMultipartForm(10 << 20)
+		fhs := r.MultipartForm.File["file"]
+		if len(fhs) == 1 {
+			capturedCT = fhs[0].Header.Get("Content-Type")
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	viper.Set("api_url", srv.URL)
+	tmpFile := t.TempDir() + "/test.csv"
+	if err := os.WriteFile(tmpFile, []byte("col1,col2\nval1,val2"), 0644); err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+
+	c := New()
+	if _, err := c.PostMultipart("/api/v1/imports/preflight", nil, "file", tmpFile, "", nil); err != nil {
+		t.Fatalf("PostMultipart failed: %v", err)
+	}
+	// The current resty default for an ASCII CSV is "text/plain; charset=utf-8".
+	// Lock the non-empty default so future resty upgrades that change this
+	// signal a deliberate behavior change here.
+	if capturedCT == "" {
+		t.Fatalf("expected non-empty default Content-Type from resty's auto-detection, got empty")
 	}
 }
 

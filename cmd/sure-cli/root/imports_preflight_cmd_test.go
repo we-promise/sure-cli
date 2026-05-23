@@ -60,3 +60,27 @@ func TestImportsPreflightRegistered(t *testing.T) {
 		t.Fatalf("resolved to %q, want preflight", got.Name())
 	}
 }
+
+func TestMimeForImportFile(t *testing.T) {
+	cases := []struct {
+		path string
+		want string
+	}{
+		// Parameter-free types — upstream `include?` allow-lists are exact-match.
+		{"data.csv", "text/csv"},
+		{"data.CSV", "text/csv"}, // case-insensitive
+		{"backup.ndjson", "application/x-ndjson"},
+		{"backup.NDJSON", "application/x-ndjson"},
+		{"backup.json", "application/json"},
+		{"/abs/path/to/data.csv", "text/csv"},
+		// Unknown extensions fall back to resty auto-detection.
+		{"unknown.xyz", ""},
+		{"noext", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := mimeForImportFile(c.path); got != c.want {
+			t.Fatalf("path %q: got %q, want %q", c.path, got, c.want)
+		}
+	}
+}
