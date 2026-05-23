@@ -163,3 +163,10 @@ func (c *Client) Delete(path string, out any) (*resty.Response, error) {
 	}
 	return req.Delete(path)
 }
+
+func (c *Client) GetToFile(path, outputPath string) (*resty.Response, error) {
+	if err := c.ensureFreshToken(); err != nil {
+		return nil, err
+	}
+	return c.http.R().SetOutput(outputPath).Get(path)
+}

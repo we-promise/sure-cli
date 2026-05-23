@@ -11,10 +11,6 @@ Future features and ideas for `sure-cli`.
 ### Search
 - `search "query"` — full-text search across transactions
 
-### Import
-- `import csv --file data.csv` — import from CSV
-- `import ofx --file data.ofx` — import from OFX/QFX
-
 ### Budgets
 - `budgets list/show/create/update` — budget CRUD (requires upstream API)
 
@@ -39,5 +35,9 @@ Future features and ideas for `sure-cli`.
 - Monte Carlo plugin (retirement simulations)
 
 ## Completed
+
+- Import row diagnostics via `imports rows`.
+- CSV and Sure NDJSON import creation via `imports create`.
+- Family export list/show/create/download commands.
 
 See [CHANGELOG](../CHANGELOG.md) or GitHub releases for shipped features.

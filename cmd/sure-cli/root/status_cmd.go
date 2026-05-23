@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/insights"
 	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/we-promise/sure-cli/internal/plan"
-	"github.com/spf13/cobra"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -29,26 +29,37 @@ func newStatusCmd() *cobra.Command {
 			var totalBalance float64
 			var cashBalance float64
 			var accountSummaries []map[string]any
-			_ = "" // unused vars placeholder
+			primaryCurrency := ""
 
 			for _, acc := range accounts {
 				a, _ := acc.(map[string]any)
 				name := fmt.Sprint(a["name"])
 				balance := fmt.Sprint(a["balance"])
+				cashBalanceText := fmt.Sprint(a["cash_balance"])
 				accType := fmt.Sprint(a["account_type"])
+				currency := fmt.Sprint(a["currency"])
+				if primaryCurrency == "" && currency != "" && currency != "<nil>" {
+					primaryCurrency = currency
+				}
 
-				bal, _ := insights.ParseAmountEUR(balance)
+				bal, _ := amountFromAPI(a, "balance", "balance_cents")
 				totalBalance += bal
 
 				accountSummaries = append(accountSummaries, map[string]any{
-					"name":    name,
-					"type":    accType,
-					"balance": balance,
+					"name":         name,
+					"type":         accType,
+					"balance":      balance,
+					"cash_balance": cashBalanceText,
+					"currency":     currency,
 				})
 
 				// Track cash accounts for runway
 				if accType == "depository" || accType == "checking" || accType == "savings" {
-					cashBalance += bal
+					cash, ok := amountFromAPIOK(a, "cash_balance", "cash_balance_cents")
+					if !ok {
+						cash = bal
+					}
+					cashBalance += cash
 				}
 			}
 
@@ -64,7 +75,7 @@ func newStatusCmd() *cobra.Command {
 			var monthlySpend float64
 			var monthlyIncome float64
 			for _, tx := range txs {
-				amt, err := insights.ParseAmountEUR(tx.AmountText)
+				amt, err := insights.ParseAmount(tx.AmountText)
 				if err != nil {
 					continue
 				}
@@ -117,27 +128,27 @@ func newStatusCmd() *cobra.Command {
 				"as_of": time.Now().UTC().Format(time.RFC3339),
 				"accounts": map[string]any{
 					"count":         len(accounts),
-					"total_balance": fmt.Sprintf("€%.2f", totalBalance),
-					"cash_balance":  fmt.Sprintf("€%.2f", cashBalance),
+					"total_balance": formatMoneyValue(totalBalance, primaryCurrency),
+					"cash_balance":  formatMoneyValue(cashBalance, primaryCurrency),
 					"list":          accountSummaries,
 				},
 				"monthly": map[string]any{
-					"income":        fmt.Sprintf("€%.2f", monthlyIncome),
-					"expenses":      fmt.Sprintf("€%.2f", monthlySpend),
-					"net":           fmt.Sprintf("€%.2f", monthlyIncome-monthlySpend),
-					"subscriptions": fmt.Sprintf("€%.2f", monthlySubscriptions),
+					"income":        formatMoneyValue(monthlyIncome, primaryCurrency),
+					"expenses":      formatMoneyValue(monthlySpend, primaryCurrency),
+					"net":           formatMoneyValue(monthlyIncome-monthlySpend, primaryCurrency),
+					"subscriptions": formatMoneyValue(monthlySubscriptions, primaryCurrency),
 				},
 				"runway": map[string]any{
 					"months":       runwayMonths,
-					"cash_balance": fmt.Sprintf("€%.2f", cashBalance),
-					"burn_rate":    fmt.Sprintf("€%.2f/month", monthlySpend),
+					"cash_balance": formatMoneyValue(cashBalance, primaryCurrency),
+					"burn_rate":    fmt.Sprintf("%s/month", formatMoneyValue(monthlySpend, primaryCurrency)),
 				},
 				"budget_pacing": map[string]any{
 					"month":        budgetResult.Month,
 					"days_elapsed": budgetResult.DaysElapsed,
-					"spent":        fmt.Sprintf("€%.2f", budgetResult.Spent),
-					"projected":    fmt.Sprintf("€%.2f", budgetResult.Projected),
-					"avg_per_day":  fmt.Sprintf("€%.2f", budgetResult.AvgPerDay),
+					"spent":        formatMoneyValue(budgetResult.Spent, primaryCurrency),
+					"projected":    formatMoneyValue(budgetResult.Projected, primaryCurrency),
+					"avg_per_day":  formatMoneyValue(budgetResult.AvgPerDay, primaryCurrency),
 				},
 				"alerts":      alerts,
 				"alert_count": len(alerts),
@@ -154,4 +165,41 @@ func absFloat(v float64) float64 {
 		return -v
 	}
 	return v
+}
+
+func amountFromAPI(m map[string]any, formattedKey, centsKey string) (float64, error) {
+	amount, ok := amountFromAPIOK(m, formattedKey, centsKey)
+	if ok {
+		return amount, nil
+	}
+	return 0, fmt.Errorf("missing amount")
+}
+
+func amountFromAPIOK(m map[string]any, formattedKey, centsKey string) (float64, bool) {
+	switch v := m[centsKey].(type) {
+	case float64:
+		return v / 100.0, true
+	case int:
+		return float64(v) / 100.0, true
+	case int64:
+		return float64(v) / 100.0, true
+	case string:
+		var n float64
+		if _, err := fmt.Sscanf(v, "%f", &n); err == nil {
+			return n / 100.0, true
+		}
+	}
+	text := fmt.Sprint(m[formattedKey])
+	if text == "" || text == "<nil>" {
+		return 0, false
+	}
+	amount, err := insights.ParseAmount(text)
+	return amount, err == nil
+}
+
+func formatMoneyValue(value float64, currency string) string {
+	if currency == "" || currency == "<nil>" {
+		return fmt.Sprintf("%.2f", value)
+	}
+	return fmt.Sprintf("%.2f %s", value, currency)
 }

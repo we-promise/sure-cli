@@ -13,6 +13,7 @@ func TestTradesList_Flags(t *testing.T) {
 		t.Fatalf("find list subcommand: %v", err)
 	}
 
+	// Verify expected flags exist
 	expectedFlags := []string{"from", "to", "start-date", "end-date", "account", "account-id", "account-ids", "page", "per-page"}
 	for _, name := range expectedFlags {
 		if list.Flags().Lookup(name) == nil {

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/output"
-	"github.com/spf13/cobra"
 )
 
 type txUpdateOpts struct {
@@ -41,7 +41,7 @@ func newTransactionsUpdateCmd() *cobra.Command {
 				_ = output.Print(format, output.Envelope{Data: map[string]any{
 					"dry_run": true,
 					"request": map[string]any{
-						"method": "PUT",
+						"method": "PATCH",
 						"path":   path,
 						"body":   payload,
 					},
@@ -51,8 +51,7 @@ func newTransactionsUpdateCmd() *cobra.Command {
 
 			client := api.New()
 			var res any
-			// resty supports Put via R().Put
-			r, err := client.Put(path, payload, &res)
+			r, err := client.Patch(path, payload, &res)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
 			}
