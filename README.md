@@ -103,6 +103,14 @@ sure-cli family-exports create
 sure-cli family-exports create --apply
 sure-cli family-exports download <export_id> --out sure-export.zip
 
+# Reference data and rules
+sure-cli categories list --roots-only
+sure-cli merchants list
+sure-cli tags create --name Travel --color '#3b82f6'
+sure-cli tags create --name Travel --color '#3b82f6' --apply
+sure-cli rules list --active true
+sure-cli rule-runs list --status success
+
 # Phase 4 (read-only heuristics)
 sure-cli insights subscriptions --days 120
 sure-cli insights fees --days 120
