@@ -56,6 +56,8 @@ func New() *cobra.Command {
 	cmd.AddCommand(newRuleRunsCmd())
 	cmd.AddCommand(newBalanceSheetCmd())
 	cmd.AddCommand(newBalancesCmd())
+	cmd.AddCommand(newBudgetsCmd())
+	cmd.AddCommand(newBudgetCategoriesCmd())
 	cmd.AddCommand(newFamilySettingsCmd())
 	cmd.AddCommand(newValuationsCmd())
 	cmd.AddCommand(newSyncCmd())

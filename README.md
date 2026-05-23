@@ -111,6 +111,12 @@ sure-cli tags create --name Travel --color '#3b82f6' --apply
 sure-cli rules list --active true
 sure-cli rule-runs list --status success
 
+# Budgets
+sure-cli budgets list --start-date 2026-01-01
+sure-cli budgets show <budget_id>
+sure-cli budget-categories list --budget-id <budget_id>
+sure-cli budget-categories show <budget_category_id>
+
 # Phase 4 (read-only heuristics)
 sure-cli insights subscriptions --days 120
 sure-cli insights fees --days 120
