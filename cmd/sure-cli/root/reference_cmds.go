@@ -3,6 +3,8 @@ package root
 import (
 	"fmt"
 	"net/url"
+	"regexp"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
@@ -44,6 +46,73 @@ func newCategoriesCmd() *cobra.Command {
 		},
 	})
 
+	cmd.AddCommand(newCategoriesCreateCmd())
+
+	return cmd
+}
+
+type categoryCreateOpts struct {
+	Name     string
+	Color    string
+	Icon     string
+	ParentID string
+	Apply    bool
+}
+
+// categoryHexColorRE matches the same format the Category model enforces:
+// `/\A#[0-9A-Fa-f]{6}\z/`. Validating client-side gives fast feedback before
+// the upstream 422.
+var categoryHexColorRE = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+func buildCategoryCreatePayload(o categoryCreateOpts) (map[string]any, error) {
+	name := strings.TrimSpace(o.Name)
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+	if o.Color == "" {
+		return nil, fmt.Errorf("color is required (upstream Category model validates presence)")
+	}
+	if !categoryHexColorRE.MatchString(o.Color) {
+		return nil, fmt.Errorf("color must match #RRGGBB hex format, got %q", o.Color)
+	}
+	cat := map[string]any{
+		"name":  o.Name,
+		"color": o.Color,
+	}
+	if o.Icon != "" {
+		// Upstream maps :icon -> :lucide_icon in category_params; send the
+		// original key so server-side handling remains the single source of truth.
+		cat["icon"] = o.Icon
+	}
+	if o.ParentID != "" {
+		cat["parent_id"] = o.ParentID
+	}
+	return map[string]any{"category": cat}, nil
+}
+
+func newCategoriesCreateCmd() *cobra.Command {
+	var o categoryCreateOpts
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a category (default dry-run; use --apply to execute)",
+		Run: func(cmd *cobra.Command, args []string) {
+			payload, err := buildCategoryCreatePayload(o)
+			if err != nil {
+				failValidation(err)
+			}
+			path := "/api/v1/categories"
+			if !o.Apply {
+				printDryRun("POST", path, payload)
+				return
+			}
+			printPost(path, payload)
+		},
+	}
+	cmd.Flags().StringVar(&o.Name, "name", "", "category name (required, unique within family)")
+	cmd.Flags().StringVar(&o.Color, "color", "", "hex color (#RRGGBB, required)")
+	cmd.Flags().StringVar(&o.Icon, "icon", "", "lucide icon name (optional; upstream auto-suggests one if omitted)")
+	cmd.Flags().StringVar(&o.ParentID, "parent-id", "", "parent category id (must belong to your family)")
+	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the create (otherwise dry-run)")
 	return cmd
 }
 

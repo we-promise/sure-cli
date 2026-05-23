@@ -40,6 +40,7 @@ Future features and ideas for `sure-cli`.
 - Import dry-run validation via `imports preflight`.
 - CSV and Sure NDJSON import creation via `imports create`.
 - Family export list/show/create/download commands.
+- Category creation via `categories create --name --color [--icon --parent-id]`.
 - Transfer review surface via `transfers list/show` and `rejected-transfers list/show`.
 - Sync history surface via `syncs list/latest/show`.
 - API usage / rate-limit visibility via `usage show`.

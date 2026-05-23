@@ -105,6 +105,9 @@ sure-cli family-exports download <export_id> --out sure-export.zip
 
 # Reference data and rules
 sure-cli categories list --roots-only
+sure-cli categories show <category_id>
+sure-cli categories create --name Food --color '#3b82f6'
+sure-cli categories create --name Food --color '#3b82f6' --icon utensils --parent-id <parent_id> --apply
 sure-cli merchants list
 sure-cli tags create --name Travel --color '#3b82f6'
 sure-cli tags create --name Travel --color '#3b82f6' --apply
