@@ -79,6 +79,20 @@ func TestBuildCategoryCreatePayload_WhitespaceOnlyNameRejected(t *testing.T) {
 	}
 }
 
+func TestBuildCategoryCreatePayload_TrimsNameInPayload(t *testing.T) {
+	// Regression: trimming was applied for validation but the original value
+	// was sent in the payload, leaking whitespace into the upstream uniqueness
+	// check.
+	payload, err := buildCategoryCreatePayload(categoryCreateOpts{Name: "  Food  ", Color: "#3b82f6"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cat := payload["category"].(map[string]any)
+	if cat["name"] != "Food" {
+		t.Fatalf("name in payload not trimmed: %q", cat["name"])
+	}
+}
+
 func TestCategoriesCreateRegistered(t *testing.T) {
 	root := New()
 	got, _, err := root.Find([]string{"categories", "create"})

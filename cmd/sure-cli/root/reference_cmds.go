@@ -75,8 +75,11 @@ func buildCategoryCreatePayload(o categoryCreateOpts) (map[string]any, error) {
 	if !categoryHexColorRE.MatchString(o.Color) {
 		return nil, fmt.Errorf("color must match #RRGGBB hex format, got %q", o.Color)
 	}
+	// Send the trimmed value — otherwise `--name "  Food  "` passes presence
+	// validation here but the surrounding whitespace leaks into the payload
+	// and would clash with the upstream uniqueness check against "Food".
 	cat := map[string]any{
-		"name":  o.Name,
+		"name":  name,
 		"color": o.Color,
 	}
 	if o.Icon != "" {
