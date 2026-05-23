@@ -76,6 +76,9 @@ func New() *cobra.Command {
 	cmd.AddCommand(newUsersCmd())
 	cmd.AddCommand(newTransfersCmd())
 	cmd.AddCommand(newRejectedTransfersCmd())
+	cmd.AddCommand(newProviderConnectionsCmd())
+	cmd.AddCommand(newChatsCmd())
+	cmd.AddCommand(newAuthCmd())
 	cmd.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print version information",

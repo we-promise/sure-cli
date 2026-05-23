@@ -103,12 +103,7 @@ func newCategoriesCreateCmd() *cobra.Command {
 			if err != nil {
 				failValidation(err)
 			}
-			path := "/api/v1/categories"
-			if !o.Apply {
-				printDryRun("POST", path, payload)
-				return
-			}
-			printPost(path, payload)
+			dispatchWrite(o.Apply, "POST", "/api/v1/categories", payload)
 		},
 	}
 	cmd.Flags().StringVar(&o.Name, "name", "", "category name (required, unique within family)")
@@ -192,12 +187,7 @@ func newTagsCreateCmd() *cobra.Command {
 			if err != nil {
 				failValidation(err)
 			}
-			path := "/api/v1/tags"
-			if !o.Apply {
-				printDryRun("POST", path, payload)
-				return
-			}
-			printPost(path, payload)
+			dispatchWrite(o.Apply, "POST", "/api/v1/tags", payload)
 		},
 	}
 	cmd.Flags().StringVar(&o.Name, "name", "", "tag name (required)")
@@ -217,12 +207,7 @@ func newTagsUpdateCmd() *cobra.Command {
 			if err != nil {
 				failValidation(err)
 			}
-			path := fmt.Sprintf("/api/v1/tags/%s", url.PathEscape(args[0]))
-			if !o.Apply {
-				printDryRun("PATCH", path, payload)
-				return
-			}
-			printPatch(path, payload)
+			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/tags/%s", url.PathEscape(args[0])), payload)
 		},
 	}
 	cmd.Flags().StringVar(&o.Name, "name", "", "tag name")
@@ -238,12 +223,7 @@ func newTagsDeleteCmd() *cobra.Command {
 		Short: "Delete tag (default dry-run; use --apply to execute)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			path := fmt.Sprintf("/api/v1/tags/%s", url.PathEscape(args[0]))
-			if !apply {
-				printDryRun("DELETE", path, nil)
-				return
-			}
-			printDelete(path)
+			dispatchWrite(apply, "DELETE", fmt.Sprintf("/api/v1/tags/%s", url.PathEscape(args[0])), nil)
 		},
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "execute the delete (otherwise dry-run)")
@@ -425,6 +405,28 @@ func printDelete(path string) {
 	}
 	if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{Status: r.StatusCode()}}); err != nil {
 		output.Fail("output_failed", err.Error(), nil)
+	}
+}
+
+// dispatchWrite is the canonical entry point for write commands that share the
+// dry-run-by-default pattern. When apply is false it prints the dry-run
+// envelope; otherwise it dispatches to the matching print* helper. Only POST,
+// PATCH, and DELETE are supported — adding a new method requires extending the
+// switch deliberately rather than silently no-oping.
+func dispatchWrite(apply bool, method, path string, body any) {
+	if !apply {
+		printDryRun(method, path, body)
+		return
+	}
+	switch method {
+	case "POST":
+		printPost(path, body)
+	case "PATCH":
+		printPatch(path, body)
+	case "DELETE":
+		printDelete(path)
+	default:
+		output.Fail("internal_error", "dispatchWrite: unsupported HTTP method "+method, nil)
 	}
 }
 
