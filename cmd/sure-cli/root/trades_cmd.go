@@ -3,6 +3,7 @@ package root
 import (
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
@@ -13,9 +14,10 @@ func newTradesCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "trades", Short: "Trades"}
 
 	var from, to string
-	var account, symbol string
+	var startDate, endDate string
+	var account, accountID string
+	var accountIDs []string
 	var page, perPage int
-	var limit int
 
 	list := &cobra.Command{
 		Use:   "list",
@@ -24,26 +26,32 @@ func newTradesCmd() *cobra.Command {
 			client := api.New()
 
 			q := url.Values{}
-			if from != "" {
-				q.Set("from", from)
+			if startDate == "" {
+				startDate = from
 			}
-			if to != "" {
-				q.Set("to", to)
+			if endDate == "" {
+				endDate = to
 			}
-			if account != "" {
-				q.Set("account", account)
+			if accountID == "" {
+				accountID = account
 			}
-			if symbol != "" {
-				q.Set("symbol", symbol)
+			if startDate != "" {
+				q.Set("start_date", startDate)
+			}
+			if endDate != "" {
+				q.Set("end_date", endDate)
+			}
+			if accountID != "" {
+				q.Set("account_id", accountID)
+			}
+			for _, id := range splitTradeFlagValues(accountIDs) {
+				q.Add("account_ids[]", id)
 			}
 			if page > 0 {
 				q.Set("page", fmt.Sprintf("%d", page))
 			}
 			if perPage > 0 {
 				q.Set("per_page", fmt.Sprintf("%d", perPage))
-			}
-			if limit > 0 {
-				q.Set("limit", fmt.Sprintf("%d", limit))
 			}
 
 			u := url.URL{Path: "/api/v1/trades", RawQuery: q.Encode()}
@@ -62,11 +70,13 @@ func newTradesCmd() *cobra.Command {
 
 	list.Flags().StringVar(&from, "from", "", "start date (YYYY-MM-DD)")
 	list.Flags().StringVar(&to, "to", "", "end date (YYYY-MM-DD)")
-	list.Flags().StringVar(&account, "account", "", "account id")
-	list.Flags().StringVar(&symbol, "symbol", "", "symbol/ticker")
+	list.Flags().StringVar(&startDate, "start-date", "", "start date (YYYY-MM-DD, maps to start_date)")
+	list.Flags().StringVar(&endDate, "end-date", "", "end date (YYYY-MM-DD, maps to end_date)")
+	list.Flags().StringVar(&account, "account", "", "account id (alias for --account-id)")
+	list.Flags().StringVar(&accountID, "account-id", "", "account id")
+	list.Flags().StringSliceVar(&accountIDs, "account-ids", nil, "account ids (repeat or comma-separated)")
 	list.Flags().IntVar(&page, "page", 1, "page number")
 	list.Flags().IntVar(&perPage, "per-page", 25, "items per page (maps to per_page)")
-	list.Flags().IntVar(&limit, "limit", 50, "max results")
 	cmd.AddCommand(list)
 
 	cmd.AddCommand(&cobra.Command{
@@ -76,7 +86,7 @@ func newTradesCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			client := api.New()
 			var res any
-			path := fmt.Sprintf("/api/v1/trades/%s", args[0])
+			path := fmt.Sprintf("/api/v1/trades/%s", url.PathEscape(args[0]))
 			r, err := client.Get(path, &res)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
@@ -88,4 +98,17 @@ func newTradesCmd() *cobra.Command {
 	})
 
 	return cmd
+}
+
+func splitTradeFlagValues(values []string) []string {
+	var out []string
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				out = append(out, part)
+			}
+		}
+	}
+	return out
 }

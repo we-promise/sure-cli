@@ -14,7 +14,7 @@ func TestTradesList_Flags(t *testing.T) {
 	}
 
 	// Verify expected flags exist
-	expectedFlags := []string{"from", "to", "account", "symbol", "page", "per-page", "limit"}
+	expectedFlags := []string{"from", "to", "start-date", "end-date", "account", "account-id", "account-ids", "page", "per-page"}
 	for _, name := range expectedFlags {
 		if list.Flags().Lookup(name) == nil {
 			t.Fatalf("expected flag %q to exist", name)
@@ -26,8 +26,8 @@ func TestTradesList_Flags(t *testing.T) {
 	if !strings.Contains(s, "from") {
 		t.Fatalf("expected from in usage")
 	}
-	if !strings.Contains(s, "symbol") {
-		t.Fatalf("expected symbol in usage")
+	if !strings.Contains(s, "account-id") {
+		t.Fatalf("expected account-id in usage")
 	}
 }
 
