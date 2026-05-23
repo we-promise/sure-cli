@@ -58,10 +58,26 @@ func TestRejectedTransfersCommandShape(t *testing.T) {
 
 func TestTransfersCommandsRegistered(t *testing.T) {
 	root := New()
-	if _, _, err := root.Find([]string{"transfers"}); err != nil {
-		t.Fatalf("transfers not registered on root: %v", err)
+	// cobra's Find silently returns the nearest matching ancestor when a leaf
+	// is missing, so compare the resolved cmd's Name to the expected leaf.
+	cases := []struct {
+		path []string
+		want string
+	}{
+		{[]string{"transfers"}, "transfers"},
+		{[]string{"transfers", "list"}, "list"},
+		{[]string{"transfers", "show"}, "show"},
+		{[]string{"rejected-transfers"}, "rejected-transfers"},
+		{[]string{"rejected-transfers", "list"}, "list"},
+		{[]string{"rejected-transfers", "show"}, "show"},
 	}
-	if _, _, err := root.Find([]string{"rejected-transfers"}); err != nil {
-		t.Fatalf("rejected-transfers not registered on root: %v", err)
+	for _, c := range cases {
+		got, _, err := root.Find(c.path)
+		if err != nil {
+			t.Fatalf("path %v not registered: %v", c.path, err)
+		}
+		if got.Name() != c.want {
+			t.Fatalf("path %v resolved to %q, want %q", c.path, got.Name(), c.want)
+		}
 	}
 }
