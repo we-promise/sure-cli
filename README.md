@@ -99,6 +99,13 @@ sure-cli imports list --type TransactionImport
 sure-cli imports rows <import_id>
 sure-cli imports create --file data.csv --date-col-label Date --amount-col-label Amount --name-col-label Name
 sure-cli imports create --file backup.ndjson --type SureImport --publish --apply
+
+# Chunked Sure NDJSON import (create -> add-chunk... -> publish)
+sure-cli import-sessions create --expected-chunks 2 --apply
+sure-cli import-sessions add-chunk <session_id> --sequence 1 --file part-1.ndjson --apply
+sure-cli import-sessions add-chunk <session_id> --sequence 2 --raw-content "$(cat part-2.ndjson)" --apply
+sure-cli import-sessions show <session_id>
+sure-cli import-sessions publish <session_id> --apply
 sure-cli family-exports create
 sure-cli family-exports create --apply
 sure-cli family-exports download <export_id> --out sure-export.zip
