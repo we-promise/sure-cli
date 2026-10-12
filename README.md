@@ -94,6 +94,14 @@ sure-cli transactions create --amount "-12.34" --date 2026-02-04 --name "Coffee"
 sure-cli transactions update <tx_id> --name "Coffee (fixed)"
 sure-cli transactions delete <tx_id> --apply
 
+# Transaction splits (children must sum exactly to the parent; requires a Sure server with the split API)
+sure-cli transactions split show <tx_id>
+sure-cli transactions split create <tx_id> --splits '[{"amount":"60.00","name":"Groceries","category_id":"<id>"},{"amount":"40.00"}]' --apply
+# Edit a split: save it, change the children, send it back (update replaces every child)
+sure-cli transactions split show <tx_id> > split.json
+sure-cli transactions split update <tx_id> --splits-file split.json --apply
+sure-cli transactions split delete <tx_id> --apply
+
 # Imports and family exports
 sure-cli imports list --type TransactionImport
 sure-cli imports rows <import_id>
