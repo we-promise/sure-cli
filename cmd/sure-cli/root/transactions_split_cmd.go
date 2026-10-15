@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -68,14 +70,20 @@ func newTxSplitWriteCmd(use, short, method string) *cobra.Command {
 		Short: short,
 		Long: short + `
 
-Children are a JSON array. Each needs an amount with the same sign as the
-transaction's own amount, and together they must sum to it exactly:
+Children are a JSON array and must sum exactly to the transaction:
 
   [{"amount": "60.00", "name": "Groceries", "category_id": "<uuid>"},
    {"amount": "40.00", "excluded": true}]
 
-The output of "split show" is accepted as-is, so a split can be saved, edited
-and passed back with --splits-file.`,
+Amounts take the sign of amount_decimal in "split show", or of amount in
+"transactions show": expenses are positive. Not signed_amount_cents, which is
+negative for expenses.
+
+Every child is recreated, keeping only amount, name, category and excluded.
+The output of "split show" can be saved, edited and passed back with
+--splits-file. Edit amount_decimal there: amount is display-formatted, and a
+plain amount that disagrees with amount_decimal is rejected. A child carrying
+tags or notes is rejected too, since they would be lost; remove them first.`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			raw, err := readTxSplitInput(o, os.Stdin)
@@ -174,21 +182,27 @@ func buildTxSplitChild(child map[string]any) (map[string]any, error) {
 		}
 	}
 
-	// show's "amount" is display-formatted ("$60.00"); amount_decimal is exact.
-	amountValue, ok := child["amount_decimal"]
-	if !ok {
-		amountValue, ok = child["amount"]
+	if lost := txSplitLostFields(child); len(lost) > 0 {
+		return nil, fmt.Errorf("has %s, which the split API does not keep on a child and would be lost; remove them from the input to proceed", strings.Join(lost, " and "))
 	}
-	if !ok {
+
+	// show's "amount" is display-formatted ("$60.00"); amount_decimal is exact.
+	// When both are plain numbers and differ, either could be the edit, so
+	// refuse rather than guess.
+	amountValue, hasDecimal := child["amount_decimal"]
+	display, hasAmount := child["amount"]
+	if hasDecimal && hasAmount {
+		shown, exact := txSplitAmountText(display), txSplitAmountText(amountValue)
+		if txSplitAmountRe.MatchString(shown) && txSplitAmountRe.MatchString(exact) && !txSplitSameDecimal(shown, exact) {
+			return nil, fmt.Errorf("amount (%s) and amount_decimal (%s) disagree; edit amount_decimal, or remove it to use amount", shown, exact)
+		}
+	} else if !hasDecimal {
+		amountValue = display
+	}
+	if !hasDecimal && !hasAmount {
 		return nil, errors.New("amount is required")
 	}
-	var amount string
-	switch v := amountValue.(type) {
-	case string:
-		amount = v
-	case json.Number:
-		amount = v.String()
-	}
+	amount := txSplitAmountText(amountValue)
 	if !txSplitAmountRe.MatchString(amount) {
 		return nil, fmt.Errorf("amount must be a plain decimal such as \"12.50\", got %v", amountValue)
 	}
@@ -205,8 +219,9 @@ func buildTxSplitChild(child map[string]any) (map[string]any, error) {
 		}
 	}
 
-	categoryID := child["category_id"]
-	if category, ok := child["category"].(map[string]any); ok && categoryID == nil {
+	// An explicit category_id wins, null included: that clears the category.
+	categoryID, hasCategoryID := child["category_id"]
+	if category, ok := child["category"].(map[string]any); ok && !hasCategoryID {
 		categoryID = category["id"]
 	}
 	if categoryID != nil {
@@ -228,4 +243,31 @@ func buildTxSplitChild(child map[string]any) (map[string]any, error) {
 	}
 
 	return split, nil
+}
+
+func txSplitAmountText(v any) string {
+	switch v := v.(type) {
+	case string:
+		return v
+	case json.Number:
+		return v.String()
+	}
+	return ""
+}
+
+func txSplitSameDecimal(a, b string) bool {
+	x, okX := new(big.Rat).SetString(a)
+	y, okY := new(big.Rat).SetString(b)
+	return okX && okY && x.Cmp(y) == 0
+}
+
+func txSplitLostFields(child map[string]any) []string {
+	var lost []string
+	if tags, ok := child["tags"].([]any); ok && len(tags) > 0 {
+		lost = append(lost, "tags")
+	}
+	if notes, ok := child["notes"].(string); ok && notes != "" {
+		lost = append(lost, "notes")
+	}
+	return lost
 }

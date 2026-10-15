@@ -147,6 +147,7 @@ func TestBuildTxSplitPayload_Rejects(t *testing.T) {
 		{"name not a string", `[{"amount": "1", "name": 5}]`, "name must be a string"},
 		{"category not a string", `[{"amount": "1", "category_id": 5}]`, "category_id must be a string"},
 		{"excluded not a bool", `[{"amount": "1", "excluded": "yes"}]`, "excluded must be true or false"},
+		{"hand-written notes", `[{"amount": "1", "notes": "x"}]`, `unknown field "notes"`},
 	}
 	for _, c := range cases {
 		_, err := buildTxSplitPayload([]byte(c.in))
@@ -187,5 +188,118 @@ func TestReadTxSplitInput(t *testing.T) {
 	}
 	if _, err := readTxSplitInput(txSplitOpts{SplitsFile: filepath.Join(t.TempDir(), "missing.json")}, stdin); err == nil {
 		t.Error("expected an error for a missing file")
+	}
+}
+
+// An edited "amount" next to an untouched amount_decimal must not be dropped
+// in favour of the stale exact value.
+func TestBuildTxSplitPayload_AmountAndDecimal(t *testing.T) {
+	cases := []struct {
+		name, child, want, wantErr string
+	}{
+		{"display amount uses decimal", `{"id": "c1", "amount": "$60.00", "amount_decimal": "60.0049"}`, "60.0049", ""},
+		{"plain amount agreeing", `{"id": "c1", "amount": "60.00", "amount_decimal": "60.0"}`, "60.0", ""},
+		{"edited amount", `{"id": "c1", "amount": "50.00", "amount_decimal": "60.0"}`, "", "split 1: amount (50.00) and amount_decimal (60.0) disagree"},
+		{"decimal removed", `{"id": "c1", "amount": "50.00"}`, "50.00", ""},
+		{"edited decimal", `{"id": "c1", "amount": "$60.00", "amount_decimal": "50.0"}`, "50.0", ""},
+	}
+	for _, c := range cases {
+		body, err := buildTxSplitPayload([]byte("[" + c.child + "]"))
+		if c.wantErr != "" {
+			if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+				t.Errorf("%s: err = %v, want %q", c.name, err, c.wantErr)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: unexpected error: %v", c.name, err)
+			continue
+		}
+		if got := splitsOf(t, body)[0]["amount"]; got != c.want {
+			t.Errorf("%s: amount = %v, want %s", c.name, got, c.want)
+		}
+	}
+}
+
+func TestBuildTxSplitPayload_RejectsChildrenThatWouldLoseData(t *testing.T) {
+	cases := map[string]string{
+		`{"id": "c1", "amount_decimal": "1", "tags": [{"id": "t1"}]}`:                  "has tags, which",
+		`{"id": "c1", "amount_decimal": "1", "notes": "receipt"}`:                      "has notes, which",
+		`{"id": "c1", "amount_decimal": "1", "notes": "receipt", "tags": [{"id": 1}]}`: "has tags and notes",
+	}
+	for child, want := range cases {
+		_, err := buildTxSplitPayload([]byte("[" + child + "]"))
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v, want %q", child, err, want)
+		}
+	}
+
+	// Empty tags and notes, as show prints them for most children, are fine.
+	if _, err := buildTxSplitPayload([]byte(`[{"id": "c1", "amount_decimal": "1", "tags": [], "notes": null}]`)); err != nil {
+		t.Errorf("empty tags/notes: unexpected error: %v", err)
+	}
+}
+
+func TestBuildTxSplitPayload_NullCategoryClears(t *testing.T) {
+	body, err := buildTxSplitPayload([]byte(`[{"id": "c1", "amount_decimal": "1", "category": {"id": "cat-1"}, "category_id": null}]`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, has := splitsOf(t, body)[0]["category_id"]; has {
+		t.Fatalf("category_id = %v, want it cleared", got)
+	}
+}
+
+// Runs the real commands in dry-run, so a swapped method, path or body fails.
+func TestTransactionsSplitCommands_DryRunRequests(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	format = "json"
+	children := `[{"amount": "60.00", "name": "A"}, {"amount": "40.00"}]`
+	wantBody := map[string]any{"split": map[string]any{"splits": []any{
+		map[string]any{"amount": "60.00", "name": "A"},
+		map[string]any{"amount": "40.00"},
+	}}}
+
+	cases := []struct {
+		args       []string
+		method     string
+		expectBody bool
+	}{
+		{[]string{"create", "tx-1", "--splits", children}, "POST", true},
+		{[]string{"update", "tx-1", "--splits", children}, "PATCH", true},
+		{[]string{"delete", "tx-1"}, "DELETE", false},
+	}
+	for _, c := range cases {
+		root := New()
+		root.SetArgs(append([]string{"transactions", "split"}, c.args...))
+		out := captureStdout(t, func() {
+			if err := root.Execute(); err != nil {
+				t.Fatalf("%v: %v", c.args, err)
+			}
+		})
+
+		var env struct {
+			Data struct {
+				DryRun  bool `json:"dry_run"`
+				Request struct {
+					Method string         `json:"method"`
+					Path   string         `json:"path"`
+					Body   map[string]any `json:"body"`
+				} `json:"request"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(out), &env); err != nil {
+			t.Fatalf("%v: unmarshal: %v\nout=%q", c.args, err, out)
+		}
+		req := env.Data.Request
+		if !env.Data.DryRun || req.Method != c.method || req.Path != "/api/v1/transactions/tx-1/split" {
+			t.Errorf("%v: dry_run=%v method=%s path=%s", c.args, env.Data.DryRun, req.Method, req.Path)
+		}
+		if c.expectBody && !reflect.DeepEqual(req.Body, wantBody) {
+			t.Errorf("%v: body = %#v", c.args, req.Body)
+		}
+		if !c.expectBody && req.Body != nil {
+			t.Errorf("%v: unexpected body %#v", c.args, req.Body)
+		}
 	}
 }
