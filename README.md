@@ -249,6 +249,12 @@ sure-cli syncs show <sync_id>
 # API usage + rate-limit info (singleton)
 sure-cli usage show
 
+# Version: local build info (plain text, offline); --server adds the Sure
+# server's {version, commit_sha} as a JSON envelope. An unreachable server is
+# reported under data.server_error and does not fail the command.
+sure-cli version
+sure-cli version --server
+
 # Import preflight (validate config + content before creating)
 sure-cli imports preflight --type TransactionImport --file data.csv \
   --date-col-label Date --amount-col-label Amount --name-col-label Name
