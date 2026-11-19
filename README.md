@@ -184,6 +184,11 @@ sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026
 # excludes exclude_from_reports accounts). accounts.by_currency totals assets,
 # liabilities, net worth and cash per native currency with the same exclusions.
 # Runway uses depository cash in the family currency only.
+# monthly.subscriptions is Sure's active recurring outflows (no income, no
+# transfers, no one-offs) priced per month from each series' cadence, in the
+# family currency; subscriptions_by_currency lists every currency apart.
+# budget_pacing lists each current budget in its own currency (budgeted,
+# actual and available spending, percent spent vs percent of period elapsed).
 sure-cli status
 
 # Holdings (requires Sure investment API)

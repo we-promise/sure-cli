@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -87,4 +88,42 @@ func AccountsQuery(includeDisabled bool) url.Values {
 // FetchAllAccounts returns every account visible to the caller, across pages.
 func FetchAllAccounts(c *Client, includeDisabled bool) ([]map[string]any, *resty.Response, error) {
 	return FetchAllPages(c, "/api/v1/accounts", AccountsQuery(includeDisabled), "accounts")
+}
+
+// FetchActiveRecurringTransactions returns every active recurring series
+// (GET /api/v1/recurring_transactions?status=active), across pages.
+func FetchActiveRecurringTransactions(c *Client) ([]map[string]any, *resty.Response, error) {
+	q := url.Values{}
+	q.Set("status", "active")
+	return FetchAllPages(c, "/api/v1/recurring_transactions", q, "recurring_transactions")
+}
+
+// FetchCurrentBudgets returns every visible budget Sure flags `current` (the
+// household one and any personal or shared ones), each read through
+// GET /api/v1/budgets/{id}: the index leaves out the derived amounts
+// (actual_spending, available_to_spend). The index is bounded from the first
+// day of the previous month, as a custom month start can open the current
+// period there. Responses are handed back as FetchAllPages does.
+func FetchCurrentBudgets(c *Client, today time.Time) ([]map[string]any, *resty.Response, error) {
+	since := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -1, 0)
+	q := url.Values{}
+	q.Set("start_date", since.Format("2006-01-02"))
+	index, r, err := FetchAllPages(c, "/api/v1/budgets", q, "budgets")
+	if err != nil || r == nil || r.StatusCode() >= 400 {
+		return nil, r, err
+	}
+
+	var budgets []map[string]any
+	for _, b := range index {
+		if current, _ := b["current"].(bool); !current {
+			continue
+		}
+		var budget map[string]any
+		r, err = c.Get("/api/v1/budgets/"+url.PathEscape(fmt.Sprint(b["id"])), &budget)
+		if err != nil || r.StatusCode() >= 400 {
+			return nil, r, err
+		}
+		budgets = append(budgets, budget)
+	}
+	return budgets, r, nil
 }

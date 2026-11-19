@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
-
+	"time"
 )
 
 // pagesClient serves h and returns a client pointed at it.
@@ -131,5 +131,88 @@ func TestFetchAllPages_NoPaginationBlockIsSinglePage(t *testing.T) {
 	items, _, err := FetchAllPages(c, "/api/v1/accounts", url.Values{}, "accounts")
 	if err != nil || len(items) != 2 || calls != 1 {
 		t.Fatalf("items=%v calls=%d err=%v", items, calls, err)
+	}
+}
+
+func TestFetchActiveRecurringTransactions_FiltersActiveAcrossPages(t *testing.T) {
+	var seen []url.Values
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/recurring_transactions" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		q := r.URL.Query()
+		seen = append(seen, q)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"recurring_transactions":[{"id":"rt-%s"}],"pagination":{"page":%s,"total_pages":2}}`,
+			q.Get("page"), q.Get("page"))
+	})
+
+	items, r, err := FetchActiveRecurringTransactions(c)
+	if err != nil || r == nil || r.StatusCode() != http.StatusOK {
+		t.Fatalf("r=%v err=%v", r, err)
+	}
+	if len(items) != 2 || items[1]["id"] != "rt-2" {
+		t.Fatalf("items = %v", items)
+	}
+	for i, q := range seen {
+		if q.Get("status") != "active" {
+			t.Fatalf("request %d status = %q, want active", i, q.Get("status"))
+		}
+	}
+}
+
+func TestFetchCurrentBudgets_ShowsEachCurrentBudget(t *testing.T) {
+	var indexQuery url.Values
+	var shown []string
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/budgets":
+			indexQuery = r.URL.Query()
+			// The index omits derived amounts (include_derived_amounts: false).
+			_, _ = w.Write([]byte(`{"budgets":[
+				{"id":"b-next","current":false},
+				{"id":"b-household","current":true},
+				{"id":"b-personal","current":true},
+				{"id":"b-prev","current":false}
+			],"pagination":{"page":1,"total_pages":1}}`))
+		default:
+			id := r.URL.Path[len("/api/v1/budgets/"):]
+			shown = append(shown, id)
+			_, _ = fmt.Fprintf(w, `{"id":%q,"current":true,"actual_spending_cents":1000}`, id)
+		}
+	})
+
+	today := time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC)
+	budgets, r, err := FetchCurrentBudgets(c, today)
+	if err != nil || r == nil || r.StatusCode() != http.StatusOK {
+		t.Fatalf("r=%v err=%v", r, err)
+	}
+	// A custom month start can open the current period in the previous
+	// calendar month, so the index is bounded from its first day.
+	if got := indexQuery.Get("start_date"); got != "2026-02-01" {
+		t.Fatalf("start_date = %q, want 2026-02-01", got)
+	}
+	if len(shown) != 2 || shown[0] != "b-household" || shown[1] != "b-personal" {
+		t.Fatalf("shown = %v, want the two current budgets", shown)
+	}
+	if len(budgets) != 2 || budgets[0]["actual_spending_cents"] != float64(1000) {
+		t.Fatalf("budgets = %v, want the show payloads", budgets)
+	}
+}
+
+func TestFetchCurrentBudgets_ReturnsFailingShowResponse(t *testing.T) {
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/budgets" {
+			_, _ = w.Write([]byte(`{"budgets":[{"id":"b1","current":true}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not_found"}`))
+	})
+	budgets, r, err := FetchCurrentBudgets(c, time.Now())
+	if err != nil || r == nil || r.StatusCode() != http.StatusNotFound || budgets != nil {
+		t.Fatalf("budgets=%v r=%v err=%v", budgets, r, err)
 	}
 }

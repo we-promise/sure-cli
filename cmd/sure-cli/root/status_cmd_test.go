@@ -1,7 +1,9 @@
 package root
 
 import (
+	"math"
 	"testing"
+	"time"
 
 	"github.com/we-promise/sure-cli/internal/models"
 )
@@ -196,5 +198,113 @@ func TestFormatMoneyValue(t *testing.T) {
 		if got != c.want {
 			t.Fatalf("formatMoneyValue(%v, %q): got %q want %q", c.value, c.currency, got, c.want)
 		}
+	}
+}
+
+func monthlyRule(interval int) map[string]any {
+	return map[string]any{"frequency": "monthly", "interval": float64(interval), "day_of_month": float64(1)}
+}
+
+func TestRecurringMonthlyOutflows_NormalisesCadencePerCurrency(t *testing.T) {
+	series := []map[string]any{
+		// Monthly subscription: counts as is.
+		{"name": "Streaming", "amount_cents": float64(1299), "currency": "EUR", "bill_type": "subscription",
+			"recurrence_rules": []any{monthlyRule(1)}},
+		// Annual bill: 120 / 12.
+		{"name": "Domain", "amount_cents": float64(12000), "currency": "EUR", "bill_type": "bill",
+			"recurrence_rules": []any{map[string]any{"frequency": "yearly", "interval": float64(1), "day_of_month": float64(5), "month_of_year": float64(3)}}},
+		// Semimonthly is two monthly rules: twice a month.
+		{"name": "Cleaner", "amount_cents": float64(5000), "currency": "EUR", "bill_type": "bill",
+			"recurrence_rules": []any{monthlyRule(1), monthlyRule(1)}},
+		// No rules: Sure's legacy monthly series.
+		{"name": "Gym", "amount_cents": float64(3000), "currency": "EUR", "bill_type": "subscription",
+			"recurrence_rules": []any{}},
+		// Every two weeks: 365.25 / 14 occurrences a year.
+		{"name": "Lessons", "amount_cents": float64(1400), "currency": "USD", "bill_type": "bill",
+			"recurrence_rules": []any{map[string]any{"frequency": "weekly", "interval": float64(2), "weekday": float64(5)}}},
+		// JPY has no minor unit.
+		{"name": "Phone", "amount_cents": float64(3000), "currency": "JPY", "bill_type": "bill",
+			"recurrence_rules": []any{monthlyRule(1)}},
+		// Not spending: income (negative amount) and transfers.
+		{"name": "Salary", "amount_cents": float64(-250000), "currency": "EUR", "bill_type": "income",
+			"recurrence_rules": []any{monthlyRule(1)}},
+		{"name": "To savings", "amount_cents": float64(50000), "currency": "EUR", "bill_type": "transfer",
+			"recurrence_rules": []any{monthlyRule(1)}},
+		// One-off (Sure's FrequencyPreset ONCE): a payment, not a rate.
+		{"name": "Visa fee", "amount_cents": float64(9900), "currency": "EUR", "bill_type": "bill",
+			"end_mode": "after_count", "end_after_count": float64(1),
+			"recurrence_rules": []any{map[string]any{"frequency": "yearly", "interval": float64(1), "day_of_month": float64(9), "month_of_year": float64(4)}}},
+	}
+
+	got := recurringMonthlyOutflows(series)
+
+	wantEUR := 12.99 + 10 + 100 + 30
+	if math.Abs(got["EUR"]-wantEUR) > 1e-9 {
+		t.Fatalf("EUR = %v, want %v", got["EUR"], wantEUR)
+	}
+	wantUSD := 14 * (365.25 / 14) / 12
+	if math.Abs(got["USD"]-wantUSD) > 1e-9 {
+		t.Fatalf("USD = %v, want %v", got["USD"], wantUSD)
+	}
+	if got["JPY"] != 3000 {
+		t.Fatalf("JPY = %v, want 3000", got["JPY"])
+	}
+	if len(got) != 3 {
+		t.Fatalf("currencies = %v, want EUR, USD, JPY only", got)
+	}
+}
+
+func TestRecurringMonthlyOutflows_InstallmentEndingAfterOneIsNotOneOff(t *testing.T) {
+	// FrequencyPreset.once_schedule? excludes typed installments.
+	series := []map[string]any{
+		{"amount_cents": float64(10000), "currency": "EUR", "bill_type": "installment",
+			"end_mode": "after_count", "end_after_count": float64(1),
+			"recurrence_rules": []any{map[string]any{"frequency": "yearly", "interval": float64(1), "day_of_month": float64(9), "month_of_year": float64(4)}}},
+	}
+	if got := recurringMonthlyOutflows(series)["EUR"]; math.Abs(got-100.0/12) > 1e-9 {
+		t.Fatalf("EUR = %v, want %v", got, 100.0/12)
+	}
+}
+
+func TestBudgetPacing(t *testing.T) {
+	budget := map[string]any{
+		"id": "b1", "name": "March 2026", "currency": "EUR",
+		"start_date": "2026-03-01", "end_date": "2026-03-31", "initialized": true,
+		"budgeted_spending_cents":  float64(200000),
+		"actual_spending_cents":    float64(50000),
+		"available_to_spend_cents": float64(150000),
+	}
+	today := time.Date(2026, 3, 10, 15, 0, 0, 0, time.UTC)
+
+	p := budgetPacing(budget, today)
+
+	want := map[string]any{
+		"id": "b1", "name": "March 2026", "currency": "EUR",
+		"start_date": "2026-03-01", "end_date": "2026-03-31", "initialized": true,
+		"budgeted_spending":  "2000.00 EUR",
+		"actual_spending":    "500.00 EUR",
+		"available_to_spend": "1500.00 EUR",
+		"percent_spent":      25.0,
+		"percent_elapsed":    math.Round(10.0/31*1000) / 10,
+	}
+	for k, v := range want {
+		if p[k] != v {
+			t.Fatalf("%s = %#v, want %#v (pacing %#v)", k, p[k], v, p)
+		}
+	}
+}
+
+func TestBudgetPacing_UninitializedHasNoBudgetedFigures(t *testing.T) {
+	budget := map[string]any{
+		"id": "b1", "currency": "EUR", "start_date": "2026-03-01", "end_date": "2026-03-31",
+		"initialized": false, "budgeted_spending_cents": nil,
+		"actual_spending_cents": float64(50000), "available_to_spend_cents": float64(-50000),
+	}
+	p := budgetPacing(budget, time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC))
+	if p["budgeted_spending"] != nil || p["percent_spent"] != nil {
+		t.Fatalf("uninitialized budget must not report budgeted figures: %#v", p)
+	}
+	if p["actual_spending"] != "500.00 EUR" {
+		t.Fatalf("actual_spending = %#v", p["actual_spending"])
 	}
 }
