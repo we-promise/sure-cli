@@ -83,6 +83,8 @@ sure-cli login --email you@example.com --password "..." [--otp 123456]
 # Accounts
 sure-cli accounts list --format=table
 sure-cli accounts list --format=json
+sure-cli accounts list --all                 # every page (Sure serves at most 100 per page)
+sure-cli accounts list --include-disabled    # disabled accounts are hidden by default
 sure-cli accounts show <account_id>
 
 # Transactions
@@ -148,7 +150,7 @@ sure-cli insights leaks --days 120
 
 # Plan (client-side budget/runway/forecast)
 sure-cli plan budget --month 2026-02
-sure-cli plan runway --account-id <id> --days 90
+sure-cli plan runway --account-id <id> --days 90   # balance from balance_cents; burn counts only expenses in the account currency
 sure-cli plan forecast --days 30 [--daily]
 
 # Propose automations
@@ -166,6 +168,10 @@ sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026
 sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026-05-01 --upsert --apply
 
 # Status (financial snapshot)
+# net_worth comes from /api/v1/balance_sheet (family currency, FX-converted,
+# excludes exclude_from_reports accounts). accounts.by_currency totals assets,
+# liabilities, net worth and cash per native currency with the same exclusions.
+# Runway uses depository cash in the family currency only.
 sure-cli status
 
 # Holdings (requires Sure investment API)

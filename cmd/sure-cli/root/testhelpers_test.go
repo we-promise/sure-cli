@@ -7,7 +7,23 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
+	"github.com/we-promise/sure-cli/internal/api"
+	"github.com/we-promise/sure-cli/internal/config"
 )
+
+// apiClientFor returns a fresh api.Client targeting the given test server URL
+// by wiring viper directly (mirrors internal/api's test client).
+func apiClientFor(t *testing.T, url string) *api.Client {
+	t.Helper()
+	viper.Reset()
+	viper.Set("api_url", url)
+	viper.Set("auth.mode", "api_key")
+	viper.Set("auth.api_key", "test-key")
+	_ = config.Init("/tmp/sure-cli-test-does-not-exist.yaml")
+	return api.New()
+}
 
 // findSub looks up cmd's subcommand by name and fails the test if not found.
 // Lives here (not next to any single subcommand's tests) because it is used
