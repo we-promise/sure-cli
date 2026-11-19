@@ -44,13 +44,8 @@ func fetchServerVersion() (any, *errs.CLIError) {
 		return nil, errs.New(errs.CodeConfigMissing, "api_url is not configured")
 	}
 	var res any
-	r, err := api.New().Get("/api/v1/version", &res)
-	if err != nil {
-		return nil, errs.ClassifyNetworkError(err)
-	}
-	if r.StatusCode() >= 400 {
-		ce := errs.ClassifyHTTPError(r.StatusCode(), r.String())
-		return nil, ce.WithDetails(mergeErrorDetails(ce.Details, r))
+	if ce := api.CheckResponse(api.New().Get("/api/v1/version", &res)); ce != nil {
+		return nil, ce
 	}
 	return res, nil
 }
