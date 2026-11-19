@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -131,12 +130,8 @@ func buildChunkCreate(o chunkCreateOpts) (chunkCreate, error) {
 		if ext != ".ndjson" && ext != ".json" {
 			return chunkCreate{}, fmt.Errorf("file must be a Sure NDJSON file (.ndjson or .json), got %q", filepath.Ext(o.File))
 		}
-		info, err := os.Stat(o.File)
-		if err != nil {
-			return chunkCreate{}, fmt.Errorf("file not accessible: %w", err)
-		}
-		if info.IsDir() {
-			return chunkCreate{}, errors.New("file must be a regular file")
+		if err := requireRegularFile(o.File); err != nil {
+			return chunkCreate{}, err
 		}
 		fields := map[string]string{"sequence": strconv.Itoa(o.Sequence)}
 		if o.ClientChunkID != "" {
