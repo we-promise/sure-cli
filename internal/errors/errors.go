@@ -205,18 +205,6 @@ func ClassifyNetworkError(err error) *CLIError {
 	return Wrap(CodeNetwork, "Network error", err)
 }
 
-// IsRetryable returns true if the error is likely temporary and retryable
-func IsRetryable(err error) bool {
-	var cliErr *CLIError
-	if errors.As(err, &cliErr) {
-		switch cliErr.Code {
-		case CodeNetwork, CodeTimeout, CodeRateLimit, CodeServerError:
-			return true
-		}
-	}
-	return false
-}
-
 func truncate(s string, max int) string {
 	if len(s) <= max {
 		return s
