@@ -1,6 +1,7 @@
 package root
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
@@ -31,4 +32,24 @@ func parseOptionalDateRange(start, end string) (time.Time, time.Time, error) {
 		return time.Time{}, time.Time{}, err
 	}
 	return s, e, nil
+}
+
+// parsePairedDateRange validates a --start-date/--end-date pair that the
+// server only accepts together: both or neither, ISO dates, start <= end.
+// It reports whether a range was given.
+func parsePairedDateRange(start, end string) (bool, error) {
+	if start == "" && end == "" {
+		return false, nil
+	}
+	if start == "" || end == "" {
+		return false, errors.New("start-date and end-date must be given together")
+	}
+	s, e, err := parseOptionalDateRange(start, end)
+	if err != nil {
+		return false, err
+	}
+	if s.After(e) {
+		return false, errors.New("start-date must be on or before end-date")
+	}
+	return true, nil
 }

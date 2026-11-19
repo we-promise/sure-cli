@@ -114,7 +114,7 @@ Responses: 201 stored; 200 the same file is already in the vault (meta.duplicate
 }
 
 func buildAccountStatementListQuery(o accountStatementListOpts) (url.Values, error) {
-	if o.ReviewStatus != "" && !slices.Contains(accountStatementReviewStatuses, o.ReviewStatus) {
+	if !oneOfOrEmpty(o.ReviewStatus, accountStatementReviewStatuses...) {
 		return nil, fmt.Errorf("review-status must be one of: %s", strings.Join(accountStatementReviewStatuses, ", "))
 	}
 	if _, _, err := parseOptionalDateRange(o.StartDate, o.EndDate); err != nil {
