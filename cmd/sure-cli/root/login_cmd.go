@@ -10,6 +10,7 @@ import (
 
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/config"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -56,6 +57,9 @@ func newLoginCmd() *cobra.Command {
 
 			client := api.New()
 
+			// Every login revokes the device's previous tokens upstream, so
+			// each install needs its own device_id (persisted below by Save).
+			config.EnsureDeviceID()
 			res, err := client.Login(api.LoginRequest{
 				Email:    email,
 				Password: password,
@@ -63,7 +67,8 @@ func newLoginCmd() *cobra.Command {
 				Device:   config.Device(),
 			})
 			if err != nil {
-				output.Fail("login_failed", err.Error(), nil)
+				ce := loginError(err, otp)
+				output.Fail(ce.Code, ce.Message, ce.Details)
 				return
 			}
 			if res.AccessToken == "" {
@@ -98,4 +103,19 @@ func newLoginCmd() *cobra.Command {
 	cmd.Flags().StringVar(&email, "email", "", "user email (prompted if not provided)")
 	cmd.Flags().StringVar(&otp, "otp", "", "OTP code (if 2FA enabled)")
 	return cmd
+}
+
+// loginError maps a Login failure to the envelope error. Sure's MFA
+// challenge (401 mfa_required) keeps its own code with a hint about --otp;
+// everything else is login_failed with Sure's message and details.
+func loginError(err error, otp string) *errs.CLIError {
+	ce := errs.From(err)
+	if ce.Code == errs.CodeMFARequired {
+		msg := "Two-factor authentication required: re-run with --otp <code>"
+		if otp != "" {
+			msg = "Two-factor authentication failed: the --otp code was rejected"
+		}
+		return errs.New(errs.CodeMFARequired, msg).WithDetails(ce.Details)
+	}
+	return errs.New("login_failed", ce.Message).WithDetails(ce.Details)
 }

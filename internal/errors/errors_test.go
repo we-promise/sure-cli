@@ -2,6 +2,8 @@ package errors
 
 import (
 	"encoding/json"
+	stderrors "errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -130,6 +132,18 @@ func TestClassifyHTTPError_CapsBody(t *testing.T) {
 	}
 	if _, err := json.Marshal(ce.Details); err != nil {
 		t.Fatalf("details not JSON-encodable: %v", err)
+	}
+}
+
+func TestFrom(t *testing.T) {
+	ce := New(CodeConflict, "x")
+	if got := From(fmt.Errorf("wrap: %w", ce)); got != ce {
+		t.Fatalf("From should unwrap to the CLIError, got %+v", got)
+	}
+	plain := stderrors.New("boom")
+	got := From(plain)
+	if got.Code != CodeUnknown || got.Message != "boom" || got.Cause != plain {
+		t.Fatalf("From(plain) = %+v", got)
 	}
 }
 

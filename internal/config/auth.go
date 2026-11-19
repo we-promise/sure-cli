@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"fmt"
 	"strings"
 	"time"
 
@@ -38,31 +40,56 @@ func SetTokenExpiresAt(t time.Time) {
 	viper.Set("auth.token_expires_at", t.UTC().Format(time.RFC3339))
 }
 
+// LegacyDeviceID is the device_id every install shared before per-install
+// ids. Sure's MobileDevice#issue_token! revokes all tokens of a device, so a
+// shared id made each login log out every other machine.
+const LegacyDeviceID = "sure-cli"
+
+const deviceIDKey = "auth.device.device_id"
+
+// EnsureDeviceID returns this install's device_id, generating a random UUID
+// when none is configured or only the legacy shared id is. A custom
+// configured value is kept. The id is set in memory; callers persist it with
+// Save (login does, together with the tokens).
+func EnsureDeviceID() string {
+	id := strings.TrimSpace(viper.GetString(deviceIDKey))
+	if id != "" && id != LegacyDeviceID {
+		return id
+	}
+	id = newUUID()
+	viper.Set(deviceIDKey, id)
+	return id
+}
+
+// newUUID returns a random RFC 4122 version 4 UUID.
+func newUUID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(fmt.Sprintf("crypto/rand: %v", err)) // never fails on supported platforms
+	}
+	b[6] = b[6]&0x0f | 0x40
+	b[8] = b[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
 func Device() models.DeviceInfo {
-	dt := viper.GetString("auth.device.device_type")
-	dt = strings.ToLower(strings.TrimSpace(dt))
-	if dt == "browser" {
-		dt = "android"
-	}
-	if dt == "web" {
-		// Some Sure deployments currently only accept ios|android.
-		dt = "android"
-	}
+	dt := strings.ToLower(strings.TrimSpace(viper.GetString("auth.device.device_type")))
 	switch dt {
-	case "ios", "android":
-		// ok
+	case "ios", "android", "web":
+		// Accepted by MobileDevice's device_type validation.
 	default:
-		// Keep CLI resilient if config is wrong.
+		// Keep CLI resilient if config is wrong (e.g. legacy "browser").
 		dt = "android"
 	}
 
-	id := strings.TrimSpace(viper.GetString("auth.device.device_id"))
+	id := strings.TrimSpace(viper.GetString(deviceIDKey))
 	name := strings.TrimSpace(viper.GetString("auth.device.device_name"))
 	osv := strings.TrimSpace(viper.GetString("auth.device.os_version"))
 	appv := strings.TrimSpace(viper.GetString("auth.device.app_version"))
 
 	if id == "" {
-		id = "sure-cli"
+		// Sessions from before EnsureDeviceID keep refreshing under the old id.
+		id = LegacyDeviceID
 	}
 	if name == "" {
 		name = "sure-cli"

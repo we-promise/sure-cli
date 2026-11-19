@@ -73,19 +73,12 @@ func (c *Client) ensureFreshToken() error {
 	c.refreshing = true
 	defer func() { c.refreshing = false }()
 
-	var res TokenResponse
-	r, err := c.http.R().
-		SetBody(RefreshRequest{RefreshToken: rt, Device: config.Device()}).
-		SetResult(&res).
-		Post("/api/v1/auth/refresh")
+	// Refresh fails on any 4xx/5xx. Without that, a 401 body would decode
+	// into an empty TokenResponse and we'd persist empty tokens, silently
+	// logging the user out and corrupting saved state.
+	res, err := c.Refresh(RefreshRequest{RefreshToken: rt, Device: config.Device()})
 	if err != nil {
 		return err
-	}
-	// Treat any 4xx/5xx as a refresh failure. Without this guard, a 401 body
-	// would decode into an empty TokenResponse and we'd persist empty tokens,
-	// silently logging the user out and corrupting saved state.
-	if r != nil && r.StatusCode() >= 400 {
-		return fmt.Errorf("token refresh failed: HTTP %d", r.StatusCode())
 	}
 	if res.AccessToken == "" {
 		return fmt.Errorf("token refresh returned empty access token")

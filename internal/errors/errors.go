@@ -60,6 +60,15 @@ func Wrap(code, message string, cause error) *CLIError {
 	return &CLIError{Code: code, Message: message, Cause: cause}
 }
 
+// From returns the *CLIError in err's chain, or wraps err as unknown_error.
+func From(err error) *CLIError {
+	var ce *CLIError
+	if errors.As(err, &ce) {
+		return ce
+	}
+	return Wrap(CodeUnknown, err.Error(), err)
+}
+
 // WithDetails adds details to the error
 func (e *CLIError) WithDetails(details map[string]any) *CLIError {
 	e.Details = details

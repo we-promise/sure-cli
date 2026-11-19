@@ -246,7 +246,9 @@ sure-cli login
 sure-cli refresh
 ```
 
-Required device payload fields are stored under `auth.device.*` in config (defaults are provided).
+If the account has two-factor authentication, login fails with `error.code=mfa_required` until you pass `--otp`.
+
+Required device payload fields are stored under `auth.device.*` in config (defaults are provided; `device_type` accepts `ios`, `android` or `web`). Sure revokes a device's previous tokens on every login, so the first login stores a random per-install `auth.device.device_id`; logging in on another machine no longer logs this one out. A custom `device_id` you set is kept.
 
 ## Docs
 
