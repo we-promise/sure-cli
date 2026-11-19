@@ -22,6 +22,8 @@ func TestReportCommandsRegistered(t *testing.T) {
 	for _, path := range [][]string{
 		{"cash-flow"},
 		{"cash-flow", "show"},
+		{"spending-vs-normal"},
+		{"spending-vs-normal", "show"},
 	} {
 		got, _, err := root.Find(path)
 		if err != nil {
@@ -101,6 +103,43 @@ func TestBuildCashFlowQuery_Rejections(t *testing.T) {
 	}
 	for name, o := range cases {
 		if _, err := buildCashFlowQuery(o); err == nil {
+			t.Fatalf("%s: expected error", name)
+		}
+	}
+}
+
+func TestSpendingVsNormalShowFlags(t *testing.T) {
+	show := findSub(t, newSpendingVsNormalCmd(), "show")
+	for _, name := range []string{"start-date", "end-date"} {
+		if show.Flags().Lookup(name) == nil {
+			t.Fatalf("expected flag %q on spending-vs-normal show", name)
+		}
+	}
+	if show.Args == nil {
+		t.Fatal("spending-vs-normal show should reject positional args")
+	}
+}
+
+func TestBuildSpendingVsNormalQuery(t *testing.T) {
+	q, err := buildSpendingVsNormalQuery("", "")
+	if err != nil {
+		t.Fatalf("neither date: unexpected error: %v", err)
+	}
+	assertQuery(t, q, map[string]string{})
+
+	q, err = buildSpendingVsNormalQuery("2026-01-01", "2026-03-31")
+	if err != nil {
+		t.Fatalf("both dates: unexpected error: %v", err)
+	}
+	assertQuery(t, q, map[string]string{"start_date": "2026-01-01", "end_date": "2026-03-31"})
+
+	for name, in := range map[string][2]string{
+		"start only":   {"2026-01-01", ""},
+		"end only":     {"", "2026-01-31"},
+		"out of order": {"2026-02-01", "2026-01-31"},
+		"invalid date": {"2026-01-01", "2026-02-30"},
+	} {
+		if _, err := buildSpendingVsNormalQuery(in[0], in[1]); err == nil {
 			t.Fatalf("%s: expected error", name)
 		}
 	}

@@ -94,6 +94,39 @@ func buildCashFlowQuery(o cashFlowOpts) (url.Values, error) {
 	return q, nil
 }
 
+func newSpendingVsNormalCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "spending-vs-normal", Short: "Spending per category against each category's normal"}
+
+	var startDate, endDate string
+	show := &cobra.Command{
+		Use:   "show",
+		Short: "Compare net spending per category with the year before, scaled to the period (default: current month)",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			q, err := buildSpendingVsNormalQuery(startDate, endDate)
+			failValidation(err)
+			printGet(pathWithQuery("/api/v1/spending_vs_normal", q))
+		},
+	}
+	show.Flags().StringVar(&startDate, "start-date", "", "period start YYYY-MM-DD (with --end-date)")
+	show.Flags().StringVar(&endDate, "end-date", "", "period end YYYY-MM-DD (with --start-date)")
+	cmd.AddCommand(show)
+	return cmd
+}
+
+func buildSpendingVsNormalQuery(startDate, endDate string) (url.Values, error) {
+	q := url.Values{}
+	hasRange, err := parsePairedDateRange(startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	if hasRange {
+		q.Set("start_date", startDate)
+		q.Set("end_date", endDate)
+	}
+	return q, nil
+}
+
 func oneOfOrEmpty(v string, allowed ...string) bool {
 	return v == "" || slices.Contains(allowed, v)
 }
