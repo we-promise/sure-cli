@@ -23,14 +23,14 @@ func New() *Client {
 		SetHeader("Accept", "application/json").
 		SetRetryCount(2).
 		SetRetryWaitTime(1 * time.Second).
-		SetRetryMaxWaitTime(5 * time.Second).
-		AddRetryCondition(func(r *resty.Response, err error) bool {
-			// Retry on network errors or 5xx
-			if err != nil {
-				return true
-			}
-			return r.StatusCode() >= 500
-		})
+		SetRetryMaxWaitTime(5 * time.Second)
+	c.AddRetryCondition(func(r *resty.Response, err error) bool {
+		return shouldRetry(r, err, c.RetryMaxWaitTime)
+	}).SetRetryAfter(func(_ *resty.Client, r *resty.Response) (time.Duration, error) {
+		// 0 falls back to resty's jittered exponential backoff.
+		d, _ := retryAfter(r.Header())
+		return d, nil
+	})
 
 	// Auth
 	switch config.AuthMode() {
