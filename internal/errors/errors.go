@@ -28,7 +28,9 @@ const (
 	CodeConfigMissing = "config_missing"
 	CodeConfigInvalid = "config_invalid"
 	CodeExportFailed  = "export_failed"
-	CodeUnknown       = "unknown_error"
+	// CodeInvalidResponse means Sure answered 2xx with a body the CLI cannot read.
+	CodeInvalidResponse = "invalid_response"
+	CodeUnknown         = "unknown_error"
 )
 
 // CLIError is a structured error with code and details for agent consumption.

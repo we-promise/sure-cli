@@ -1,12 +1,15 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
+
+	errs "github.com/we-promise/sure-cli/internal/errors"
 )
 
 // pagesClient serves h and returns a client pointed at it.
@@ -214,5 +217,17 @@ func TestFetchCurrentBudgets_ReturnsFailingShowResponse(t *testing.T) {
 	budgets, r, err := FetchCurrentBudgets(c, time.Now())
 	if err != nil || r == nil || r.StatusCode() != http.StatusNotFound || budgets != nil {
 		t.Fatalf("budgets=%v r=%v err=%v", budgets, r, err)
+	}
+}
+
+func TestFetchAllPages_MalformedBodyIsInvalidResponse(t *testing.T) {
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"accounts":{"not":"a list"}}`))
+	})
+	_, _, err := FetchAllAccounts(c, false)
+	var ce *errs.CLIError
+	if !errors.As(err, &ce) || ce.Code != errs.CodeInvalidResponse {
+		t.Fatalf("err = %v, want CLIError %q", err, errs.CodeInvalidResponse)
 	}
 }

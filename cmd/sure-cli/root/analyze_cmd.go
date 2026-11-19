@@ -39,9 +39,7 @@ func newAnalyzeLeaksCmd() *cobra.Command {
 			start, end, err := leaksWindow(months, startDate, endDate, time.Now())
 			failValidation(err)
 			txs, err := api.FetchTransactionsWindow(api.New(), start, end, api.MaxPerPage)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-			}
+			checkResponse(nil, err)
 			cands := analyze.DetectLeaks(txs, start, end, params)
 			if cands == nil {
 				cands = []analyze.LeakCandidate{}
@@ -118,10 +116,7 @@ func newAnalyzeRunwayCmd() *cobra.Command {
 			end := time.Now().UTC()
 			start := end.AddDate(0, 0, -windowDays)
 			txs, err := api.FetchTransactionsWindow(client, start, end, 200)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-				return
-			}
+			checkResponse(nil, err)
 
 			out := analyze.ComputeRunway(bal, fmt.Sprint(acc["currency"]), txs, windowDays)
 			_ = output.Print(format, output.Envelope{Data: out, Meta: &output.Meta{Schema: "docs/schemas/v1/analyze_runway.schema.json", Status: 200}})

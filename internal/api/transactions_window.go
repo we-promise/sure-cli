@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"time"
 
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/models"
 )
 
@@ -29,6 +30,7 @@ func FetchTransactionsWindow(client *Client, start, end time.Time, perPage int) 
 
 // FetchAllTransactionsWindow pulls every transaction within [start,end] by
 // paging the Sure API, split parents and excluded rows included (flagged).
+// Every failure is a *errs.CLIError, so callers can report it as is.
 func FetchAllTransactionsWindow(client *Client, start, end time.Time, perPage int) ([]models.Transaction, error) {
 	if perPage <= 0 || perPage > MaxPerPage {
 		perPage = MaxPerPage
@@ -41,22 +43,19 @@ func FetchAllTransactionsWindow(client *Client, start, end time.Time, perPage in
 	r, err := walkPages(client, "/api/v1/transactions", q, perPage, func(body []byte) error {
 		var res transactionsPage
 		if err := json.Unmarshal(body, &res); err != nil {
-			return fmt.Errorf("decode transactions: %w", err)
+			return errs.Wrap(errs.CodeInvalidResponse, "unreadable transactions page", err)
 		}
 		for _, item := range res.Transactions {
 			tx, err := item.toModel()
 			if err != nil {
-				return fmt.Errorf("transaction %s: %w", item.ID, err)
+				return errs.Wrap(errs.CodeInvalidResponse, fmt.Sprintf("transaction %s has an unreadable amount", item.ID), err)
 			}
 			all = append(all, tx)
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	if r.StatusCode() >= 400 {
-		return nil, fmt.Errorf("request failed: status %d", r.StatusCode())
+	if ce := CheckResponse(r, err); ce != nil {
+		return nil, ce
 	}
 	return all, nil
 }

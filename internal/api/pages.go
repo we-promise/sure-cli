@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+
+	errs "github.com/we-promise/sure-cli/internal/errors"
 )
 
 // MaxPerPage is the largest page Sure serves (Api::V1::BaseController#safe_per_page_param).
@@ -39,7 +41,7 @@ func walkPages(c *Client, path string, q url.Values, perPage int, visit func(bod
 			} `json:"pagination"`
 		}
 		if err := json.Unmarshal(r.Body(), &meta); err != nil {
-			return r, fmt.Errorf("decode pagination: %w", err)
+			return r, errs.Wrap(errs.CodeInvalidResponse, "unreadable pagination in "+path, err)
 		}
 		if meta.Pagination == nil || page >= meta.Pagination.TotalPages {
 			return r, nil
@@ -52,18 +54,19 @@ func walkPages(c *Client, path string, q url.Values, perPage int, visit func(bod
 //
 // The last response is always returned so callers can hand it to their usual
 // error reporting: on an HTTP status >= 400 paging stops, items is nil and
-// err is nil. err is set for transport and decoding failures.
+// err is nil. err is set for transport failures and, as an invalid_response
+// CLIError, for bodies that cannot be decoded.
 func FetchAllPages(c *Client, path string, q url.Values, key string) ([]map[string]any, *resty.Response, error) {
 	var all []map[string]any
 	r, err := walkPages(c, path, q, MaxPerPage, func(body []byte) error {
 		var page map[string]json.RawMessage
 		if err := json.Unmarshal(body, &page); err != nil {
-			return fmt.Errorf("decode %s: %w", path, err)
+			return errs.Wrap(errs.CodeInvalidResponse, "unreadable response from "+path, err)
 		}
 		var items []map[string]any
 		if raw, ok := page[key]; ok {
 			if err := json.Unmarshal(raw, &items); err != nil {
-				return fmt.Errorf("decode %s.%s: %w", path, key, err)
+				return errs.Wrap(errs.CodeInvalidResponse, fmt.Sprintf("unreadable %q list from %s", key, path), err)
 			}
 		}
 		all = append(all, items...)
