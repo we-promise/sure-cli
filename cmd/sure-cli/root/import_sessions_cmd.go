@@ -172,7 +172,7 @@ func newImportSessionsAddChunkCmd() *cobra.Command {
 			var res any
 			var r *resty.Response
 			if plan.Multipart {
-				r, err = client.PostMultipart(path, plan.Fields, "file", plan.FilePath, mimeForImportFile(plan.FilePath), &res)
+				r, err = client.PostMultipart(path, plan.Fields, "file", plan.FilePath, mimeForUploadFile(plan.FilePath), &res)
 			} else {
 				r, err = client.Post(path, plan.JSONBody, &res)
 			}
