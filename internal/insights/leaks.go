@@ -55,11 +55,7 @@ func DetectLeaks(txs []Transaction, minCount int, minTotal float64, maxAvg float
 		var spike float64
 		ids := make([]string, 0, min(3, len(list)))
 		for i, tx := range list {
-			v, err := SignedAmount(tx)
-			if err != nil {
-				continue
-			}
-			amt := math.Abs(v)
+			amt := math.Abs(tx.Amount)
 			total += amt
 			if amt > spike {
 				spike = amt
