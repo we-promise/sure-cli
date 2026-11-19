@@ -12,29 +12,27 @@ func newAccountsCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "accounts", Short: "Accounts"}
 
 	var page, perPage int
+	var includeDisabled, all bool
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List accounts",
 		Run: func(cmd *cobra.Command, args []string) {
 			client := api.New()
-			path := "/api/v1/accounts"
-			if page > 0 || perPage > 0 {
-				q := url.Values{}
-				if page > 0 {
-					q.Set("page", fmt.Sprintf("%d", page))
-				}
-				if perPage > 0 {
-					q.Set("per_page", fmt.Sprintf("%d", perPage))
-				}
-				path = path + "?" + q.Encode()
+			if all {
+				accounts, r, err := api.FetchAllAccounts(client, includeDisabled)
+				respond(r, err, map[string]any{"accounts": accounts})
+				return
 			}
+			q := api.AccountsQuery(includeDisabled)
+			addPagingQuery(q, page, perPage)
 			var res any
-			r, err := client.Get(path, &res)
+			r, err := client.Get(pathWithQuery("/api/v1/accounts", q), &res)
 			respond(r, err, res)
 		},
 	}
-	list.Flags().IntVar(&page, "page", 1, "page number")
-	list.Flags().IntVar(&perPage, "per-page", 25, "items per page (maps to per_page)")
+	addPagingFlags(list, &page, &perPage)
+	list.Flags().BoolVar(&includeDisabled, "include-disabled", false, "include disabled accounts (maps to include_disabled)")
+	list.Flags().BoolVar(&all, "all", false, "fetch every page (ignores --page/--per-page)")
 	cmd.AddCommand(list)
 
 	cmd.AddCommand(&cobra.Command{

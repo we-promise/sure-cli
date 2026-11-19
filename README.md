@@ -81,6 +81,8 @@ sure-cli login --email you@example.com --password "..." [--otp 123456]
 # Accounts
 sure-cli accounts list --format=table
 sure-cli accounts list --format=json
+sure-cli accounts list --all                 # every page (Sure serves at most 100 per page)
+sure-cli accounts list --include-disabled    # disabled accounts are hidden by default
 sure-cli accounts show <account_id>
 
 # Transactions
