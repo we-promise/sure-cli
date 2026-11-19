@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/we-promise/sure-cli/internal/config"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 )
 
 type Client struct {
@@ -23,14 +24,14 @@ func New() *Client {
 		SetHeader("Accept", "application/json").
 		SetRetryCount(2).
 		SetRetryWaitTime(1 * time.Second).
-		SetRetryMaxWaitTime(5 * time.Second).
-		AddRetryCondition(func(r *resty.Response, err error) bool {
-			// Retry on network errors or 5xx
-			if err != nil {
-				return true
-			}
-			return r.StatusCode() >= 500
-		})
+		SetRetryMaxWaitTime(5 * time.Second)
+	c.AddRetryCondition(func(r *resty.Response, err error) bool {
+		return shouldRetry(r, err, c.RetryMaxWaitTime)
+	}).SetRetryAfter(func(_ *resty.Client, r *resty.Response) (time.Duration, error) {
+		// 0 falls back to resty's jittered exponential backoff.
+		d, _ := retryAfter(r.Header())
+		return d, nil
+	})
 
 	// Auth
 	switch config.AuthMode() {
@@ -73,19 +74,12 @@ func (c *Client) ensureFreshToken() error {
 	c.refreshing = true
 	defer func() { c.refreshing = false }()
 
-	var res TokenResponse
-	r, err := c.http.R().
-		SetBody(RefreshRequest{RefreshToken: rt, Device: config.Device()}).
-		SetResult(&res).
-		Post("/api/v1/auth/refresh")
+	// Refresh fails on any 4xx/5xx. Without that, a 401 body would decode
+	// into an empty TokenResponse and we'd persist empty tokens, silently
+	// logging the user out and corrupting saved state.
+	res, err := c.Refresh(RefreshRequest{RefreshToken: rt, Device: config.Device()})
 	if err != nil {
 		return err
-	}
-	// Treat any 4xx/5xx as a refresh failure. Without this guard, a 401 body
-	// would decode into an empty TokenResponse and we'd persist empty tokens,
-	// silently logging the user out and corrupting saved state.
-	if r != nil && r.StatusCode() >= 400 {
-		return fmt.Errorf("token refresh failed: HTTP %d", r.StatusCode())
 	}
 	if res.AccessToken == "" {
 		return fmt.Errorf("token refresh returned empty access token")
@@ -197,9 +191,32 @@ func (c *Client) Delete(path string, out any) (*resty.Response, error) {
 	return req.Delete(path)
 }
 
+// GetToFile streams a GET response body to outputPath. The body lands in a
+// temp file next to outputPath and is renamed into place only on a 2xx, so
+// an error body (e.g. 409 export_not_ready) never replaces or masquerades as
+// the downloaded file; it is returned as a classified *errors.CLIError.
 func (c *Client) GetToFile(path, outputPath string) (*resty.Response, error) {
 	if err := c.ensureFreshToken(); err != nil {
 		return nil, err
 	}
-	return c.http.R().SetOutput(outputPath).Get(path)
+	tmp, err := os.CreateTemp(filepath.Dir(outputPath), "."+filepath.Base(outputPath)+".part-*")
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeExportFailed, "cannot create output file: "+err.Error(), err)
+	}
+	tmpPath := tmp.Name()
+	_ = tmp.Close()
+	defer os.Remove(tmpPath) // no-op once renamed
+
+	r, err := c.http.R().SetOutput(tmpPath).Get(path)
+	if err != nil {
+		return r, err
+	}
+	if r.StatusCode() >= 400 {
+		body, _ := os.ReadFile(tmpPath)
+		return r, errs.ClassifyHTTPError(r.StatusCode(), body, r.Header())
+	}
+	if err := os.Rename(tmpPath, outputPath); err != nil {
+		return r, errs.Wrap(errs.CodeExportFailed, "cannot write output file: "+err.Error(), err)
+	}
+	return r, nil
 }

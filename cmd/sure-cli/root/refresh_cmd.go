@@ -5,6 +5,7 @@ import (
 
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/config"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -26,7 +27,8 @@ func newRefreshCmd() *cobra.Command {
 				Device:       config.Device(),
 			})
 			if err != nil {
-				output.Fail("refresh_failed", err.Error(), nil)
+				ce := errs.From(err)
+				output.Fail("refresh_failed", ce.Message, ce.Details)
 				return
 			}
 			if res.AccessToken == "" {

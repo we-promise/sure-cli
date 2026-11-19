@@ -31,8 +31,8 @@ func Init(cfgFile string) error {
 	viper.SetDefault("auth.token_expires_at", "") // RFC3339
 	viper.SetDefault("auth.api_key", "")
 
-	// Device info required by Sure AuthController
-	viper.SetDefault("auth.device.device_id", "sure-cli")
+	// Device info required by Sure AuthController. device_id has no default:
+	// login generates a per-install id (see EnsureDeviceID).
 	viper.SetDefault("auth.device.device_name", "sure-cli")
 	viper.SetDefault("auth.device.device_type", "android")
 	viper.SetDefault("auth.device.os_version", "unknown")
