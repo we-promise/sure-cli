@@ -24,13 +24,9 @@ func TestOrphanCommandsRegistered(t *testing.T) {
 		{[]string{"export", "transactions"}, "transactions"},
 		{[]string{"transactions", "delete"}, "delete"},
 		{[]string{"insights"}, "insights"},
-		{[]string{"insights", "subscriptions"}, "subscriptions"},
-		{[]string{"insights", "fees"}, "fees"},
 		{[]string{"insights", "leaks"}, "leaks"},
 		{[]string{"plan"}, "plan"},
-		{[]string{"plan", "budget"}, "budget"},
 		{[]string{"plan", "runway"}, "runway"},
-		{[]string{"plan", "forecast"}, "forecast"},
 		{[]string{"propose"}, "propose"},
 		{[]string{"propose", "rules"}, "rules"},
 	}

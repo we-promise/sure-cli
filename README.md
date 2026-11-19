@@ -151,14 +151,10 @@ sure-cli budget-categories list --budget-id <budget_id>
 sure-cli budget-categories show <budget_category_id>
 
 # Phase 4 (read-only heuristics)
-sure-cli insights subscriptions --days 120
-sure-cli insights fees --days 120
 sure-cli insights leaks --days 120
 
-# Plan (client-side budget/runway/forecast)
-sure-cli plan budget --month 2026-02
+# Plan (client-side runway)
 sure-cli plan runway --account-id <id> --days 90   # balance from balance_cents; burn counts only expenses in the account currency
-sure-cli plan forecast --days 30 [--daily]
 
 # Propose automations
 sure-cli propose rules --months 3
@@ -340,15 +336,6 @@ All insight heuristics are configurable via `~/.config/sure-cli/config.yaml`:
 
 ```yaml
 heuristics:
-  fees:
-    keywords: []  # empty = use 60+ default keywords (EN/ES/DE/FR)
-  subscriptions:
-    period_min_days: 20
-    period_max_days: 40
-    weekly_min_days: 6
-    weekly_max_days: 9
-    stddev_max_days: 3.0
-    amount_stddev_ratio: 0.1
   leaks:
     min_count: 3
     min_total: 15.0
@@ -361,7 +348,6 @@ heuristics:
 Inspect current config:
 ```bash
 sure-cli config heuristics      # show all heuristic settings
-sure-cli config fee-keywords    # show active fee keywords (60+ defaults)
 ```
 
 See `docs/ROADMAP.md` for planned features.

@@ -12,6 +12,4 @@ validate() {
 
 validate "$root/docs/schemas/v1/envelope.schema.json" "$root/docs/examples/accounts_list.json"
 validate "$root/docs/schemas/v1/envelope.schema.json" "$root/docs/examples/transactions_list.json"
-validate "$root/docs/schemas/v1/envelope.schema.json" "$root/docs/examples/insights_subscriptions.json"
-validate "$root/docs/schemas/v1/envelope.schema.json" "$root/docs/examples/insights_fees.json"
 validate "$root/docs/schemas/v1/envelope.schema.json" "$root/docs/examples/insights_leaks.json"

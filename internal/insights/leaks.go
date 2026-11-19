@@ -111,3 +111,7 @@ func DetectLeaks(txs []Transaction, minCount int, minTotal float64, maxAvg float
 	})
 	return out
 }
+
+func round2(v float64) float64 {
+	return math.Round(v*100) / 100
+}

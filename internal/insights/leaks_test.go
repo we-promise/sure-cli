@@ -1,6 +1,9 @@
 package insights
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestDetectLeaks_SmallFrequent(t *testing.T) {
 	txs := []Transaction{
@@ -19,4 +22,12 @@ func TestDetectLeaks_SmallFrequent(t *testing.T) {
 	if out[0].TotalAmount < 7.0 {
 		t.Fatalf("expected total >= 7, got %v", out[0].TotalAmount)
 	}
+}
+
+func mustDate(s string) time.Time {
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		panic(err)
+	}
+	return t
 }
