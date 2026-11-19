@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
@@ -18,9 +19,7 @@ type importCreateOpts struct {
 	File                      string
 	RawFileContent            string
 	Type                      string
-	Source                    string
 	AccountID                 string
-	FileFormat                string
 	Publish                   bool
 	DateColLabel              string
 	AmountColLabel            string
@@ -41,6 +40,7 @@ type importCreateOpts struct {
 	ColSep                    string
 	AmountTypeStrategy        string
 	AmountTypeInflowValue     string
+	RowsToSkip                string
 	Apply                     bool
 }
 
@@ -144,9 +144,7 @@ func newImportsCreateCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&o.File, "file", "", "path to import file")
 	cmd.Flags().StringVar(&o.RawFileContent, "raw-file-content", "", "raw import file content")
-	cmd.Flags().StringVar(&o.Type, "type", "", "import type (TransactionImport|SureImport)")
-	cmd.Flags().StringVar(&o.FileFormat, "file-format", "", "legacy import format hint")
-	cmd.Flags().StringVar(&o.Source, "source", "", "legacy import source hint")
+	cmd.Flags().StringVar(&o.Type, "type", "", "import type (TransactionImport|SureImport; a .ndjson/.json --file defaults to SureImport)")
 	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "account id (optional)")
 	cmd.Flags().BoolVar(&o.Publish, "publish", false, "queue processing when the import is configured")
 	cmd.Flags().StringVar(&o.DateColLabel, "date-col-label", "", "CSV date column label")
@@ -168,6 +166,7 @@ func newImportsCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.ColSep, "col-sep", "", "CSV column separator")
 	cmd.Flags().StringVar(&o.AmountTypeStrategy, "amount-type-strategy", "", "CSV amount type strategy")
 	cmd.Flags().StringVar(&o.AmountTypeInflowValue, "amount-type-inflow-value", "", "CSV amount type inflow value")
+	cmd.Flags().StringVar(&o.RowsToSkip, "rows-to-skip", "", "number of leading CSV lines to drop before the header")
 	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the create (otherwise dry-run)")
 
 	return cmd
@@ -189,39 +188,29 @@ func buildImportCreatePayload(o importCreateOpts) (importCreatePayload, error) {
 	}
 
 	if o.File != "" {
-		info, err := os.Stat(o.File)
-		if err != nil {
-			return importCreatePayload{}, fmt.Errorf("file not accessible: %w", err)
-		}
-		if info.IsDir() {
-			return importCreatePayload{}, errors.New("file must be a regular file")
+		if err := requireRegularFile(o.File); err != nil {
+			return importCreatePayload{}, err
 		}
 	}
-
-	fileFormat := o.FileFormat
-	if fileFormat == "" && o.File != "" {
-		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(o.File)), ".")
-		if ext != "" {
-			fileFormat = ext
+	if o.RowsToSkip != "" {
+		if n, err := strconv.Atoi(o.RowsToSkip); err != nil || n < 0 {
+			return importCreatePayload{}, fmt.Errorf("rows-to-skip must be a non-negative integer (got %q)", o.RowsToSkip)
 		}
 	}
 
 	fields := map[string]string{}
 	importType := o.Type
-	if importType == "" && (fileFormat == "ndjson" || fileFormat == "json") {
-		importType = "SureImport"
+	if importType == "" && o.File != "" {
+		switch strings.ToLower(filepath.Ext(o.File)) {
+		case ".ndjson", ".json":
+			importType = "SureImport"
+		}
 	}
 	if importType != "" {
 		fields["type"] = importType
 	}
-	if fileFormat != "" {
-		fields["format"] = fileFormat
-	}
 	if o.RawFileContent != "" {
 		fields["raw_file_content"] = o.RawFileContent
-	}
-	if o.Source != "" {
-		fields["source"] = o.Source
 	}
 	if o.AccountID != "" {
 		fields["account_id"] = o.AccountID
@@ -248,6 +237,7 @@ func buildImportCreatePayload(o importCreateOpts) (importCreatePayload, error) {
 	addImportField(fields, "col_sep", o.ColSep)
 	addImportField(fields, "amount_type_strategy", o.AmountTypeStrategy)
 	addImportField(fields, "amount_type_inflow_value", o.AmountTypeInflowValue)
+	addImportField(fields, "rows_to_skip", o.RowsToSkip)
 
 	return importCreatePayload{
 		FileField:      "file",
@@ -255,6 +245,18 @@ func buildImportCreatePayload(o importCreateOpts) (importCreatePayload, error) {
 		RawFileContent: o.RawFileContent,
 		Fields:         fields,
 	}, nil
+}
+
+// requireRegularFile fails unless path names an accessible regular file.
+func requireRegularFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("file not accessible: %w", err)
+	}
+	if info.IsDir() {
+		return errors.New("file must be a regular file")
+	}
+	return nil
 }
 
 func addImportField(fields map[string]string, name, value string) {

@@ -60,10 +60,7 @@ func DetectSubscriptions(txs []Transaction) []SubscriptionCandidate {
 		amounts := make([]float64, 0, len(list))
 		ids := make([]string, 0, min(3, len(list)))
 		for i, tx := range list {
-			v, err := SignedAmount(tx)
-			if err == nil {
-				amounts = append(amounts, math.Abs(v))
-			}
+			amounts = append(amounts, math.Abs(tx.Amount))
 			if i >= len(list)-3 {
 				ids = append(ids, tx.ID)
 			}

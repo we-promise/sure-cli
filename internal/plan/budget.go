@@ -1,9 +1,9 @@
 package plan
 
 import (
+	"math"
 	"time"
 
-	"github.com/we-promise/sure-cli/internal/insights"
 	"github.com/we-promise/sure-cli/internal/models"
 )
 
@@ -33,12 +33,8 @@ func ComputeMonthlyBudget(month time.Time, txs []models.Transaction) (BudgetSumm
 		if tx.Classification != "expense" {
 			continue
 		}
-		amt, err := insights.ParseAmountEUR(tx.AmountText)
-		if err != nil {
-			continue
-		}
-		currency = "EUR"
-		spent += amt
+		currency = tx.Currency
+		spent += math.Abs(tx.Amount)
 	}
 
 	now := time.Now().UTC()
@@ -65,6 +61,6 @@ func ComputeMonthlyBudget(month time.Time, txs []models.Transaction) (BudgetSumm
 		AvgPerDay:   avg,
 		Projected:   projected,
 		Currency:    currency,
-		Assumptions: []string{"expense sign normalized via classification; uses month-to-date average"},
+		Assumptions: []string{"expenses counted as Sure reports count them (no split parents, excluded rows or transfers); uses month-to-date average"},
 	}, nil
 }

@@ -3,22 +3,28 @@ package root
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/we-promise/sure-cli/internal/api"
-	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/spf13/cobra"
+	"github.com/we-promise/sure-cli/internal/models"
 )
 
 type txCreateOpts struct {
-	AccountID string
-	Date      string
-	Amount    float64
-	Nature    string
-	Name      string
-	Notes     string
-	Currency  string
-	Apply     bool
+	AccountID    string
+	Date         string
+	Amount       string
+	Nature       string
+	Name         string
+	Notes        string
+	Currency     string
+	CategoryID   string
+	MerchantID   string
+	TagIDs       []string
+	ExternalID   string
+	Source       string
+	UserModified bool
+	Apply        bool
 }
 
 func newTransactionsCreateCmd() *cobra.Command {
@@ -29,36 +35,20 @@ func newTransactionsCreateCmd() *cobra.Command {
 		Short: "Create a transaction (default dry-run; use --apply to execute)",
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := buildTxCreatePayload(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-			}
-
-			if !o.Apply {
-				_ = output.Print(format, output.Envelope{Data: map[string]any{
-					"dry_run": true,
-					"request": map[string]any{
-						"method": "POST",
-						"path":   "/api/v1/transactions",
-						"body":   payload,
-					},
-				}})
-				return
-			}
-
-			client := api.New()
-			var res any
-			r, err := client.Post("/api/v1/transactions", payload, &res)
-			respond(r, err, res)
+			failValidation(err)
+			dispatchWrite(o.Apply, "POST", "/api/v1/transactions", payload)
 		},
 	}
 
 	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "account id (required)")
 	cmd.Flags().StringVar(&o.Date, "date", time.Now().Format("2006-01-02"), "date YYYY-MM-DD")
-	cmd.Flags().Float64Var(&o.Amount, "amount", 0, "amount (absolute). Sign determined by --nature")
-	cmd.Flags().StringVar(&o.Nature, "nature", "expense", "expense|income (maps to Sure transaction.nature)")
+	addTxAmountFlags(cmd, &o.Amount, &o.Nature, "expense")
 	cmd.Flags().StringVar(&o.Name, "name", "", "name/description (required)")
 	cmd.Flags().StringVar(&o.Notes, "notes", "", "notes")
 	cmd.Flags().StringVar(&o.Currency, "currency", "", "currency (default family currency)")
+	addTxReferenceFlags(cmd, &o.CategoryID, &o.MerchantID, &o.TagIDs, &o.UserModified)
+	cmd.Flags().StringVar(&o.ExternalID, "external-id", "", "idempotency key: a retry with the same external id (and source) returns the existing transaction")
+	cmd.Flags().StringVar(&o.Source, "source", "", "namespace for --external-id (Sure defaults it to \"api\"; requires --external-id)")
 	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the create (otherwise dry-run)")
 
 	_ = cmd.MarkFlagRequired("account-id")
@@ -74,31 +64,84 @@ func buildTxCreatePayload(o txCreateOpts) (map[string]any, error) {
 	if o.Name == "" {
 		return nil, errors.New("name is required")
 	}
-	if o.Amount == 0 {
-		return nil, errors.New("amount must be non-zero")
+	if err := validateTxAmount(o.Amount); err != nil {
+		return nil, err
 	}
-	if _, err := time.Parse("2006-01-02", o.Date); err != nil {
-		return nil, fmt.Errorf("invalid date (expected YYYY-MM-DD): %w", err)
+	if err := validateTxDate(o.Date); err != nil {
+		return nil, err
 	}
-	switch o.Nature {
-	case "income", "expense", "inflow", "outflow":
-		// ok
-	default:
-		return nil, errors.New("nature must be one of: income|expense|inflow|outflow")
+	if err := validateTxNature(o.Nature); err != nil {
+		return nil, err
+	}
+	if o.Source != "" && o.ExternalID == "" {
+		return nil, errors.New("source requires external-id")
 	}
 
 	tx := map[string]any{
 		"account_id": o.AccountID,
 		"date":       o.Date,
-		"amount":     fmt.Sprintf("%.2f", o.Amount),
+		"amount":     o.Amount,
 		"nature":     o.Nature,
 		"name":       o.Name,
-		"notes":      o.Notes,
 	}
-	if o.Currency != "" {
-		tx["currency"] = o.Currency
-	}
+	addAny(tx, "notes", o.Notes)
+	addAny(tx, "currency", o.Currency)
+	addAny(tx, "external_id", o.ExternalID)
+	addAny(tx, "source", o.Source)
+	addTxReferenceFields(tx, o.CategoryID, o.MerchantID, o.TagIDs, o.UserModified)
 
 	// Rails expects { transaction: {...} }
 	return map[string]any{"transaction": tx}, nil
+}
+
+// addTxAmountFlags registers --amount and --nature, shared by create and update.
+func addTxAmountFlags(cmd *cobra.Command, amount, nature *string, defaultNature string) {
+	cmd.Flags().StringVar(amount, "amount", "", "positive decimal amount, sent exactly as typed (e.g. 12.3456); the sign comes from --nature")
+	cmd.Flags().StringVar(nature, "nature", defaultNature, "expense|income|outflow|inflow (maps to Sure transaction.nature)")
+}
+
+// addTxReferenceFlags registers the category/merchant/tag/user-modified
+// flags shared by create and update.
+func addTxReferenceFlags(cmd *cobra.Command, categoryID, merchantID *string, tagIDs *[]string, userModified *bool) {
+	cmd.Flags().StringVar(categoryID, "category-id", "", "category id")
+	cmd.Flags().StringVar(merchantID, "merchant-id", "", "merchant id")
+	cmd.Flags().StringArrayVar(tagIDs, "tag-id", nil, "tag id (repeatable)")
+	cmd.Flags().BoolVar(userModified, "user-modified", false, "protect the transaction from provider syncs, like a manual edit")
+}
+
+func addTxReferenceFields(tx map[string]any, categoryID, merchantID string, tagIDs []string, userModified bool) {
+	addAny(tx, "category_id", categoryID)
+	addAny(tx, "merchant_id", merchantID)
+	if len(tagIDs) > 0 {
+		tx["tag_ids"] = tagIDs
+	}
+	if userModified {
+		tx["user_modified"] = true
+	}
+}
+
+// validateTxAmount accepts a positive fixed-point decimal and nothing else.
+// The text is sent verbatim: Sure stores decimal(19,4), so a float round trip
+// or %.2f would change the stored value.
+func validateTxAmount(amount string) error {
+	if !models.IsDecimal(amount) || strings.HasPrefix(amount, "-") || strings.Trim(amount, "0.") == "" {
+		return fmt.Errorf("amount must be a positive decimal like 12.34 (got %q); the sign comes from --nature", amount)
+	}
+	return nil
+}
+
+func validateTxDate(date string) error {
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return fmt.Errorf("invalid date (expected YYYY-MM-DD): %w", err)
+	}
+	return nil
+}
+
+func validateTxNature(nature string) error {
+	switch nature {
+	case "income", "expense", "inflow", "outflow":
+		return nil
+	default:
+		return errors.New("nature must be one of: income|expense|inflow|outflow")
+	}
 }

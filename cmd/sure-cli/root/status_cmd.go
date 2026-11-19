@@ -2,11 +2,13 @@ package root
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/insights"
+	"github.com/we-promise/sure-cli/internal/models"
 	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/we-promise/sure-cli/internal/plan"
 )
@@ -70,20 +72,7 @@ func newStatusCmd() *cobra.Command {
 				return
 			}
 
-			// Calculate monthly spend
-			var monthlySpend float64
-			var monthlyIncome float64
-			for _, tx := range txs {
-				amt, err := insights.ParseAmount(tx.AmountText)
-				if err != nil {
-					continue
-				}
-				if tx.Classification == "expense" {
-					monthlySpend += absFloat(amt)
-				} else if tx.Classification == "income" {
-					monthlyIncome += absFloat(amt)
-				}
-			}
+			monthlySpend, monthlyIncome := monthlyTotals(txs)
 
 			// 3. Calculate runway if we have cash balance
 			var runwayMonths float64
@@ -159,11 +148,18 @@ func newStatusCmd() *cobra.Command {
 	return cmd
 }
 
-func absFloat(v float64) float64 {
-	if v < 0 {
-		return -v
+// monthlyTotals sums expense and income magnitudes of reportable
+// transactions (see api.FetchTransactionsWindow).
+func monthlyTotals(txs []models.Transaction) (spend, income float64) {
+	for _, tx := range txs {
+		switch tx.Classification {
+		case "expense":
+			spend += math.Abs(tx.Amount)
+		case "income":
+			income += math.Abs(tx.Amount)
+		}
 	}
-	return v
+	return spend, income
 }
 
 func amountFromAPI(m map[string]any, formattedKey, centsKey string) (float64, error) {
@@ -192,7 +188,7 @@ func amountFromAPIOK(m map[string]any, formattedKey, centsKey string) (float64, 
 	if text == "" || text == "<nil>" {
 		return 0, false
 	}
-	amount, err := insights.ParseAmount(text)
+	amount, err := models.ParseAmount(text)
 	return amount, err == nil
 }
 

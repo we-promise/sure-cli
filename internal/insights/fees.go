@@ -93,10 +93,7 @@ func DetectFees(txs []Transaction, keywords []string) []FeeCandidate {
 		var total float64
 		ids := make([]string, 0, min(3, len(list)))
 		for i, tx := range list {
-			v, err := SignedAmount(tx)
-			if err == nil {
-				total += math.Abs(v)
-			}
+			total += math.Abs(tx.Amount)
 			if i < 3 {
 				ids = append(ids, tx.ID)
 			}
