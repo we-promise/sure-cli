@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/we-promise/sure-cli/docs/schemas/v1/insights_list.schema.json",
+  "title": "sure-cli insights list v1",
+  "description": "GET /api/v1/insights as Sure renders it: the visible family feed, unpaginated.",
+  "type": "object",
+  "properties": {
+    "insights": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "type": {"type": "string", "description": "Insight::TYPES, e.g. spending_anomaly, cash_flow_warning, subscription_audit, bank_fees, budget_at_risk"},
+          "title": {"type": "string"},
+          "body": {"type": "string"},
+          "priority": {"enum": ["high", "medium", "low"]},
+          "status": {"enum": ["active", "read"]},
+          "generated_at": {"type": ["string", "null"]}
+        },
+        "required": ["id", "type", "title", "body", "priority", "status"]
+      }
+    }
+  },
+  "required": ["insights"]
+}

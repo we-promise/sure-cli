@@ -1,0 +1,19 @@
+{
+  "data": {
+    "insights": [
+      {
+        "id": "8f6c0f5e-1111-4222-8333-944445555666",
+        "type": "bank_fees",
+        "title": "You paid 18.00 EUR in bank fees this month",
+        "body": "Three maintenance and transfer fees were charged to Checking.",
+        "priority": "medium",
+        "status": "active",
+        "generated_at": "2026-11-20T03:00:00Z"
+      }
+    ]
+  },
+  "meta": {
+    "schema": "docs/schemas/v1/insights_list.schema.json",
+    "status": 200
+  }
+}

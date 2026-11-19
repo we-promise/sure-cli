@@ -150,6 +150,14 @@ sure-cli budgets show <budget_id>
 sure-cli budget-categories list --budget-id <budget_id>
 sure-cli budget-categories show <budget_category_id>
 
+# Insights: the feed Sure generates nightly (spending anomalies, cash flow
+# warnings, subscription audits, bank fees, budgets at risk, ...).
+# Needs Preview features on (Sure: Settings > Preferences); otherwise 403
+# forbidden with details.api_error feature_disabled. No filters or paging.
+sure-cli insights list
+sure-cli insights ack <insight_id>            # dry-run
+sure-cli insights ack <insight_id> --apply    # read_write scope; guests refused; idempotent
+
 # Phase 4 (read-only heuristics)
 sure-cli insights leaks --days 120
 
