@@ -153,6 +153,9 @@ sure-cli export transactions --months 12 --out-format csv --out transactions.csv
 
 # Financial history
 sure-cli balance-sheet show
+sure-cli cash-flow show                                   # current month
+sure-cli cash-flow show --month 2026-03 --include sankey  # summary + Sankey graph
+sure-cli cash-flow show --view sankey --group-by account --start-date 2026-01-01 --end-date 2026-03-31
 sure-cli balances list --account-id <account_id> --start-date 2026-01-01
 sure-cli family-settings show
 sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026-05-01
