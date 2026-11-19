@@ -4,9 +4,8 @@ Future features and ideas for `sure-cli`.
 
 ## Planned
 
-### Insights
-- `insights merchants --top 20` — top merchants by spend/count
-- `insights anomalies` — unusual transactions detection
+### Analyze
+- `analyze merchants --top 20` — top merchants by spend/count
 
 ### Search
 - `search "query"` — full-text search across transactions
@@ -17,8 +16,8 @@ Future features and ideas for `sure-cli`.
 ## Ideas (no timeline)
 
 ### FIRE / Longevity Planning
-- `plan fire --spend 45000 --return 4%` — FIRE calculations
-- `plan longevity --age 42 --target-age 95` — longevity planning
+- `analyze fire --spend 45000 --return 4%` — FIRE calculations
+- `analyze longevity --age 42 --target-age 95` — longevity planning
 
 ### Benchmarks
 - `compare spend --category groceries --country ES` — peer comparisons
@@ -36,6 +35,8 @@ Future features and ideas for `sure-cli`.
 
 ## Completed
 
+- Sure's insights feed via `insights list` and `insights ack`; local subscription, fee, forecast and budget heuristics removed in favour of Sure's own.
+- Client-side heuristics grouped under `analyze` (`leaks`, `runway`).
 - Import row diagnostics via `imports rows`.
 - Import dry-run validation via `imports preflight`.
 - CSV and Sure NDJSON import creation via `imports create`.
@@ -48,4 +49,4 @@ Future features and ideas for `sure-cli`.
 - AI chats CRUD + message send/retry via `chats` subtree.
 - Account-level AI enable via `auth enable-ai`.
 
-See [CHANGELOG](../CHANGELOG.md) or GitHub releases for shipped features.
+See [GitHub releases](https://github.com/we-promise/sure-cli/releases) for shipped features.
