@@ -108,6 +108,13 @@ sure-cli import-sessions show <session_id>
 sure-cli import-sessions publish <session_id> --apply
 sure-cli family-exports create
 sure-cli family-exports create --apply
+
+# Statement Vault (archives PDF/CSV/XLSX statements, max 25 MB; never imports transactions)
+sure-cli account-statements list --review-status unmatched --start-date 2026-01-01
+sure-cli account-statements list --content-sha256 "$(shasum -a 256 march.pdf | cut -d' ' -f1)"
+sure-cli account-statements show <statement_id>
+sure-cli account-statements upload --file march.pdf --account-id <account_id>          # dry-run
+sure-cli account-statements upload --file march.pdf --account-id <account_id> --apply  # 200 + meta.duplicate if already stored
 sure-cli family-exports download <export_id> --out sure-export.zip
 
 # Reference data and rules
