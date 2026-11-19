@@ -1,11 +1,13 @@
 package root
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/output"
@@ -117,28 +119,65 @@ func newCategoriesCreateCmd() *cobra.Command {
 func newMerchantsCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "merchants", Short: "Merchants"}
 
-	var page, perPage int
-	list := &cobra.Command{
+	// Sure returns every merchant as a bare array; it has no pagination.
+	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
-		Short: "List merchants",
+		Short: "List merchants (family merchants plus provider merchants on accessible transactions)",
 		Run: func(cmd *cobra.Command, args []string) {
-			q := url.Values{}
-			addPagingQuery(q, page, perPage)
-			printGet(pathWithQuery("/api/v1/merchants", q))
+			printGet(merchantsPath)
 		},
-	}
-	addPagingFlags(list, &page, &perPage)
-	cmd.AddCommand(list)
+	})
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show <id>",
 		Short: "Show merchant",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			printGet(fmt.Sprintf("/api/v1/merchants/%s", url.PathEscape(args[0])))
+			printGet(merchantsPath + "/" + url.PathEscape(args[0]))
 		},
 	})
+	cmd.AddCommand(newMerchantsImportCmd())
 	return cmd
+}
+
+const merchantsPath = "/api/v1/merchants"
+
+func newMerchantsImportCmd() *cobra.Command {
+	var file string
+	var apply bool
+	cmd := &cobra.Command{
+		Use:   "import",
+		Short: "Create family merchants from a CSV (default dry-run; use --apply to execute)",
+		Long: "Uploads a CSV to POST /api/v1/merchants. Columns: name (required), color and website_url (optional).\n" +
+			"Names that already exist are skipped. The response reports {imported, skipped, merchants}.",
+		Run: func(cmd *cobra.Command, args []string) {
+			failValidation(validateMerchantsImportFile(file))
+			if !apply {
+				printDryRun("POST", merchantsPath, map[string]any{"file": file})
+				return
+			}
+			var res any
+			r, err := postMerchantsImport(api.New(), file, &res)
+			respond(r, err, res)
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "path to the merchants CSV (required)")
+	cmd.Flags().BoolVar(&apply, "apply", false, "execute the import (otherwise dry-run)")
+	return cmd
+}
+
+func validateMerchantsImportFile(file string) error {
+	if file == "" {
+		return errors.New("file is required")
+	}
+	return requireRegularFile(file)
+}
+
+// postMerchantsImport sends the CSV as the multipart `file` part with an
+// explicit text/csv type: Sure checks it against Import::ALLOWED_CSV_MIME_TYPES
+// by exact match.
+func postMerchantsImport(client *api.Client, file string, out any) (*resty.Response, error) {
+	return client.PostMultipart(merchantsPath, nil, "file", file, "text/csv", out)
 }
 
 type tagWriteOpts struct {
@@ -324,7 +363,7 @@ func newRuleRunsCmd() *cobra.Command {
 	addPagingFlags(list, &page, &perPage)
 	list.Flags().StringVar(&ruleID, "rule-id", "", "rule id filter")
 	list.Flags().StringVar(&status, "status", "", "status filter: pending|success|failed")
-	list.Flags().StringVar(&executionType, "execution-type", "", "execution type filter: manual|scheduled")
+	list.Flags().StringVar(&executionType, "execution-type", "", "execution type filter: manual|scheduled|immediate")
 	list.Flags().StringVar(&startExecutedAt, "start-executed-at", "", "start executed timestamp (ISO 8601)")
 	list.Flags().StringVar(&endExecutedAt, "end-executed-at", "", "end executed timestamp (ISO 8601)")
 	cmd.AddCommand(list)
