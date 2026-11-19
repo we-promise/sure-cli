@@ -97,6 +97,7 @@ func newSecurityPricesCmd() *cobra.Command {
 			printGet(fmt.Sprintf("/api/v1/security_prices/%s", url.PathEscape(args[0])))
 		},
 	})
+	cmd.AddCommand(newSecurityPricesCreateCmd())
 	return cmd
 }
 

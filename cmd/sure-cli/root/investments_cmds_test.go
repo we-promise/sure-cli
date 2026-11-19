@@ -31,6 +31,7 @@ func TestInvestmentCommandsRegistered(t *testing.T) {
 		{"holdings", "show"},
 		{"securities", "list"},
 		{"security-prices", "show"},
+		{"security-prices", "create"},
 		{"trades", "create"},
 		{"recurring-transactions", "delete"},
 	} {

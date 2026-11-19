@@ -162,6 +162,11 @@ sure-cli holdings show <holding_id>
 sure-cli securities list --ticker AAPL
 sure-cli securities show <security_id>
 sure-cli security-prices list --security-id <security_id> --start-date 2026-01-01
+# Import closes for an offline security no provider tracks (self-hosted Sure only).
+# CSV header with date,price,currency, or JSON [{"date","price","currency"}] / {"prices":[...]}.
+# 1-1000 rows, unique ISO dates, price > 0 with at most 4 decimals, one currency.
+sure-cli security-prices create --security-id <security_id> --file closes.csv
+sure-cli security-prices create --security-id <security_id> --file - --apply < closes.json
 
 # Trades (requires Sure investment API)
 # create --type: buy|sell|sweep_in|sweep_out|reinvestment need --qty, --price and one of
