@@ -7,10 +7,10 @@ import (
 
 func TestDetectSubscriptions_MonthlyStable(t *testing.T) {
 	txs := []Transaction{
-		{ID: "1", Name: "Netflix", Classification: "expense", AmountText: "€9.99", Date: mustDate("2026-01-01")},
-		{ID: "2", Name: "Netflix", Classification: "expense", AmountText: "€9.99", Date: mustDate("2026-02-01")},
-		{ID: "3", Name: "Netflix", Classification: "expense", AmountText: "€9.99", Date: mustDate("2026-03-01")},
-		{ID: "x", Name: "Coffee", Classification: "expense", AmountText: "€2.50", Date: mustDate("2026-03-02")},
+		{ID: "1", Name: "Netflix", Classification: "expense", Amount: -9.99, Date: mustDate("2026-01-01")},
+		{ID: "2", Name: "Netflix", Classification: "expense", Amount: -9.99, Date: mustDate("2026-02-01")},
+		{ID: "3", Name: "Netflix", Classification: "expense", Amount: -9.99, Date: mustDate("2026-03-01")},
+		{ID: "x", Name: "Coffee", Classification: "expense", Amount: -2.50, Date: mustDate("2026-03-02")},
 	}
 	out := DetectSubscriptions(txs)
 	if len(out) != 1 {

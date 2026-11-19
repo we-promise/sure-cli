@@ -1,9 +1,9 @@
 package plan
 
 import (
+	"math"
 	"time"
 
-	"github.com/we-promise/sure-cli/internal/insights"
 	"github.com/we-promise/sure-cli/internal/models"
 )
 
@@ -18,7 +18,7 @@ type RunwaySummary struct {
 
 // ComputeRunway estimates runway months based on recent spending.
 func ComputeRunway(balanceText string, txs []models.Transaction, windowDays int) (RunwaySummary, error) {
-	bal, err := insights.ParseAmountEUR(balanceText)
+	bal, err := models.ParseAmount(balanceText)
 	cur := "EUR"
 	if err != nil {
 		return RunwaySummary{}, err
@@ -35,11 +35,7 @@ func ComputeRunway(balanceText string, txs []models.Transaction, windowDays int)
 		if tx.Classification != "expense" {
 			continue
 		}
-		amt, err := insights.ParseAmountEUR(tx.AmountText)
-		if err != nil {
-			continue
-		}
-		spent += amt
+		spent += math.Abs(tx.Amount)
 	}
 
 	avgMonthly := 0.0
@@ -58,6 +54,6 @@ func ComputeRunway(balanceText string, txs []models.Transaction, windowDays int)
 		RunwayMonths:   runway,
 		Currency:       cur,
 		WindowDays:     windowDays,
-		Assumptions:    []string{"expense sign normalized via classification; burn extrapolated to 30-day month"},
+		Assumptions:    []string{"expenses counted as Sure reports count them (no split parents, excluded rows or transfers); burn extrapolated to 30-day month"},
 	}, nil
 }

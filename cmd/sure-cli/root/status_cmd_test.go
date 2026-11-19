@@ -1,13 +1,17 @@
 package root
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/we-promise/sure-cli/internal/models"
+)
 
 func TestAmountFromAPIOK_CentsPreferredOverFormatted(t *testing.T) {
 	// Cents wins even when a formatted string is also present, so a CLI
 	// upgrade that starts sending *_cents doesn't silently round through the
 	// string path.
 	m := map[string]any{
-		"balance":       "€999.99",  // would parse to 999.99
+		"balance":       "€999.99",      // would parse to 999.99
 		"balance_cents": float64(12345), // wins → 123.45
 	}
 	got, ok := amountFromAPIOK(m, "balance", "balance_cents")
@@ -25,11 +29,11 @@ func TestAmountFromAPIOK_CentsTypes(t *testing.T) {
 		cents any
 		want  float64
 	}{
-		{"float64", float64(12345), 123.45},                       // JSON numbers decode as float64
-		{"int", int(12345), 123.45},                               // hand-built map literal in tests
-		{"int64", int64(12345), 123.45},                           // some HTTP libs use int64
-		{"string-numeric", "12345", 123.45},                       // some APIs emit cents as strings
-		{"string-negative", "-2050", -20.50},                      // signed cents
+		{"float64", float64(12345), 123.45},  // JSON numbers decode as float64
+		{"int", int(12345), 123.45},          // hand-built map literal in tests
+		{"int64", int64(12345), 123.45},      // some HTTP libs use int64
+		{"string-numeric", "12345", 123.45},  // some APIs emit cents as strings
+		{"string-negative", "-2050", -20.50}, // signed cents
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -75,6 +79,18 @@ func TestAmountFromAPI_ErrorWhenMissing(t *testing.T) {
 	// The non-OK wrapper must surface an error rather than silently returning 0.
 	if _, err := amountFromAPI(map[string]any{}, "balance", "balance_cents"); err == nil {
 		t.Fatal("expected error when both fields are absent")
+	}
+}
+
+func TestMonthlyTotals_UsesSignedAmounts(t *testing.T) {
+	txs := []models.Transaction{
+		{Classification: "expense", Amount: -12.25},
+		{Classification: "expense", Amount: -0.75},
+		{Classification: "income", Amount: 2000.5},
+	}
+	spend, income := monthlyTotals(txs)
+	if spend != 13 || income != 2000.5 {
+		t.Fatalf("spend=%v income=%v, want 13 and 2000.5", spend, income)
 	}
 }
 
