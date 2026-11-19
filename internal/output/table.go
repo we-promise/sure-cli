@@ -59,49 +59,47 @@ func PrintTable(env Envelope) bool {
 		return true
 	}
 
-	// Holdings list
+	// Holdings list (Sure api/v1/holdings/_holding)
 	if holdings, ok := m["holdings"].([]any); ok {
 		tw := table.NewWriter()
 		tw.SetOutputMirror(os.Stdout)
-		tw.AppendHeader(table.Row{"id", "name", "symbol", "quantity", "value", "account"})
+		tw.AppendHeader(table.Row{"id", "date", "ticker", "security", "qty", "price", "amount", "avg_cost", "lots", "account"})
 		for _, h := range holdings {
 			rowm, _ := h.(map[string]any)
-			acct := ""
-			if am, ok := rowm["account"].(map[string]any); ok {
-				acct = fmt.Sprint(am["name"])
-			}
 			tw.AppendRow(table.Row{
-				fmt.Sprint(rowm["id"]),
-				fmt.Sprint(rowm["name"]),
-				fmt.Sprint(rowm["symbol"]),
-				fmt.Sprint(rowm["quantity"]),
-				fmt.Sprint(rowm["value"]),
-				acct,
+				cell(rowm["id"]),
+				cell(rowm["date"]),
+				nestedCell(rowm, "security", "ticker"),
+				nestedCell(rowm, "security", "name"),
+				cell(rowm["qty"]),
+				cell(rowm["price"]),
+				cell(rowm["amount"]),
+				cell(rowm["avg_cost"]),
+				lotsCell(rowm["lots"]),
+				nestedCell(rowm, "account", "name"),
 			})
 		}
 		tw.Render()
 		return true
 	}
 
-	// Trades list
+	// Trades list (Sure api/v1/trades/_trade)
 	if trades, ok := m["trades"].([]any); ok {
 		tw := table.NewWriter()
 		tw.SetOutputMirror(os.Stdout)
-		tw.AppendHeader(table.Row{"id", "date", "symbol", "side", "quantity", "price", "account"})
+		tw.AppendHeader(table.Row{"id", "date", "ticker", "activity", "qty", "price", "amount", "lot_source", "account"})
 		for _, tr := range trades {
 			rowm, _ := tr.(map[string]any)
-			acct := ""
-			if am, ok := rowm["account"].(map[string]any); ok {
-				acct = fmt.Sprint(am["name"])
-			}
 			tw.AppendRow(table.Row{
-				fmt.Sprint(rowm["id"]),
-				fmt.Sprint(rowm["date"]),
-				fmt.Sprint(rowm["symbol"]),
-				fmt.Sprint(rowm["side"]),
-				fmt.Sprint(rowm["quantity"]),
-				fmt.Sprint(rowm["price"]),
-				acct,
+				cell(rowm["id"]),
+				cell(rowm["date"]),
+				nestedCell(rowm, "security", "ticker"),
+				cell(rowm["investment_activity_label"]),
+				cell(rowm["qty"]),
+				cell(rowm["price"]),
+				cell(rowm["amount"]),
+				cell(rowm["lot_source_trade_id"]),
+				nestedCell(rowm, "account", "name"),
 			})
 		}
 		tw.Render()
@@ -109,4 +107,29 @@ func PrintTable(env Envelope) bool {
 	}
 
 	return false
+}
+
+// cell renders a JSON value, leaving null blank instead of "<nil>".
+func cell(v any) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprint(v)
+}
+
+// nestedCell renders m[key][field] when m[key] is an object, else blank.
+func nestedCell(m map[string]any, key, field string) string {
+	if nested, ok := m[key].(map[string]any); ok {
+		return cell(nested[field])
+	}
+	return ""
+}
+
+// lotsCell shows how many open lots a holding row carries. Sure sends lots
+// only on a position's latest row and null elsewhere, which stays blank.
+func lotsCell(v any) string {
+	if lots, ok := v.([]any); ok {
+		return fmt.Sprint(len(lots))
+	}
+	return ""
 }
