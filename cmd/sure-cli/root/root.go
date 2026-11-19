@@ -48,10 +48,13 @@ func New() *cobra.Command {
 	cmd.AddCommand(newTransactionsCmd())
 	cmd.AddCommand(newImportsCmd())
 	cmd.AddCommand(newImportSessionsCmd())
+	cmd.AddCommand(newAccountStatementsCmd())
 	cmd.AddCommand(newFamilyExportsCmd())
 	cmd.AddCommand(newRulesCmd())
 	cmd.AddCommand(newRuleRunsCmd())
 	cmd.AddCommand(newBalanceSheetCmd())
+	cmd.AddCommand(newCashFlowCmd())
+	cmd.AddCommand(newSpendingVsNormalCmd())
 	cmd.AddCommand(newBalancesCmd())
 	cmd.AddCommand(newBudgetsCmd())
 	cmd.AddCommand(newBudgetCategoriesCmd())
@@ -76,15 +79,7 @@ func New() *cobra.Command {
 	cmd.AddCommand(newProviderConnectionsCmd())
 	cmd.AddCommand(newChatsCmd())
 	cmd.AddCommand(newAuthCmd())
-	cmd.AddCommand(&cobra.Command{
-		Use:   "version",
-		Short: "Print version information",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("sure-cli %s\n", version)
-			fmt.Printf("  commit: %s\n", commit)
-			fmt.Printf("  built:  %s\n", date)
-		},
-	})
+	cmd.AddCommand(newVersionCmd())
 
 	return cmd
 }
