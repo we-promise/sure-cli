@@ -4,23 +4,24 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/we-promise/sure-cli/internal/api"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
+// txUpdateOpts has no currency: Sure's entry_params_for_update ignores it.
 type txUpdateOpts struct {
-	ID         string
-	Date       string
-	Amount     float64
-	Nature     string
-	Name       string
-	Notes      string
-	Currency   string
-	CategoryID string
-	Apply      bool
+	ID           string
+	Date         string
+	Amount       string
+	Nature       string
+	Name         string
+	Notes        string
+	CategoryID   string
+	MerchantID   string
+	TagIDs       []string
+	ClearTags    bool
+	UserModified bool
+	Apply        bool
 }
 
 func newTransactionsUpdateCmd() *cobra.Command {
@@ -33,84 +34,58 @@ func newTransactionsUpdateCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			o.ID = args[0]
 			payload, err := buildTxUpdatePayload(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-				return
-			}
-
-			path := fmt.Sprintf("/api/v1/transactions/%s", url.PathEscape(o.ID))
-			if !o.Apply {
-				_ = output.Print(format, output.Envelope{Data: map[string]any{
-					"dry_run": true,
-					"request": map[string]any{
-						"method": "PATCH",
-						"path":   path,
-						"body":   payload,
-					},
-				}})
-				return
-			}
-
-			client := api.New()
-			var res any
-			r, err := client.Patch(path, payload, &res)
-			respond(r, err, res)
+			failValidation(err)
+			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/transactions/%s", url.PathEscape(o.ID)), payload)
 		},
 	}
 
 	cmd.Flags().StringVar(&o.Date, "date", "", "date YYYY-MM-DD")
-	cmd.Flags().Float64Var(&o.Amount, "amount", 0, "amount (absolute). Sign determined by --nature; omit to keep")
-	cmd.Flags().StringVar(&o.Nature, "nature", "", "expense|income (required if --amount is set)")
+	addTxAmountFlags(cmd, &o.Amount, &o.Nature, "")
 	cmd.Flags().StringVar(&o.Name, "name", "", "name/description")
 	cmd.Flags().StringVar(&o.Notes, "notes", "", "notes")
-	cmd.Flags().StringVar(&o.Currency, "currency", "", "currency")
-	cmd.Flags().StringVar(&o.CategoryID, "category-id", "", "category ID")
+	addTxReferenceFlags(cmd, &o.CategoryID, &o.MerchantID, &o.TagIDs, &o.UserModified)
+	cmd.Flags().BoolVar(&o.ClearTags, "clear-tags", false, "remove every tag (without --tag-id or --clear-tags the tags are kept)")
 	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the update (otherwise dry-run)")
 
 	return cmd
 }
 
 func buildTxUpdatePayload(o txUpdateOpts) (map[string]any, error) {
-	// require at least one field
-	if o.Date == "" && o.Amount == 0 && o.Name == "" && o.Notes == "" && o.Currency == "" && o.CategoryID == "" {
-		return nil, errors.New("no fields provided to update")
+	if o.ClearTags && len(o.TagIDs) > 0 {
+		return nil, errors.New("use either --tag-id or --clear-tags, not both")
 	}
 	if o.Date != "" {
-		if _, err := time.Parse("2006-01-02", o.Date); err != nil {
-			return nil, fmt.Errorf("invalid date (expected YYYY-MM-DD): %w", err)
+		if err := validateTxDate(o.Date); err != nil {
+			return nil, err
 		}
 	}
-	if o.Amount != 0 {
+	if o.Amount != "" {
+		if err := validateTxAmount(o.Amount); err != nil {
+			return nil, err
+		}
 		if o.Nature == "" {
 			return nil, errors.New("nature is required when amount is provided")
 		}
-		switch o.Nature {
-		case "income", "expense", "inflow", "outflow":
-			// ok
-		default:
-			return nil, errors.New("nature must be one of: income|expense|inflow|outflow")
+		if err := validateTxNature(o.Nature); err != nil {
+			return nil, err
 		}
 	}
 
 	tx := map[string]any{}
-	if o.Date != "" {
-		tx["date"] = o.Date
-	}
-	if o.Amount != 0 {
-		tx["amount"] = fmt.Sprintf("%.2f", o.Amount)
+	addAny(tx, "date", o.Date)
+	if o.Amount != "" {
+		tx["amount"] = o.Amount
 		tx["nature"] = o.Nature
 	}
-	if o.Name != "" {
-		tx["name"] = o.Name
+	addAny(tx, "name", o.Name)
+	addAny(tx, "notes", o.Notes)
+	addTxReferenceFields(tx, o.CategoryID, o.MerchantID, o.TagIDs, o.UserModified)
+	if o.ClearTags {
+		// An explicit empty array clears tags; an absent key keeps them.
+		tx["tag_ids"] = []string{}
 	}
-	if o.Notes != "" {
-		tx["notes"] = o.Notes
-	}
-	if o.Currency != "" {
-		tx["currency"] = o.Currency
-	}
-	if o.CategoryID != "" {
-		tx["category_id"] = o.CategoryID
+	if len(tx) == 0 {
+		return nil, errors.New("no fields provided to update")
 	}
 
 	return map[string]any{"transaction": tx}, nil
