@@ -136,7 +136,7 @@ sure-cli insights leaks --days 120
 
 # Plan (client-side budget/runway/forecast)
 sure-cli plan budget --month 2026-02
-sure-cli plan runway --account-id <id> --days 90
+sure-cli plan runway --account-id <id> --days 90   # balance from balance_cents; burn counts only expenses in the account currency
 sure-cli plan forecast --days 30 [--daily]
 
 # Propose automations

@@ -2,12 +2,13 @@ package root
 
 import (
 	"fmt"
+	"net/url"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/we-promise/sure-cli/internal/plan"
-	"github.com/spf13/cobra"
 )
 
 func newPlanCmd() *cobra.Command {
@@ -100,22 +101,15 @@ func newPlanRunwayCmd() *cobra.Command {
 			}
 			client := api.New()
 
-			// Find account balance by listing accounts (Sure API quirks: show may 404)
-			var res map[string]any
-			r, err := client.Get("/api/v1/accounts", &res)
+			// Fetch the account directly; include_disabled so a disabled
+			// account can still be planned against when asked for by id.
+			var acc map[string]any
+			path := pathWithQuery("/api/v1/accounts/"+url.PathEscape(accountID), api.AccountsQuery(true))
+			r, err := client.Get(path, &acc)
 			checkResponse(r, err)
-			bal := ""
-			if arr, ok := res["accounts"].([]any); ok {
-				for _, it := range arr {
-					m, _ := it.(map[string]any)
-					if fmt.Sprint(m["id"]) == accountID {
-						bal = fmt.Sprint(m["balance"])
-						break
-					}
-				}
-			}
-			if bal == "" {
-				output.Fail("account_not_found", "account not found in accounts list", map[string]any{"account_id": accountID})
+			bal, ok := amountFromAPIOK(acc, "balance", "balance_cents")
+			if !ok {
+				output.Fail("account_balance_missing", "account has no usable balance", map[string]any{"account_id": accountID})
 				return
 			}
 
@@ -131,11 +125,7 @@ func newPlanRunwayCmd() *cobra.Command {
 				return
 			}
 
-			out, err := plan.ComputeRunway(bal, txs, windowDays)
-			if err != nil {
-				output.Fail("compute_failed", err.Error(), nil)
-				return
-			}
+			out := plan.ComputeRunway(bal, fmt.Sprint(acc["currency"]), txs, windowDays)
 			_ = output.Print(format, output.Envelope{Data: out, Meta: &output.Meta{Schema: "docs/schemas/v1/plan_runway.schema.json", Status: 200}})
 		},
 	}
