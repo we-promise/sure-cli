@@ -88,17 +88,26 @@ sure-cli transactions list --start-date 2026-01-01 --end-date 2026-02-01 --per-p
 sure-cli transactions show <transaction_id>
 
 # Safe writes (default is --dry-run)
-sure-cli transactions create --amount "-12.34" --date 2026-02-04 --name "Coffee" --account-id <id>
-sure-cli transactions create --amount "-12.34" --date 2026-02-04 --name "Coffee" --account-id <id> --apply
+# --amount is a positive decimal sent exactly as typed (Sure stores 4 decimals);
+# --nature (expense|income|outflow|inflow) gives the sign.
+sure-cli transactions create --amount 12.34 --nature expense --date 2026-02-04 --name "Coffee" --account-id <id>
+sure-cli transactions create --amount 12.34 --date 2026-02-04 --name "Coffee" --account-id <id> \
+  --category-id <category_id> --merchant-id <merchant_id> --tag-id <tag_id> --tag-id <tag_id> --apply
+# Idempotent create: a retry with the same --external-id (+ --source, default "api") returns the existing row
+sure-cli transactions create --amount 12.34 --date 2026-02-04 --name "Coffee" --account-id <id> \
+  --external-id bank-ref-123 --source my-importer --user-modified --apply
 
 sure-cli transactions update <tx_id> --name "Coffee (fixed)"
+sure-cli transactions update <tx_id> --merchant-id <merchant_id> --tag-id <tag_id> --apply
+sure-cli transactions update <tx_id> --clear-tags --apply   # without --tag-id/--clear-tags tags are kept
 sure-cli transactions delete <tx_id> --apply
 
 # Imports and family exports
 sure-cli imports list --type TransactionImport
 sure-cli imports rows <import_id>
 sure-cli imports create --file data.csv --date-col-label Date --amount-col-label Amount --name-col-label Name
-sure-cli imports create --file backup.ndjson --type SureImport --publish --apply
+sure-cli imports create --file bank-export.csv --rows-to-skip 3 --date-col-label Date --amount-col-label Amount
+sure-cli imports create --file backup.ndjson --publish --apply   # .ndjson/.json defaults to --type SureImport
 
 # Chunked Sure NDJSON import (create -> add-chunk... -> publish)
 sure-cli import-sessions create --expected-chunks 2 --apply
@@ -115,11 +124,14 @@ sure-cli categories list --roots-only
 sure-cli categories show <category_id>
 sure-cli categories create --name Food --color '#3b82f6'
 sure-cli categories create --name Food --color '#3b82f6' --icon utensils --parent-id <parent_id> --apply
-sure-cli merchants list
+sure-cli merchants list   # every merchant in one array (the endpoint has no pagination)
+# CSV columns: name (required), color, website_url; existing names are skipped
+sure-cli merchants import --file merchants.csv
+sure-cli merchants import --file merchants.csv --apply
 sure-cli tags create --name Travel --color '#3b82f6'
 sure-cli tags create --name Travel --color '#3b82f6' --apply
 sure-cli rules list --active true
-sure-cli rule-runs list --status success
+sure-cli rule-runs list --status success --execution-type immediate   # manual|scheduled|immediate
 
 # Budgets
 sure-cli budgets list --start-date 2026-01-01
@@ -173,6 +185,9 @@ sure-cli trades create --account-id <account_id> --date 2026-05-01 --type buy --
 sure-cli recurring-transactions list --status active
 sure-cli recurring-transactions create --name Rent --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01
 sure-cli recurring-transactions create --name Rent --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01 --apply
+# --status accepts active|inactive (the API writes only these)
+sure-cli recurring-transactions update <id> --status inactive --autopay true \
+  --payment-url https://example.com/pay --notes "paid by direct debit" --apply
 
 # Account reset and deletion
 sure-cli users reset
@@ -253,14 +268,19 @@ Required device payload fields are stored under `auth.device.*` in config (defau
 - JSON Schemas: `docs/schemas/v1/`
 - Smoke test: `tools/smoke-oauth.sh`
 
-## API Sign Convention
+## Amounts and Totals
 
-Sure API returns amounts with an accounting-style sign that may look inverted:
+Sure stores transaction amounts in the entry convention: positive is an outflow (expense), negative an inflow (income). The `amount` field is a localized display string rounded to the currency's precision (`"-€2,000.00"`).
 
-- `classification=income` can have **negative** `amount` string
-- `classification=expense` can have **positive** `amount` string
+`status`, `plan`, `insights`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against a server without `amount_decimal` they fall back to parsing `amount` and take the sign from `classification`.
 
-**Rule:** treat `classification` as ground truth, not the sign. `sure-cli` normalizes this internally for all insights/heuristics.
+Totals count what Sure's own income statement counts. These rows are skipped:
+
+- `split_parent: true`: the split's children carry the amount, so counting the parent would count it twice.
+- `excluded: true`: the user left the row out of budgets and reports.
+- `kind` `funds_movement`, `cc_payment` or `one_time` (Sure's `BUDGET_EXCLUDED_KINDS`): transfers between your own accounts, card payments and one-offs.
+
+`export transactions` writes every row. Its `amount` column is the exact signed decimal; `kind`, `excluded` and `split_parent` columns tell you which rows to leave out of a sum.
 
 ## Heuristics Configuration
 
