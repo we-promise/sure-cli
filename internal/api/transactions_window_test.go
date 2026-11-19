@@ -93,7 +93,7 @@ func TestFetchAllTransactionsWindow_DecodesEveryRow(t *testing.T) {
 		ID: "t-exact", EntryID: "e-exact", Name: "Coffee beans", Classification: "expense", Kind: "standard",
 		Amount: -12.3456, AmountDecimal: "-12.3456", AmountText: "€12.35", Currency: "EUR",
 		Date: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC), AccountName: "Main",
-		MerchantName: "Roaster", CategoryName: "Food", CategoryID: "c1",
+		MerchantID: "m1", MerchantName: "Roaster", CategoryName: "Food", CategoryID: "c1",
 		ExternalID: "bank-1", Source: "api", UserModified: true,
 	}
 	if txs[0] != wantExact {

@@ -38,13 +38,6 @@ func Init(cfgFile string) error {
 	viper.SetDefault("auth.device.os_version", "unknown")
 	viper.SetDefault("auth.device.app_version", "sure-cli")
 
-	// Heuristics config (insights)
-	viper.SetDefault("heuristics.leaks.min_count", 3)
-	viper.SetDefault("heuristics.leaks.min_total", 15.0)
-	viper.SetDefault("heuristics.leaks.max_avg", 10.0)
-	viper.SetDefault("heuristics.rules.min_consistency", 0.7)
-	viper.SetDefault("heuristics.rules.min_occurrences", 2)
-
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
 	} else {

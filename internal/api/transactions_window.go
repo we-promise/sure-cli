@@ -90,6 +90,7 @@ type apiTransaction struct {
 		Name string `json:"name"`
 	} `json:"category"`
 	Merchant *struct {
+		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"merchant"`
 }
@@ -126,6 +127,7 @@ func (a apiTransaction) toModel() (models.Transaction, error) {
 		tx.CategoryID = a.Category.ID
 	}
 	if a.Merchant != nil {
+		tx.MerchantID = a.Merchant.ID
 		tx.MerchantName = a.Merchant.Name
 	}
 	return tx, nil

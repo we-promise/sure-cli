@@ -8,20 +8,25 @@
     "window": {
       "type": "object",
       "additionalProperties": false,
+      "description": "Dates are inclusive; days counts both ends.",
       "properties": {
         "start": {"type": "string"},
-        "end": {"type": "string"}
+        "end": {"type": "string"},
+        "days": {"type": "integer", "minimum": 1}
       },
-      "required": ["start", "end"]
+      "required": ["start", "end", "days"]
     },
     "params": {
       "type": "object",
       "additionalProperties": false,
+      "description": "Amounts are major units of each candidate's currency.",
       "properties": {
         "min_count": {"type": "integer"},
         "min_total": {"type": "number"},
-        "max_avg": {"type": "number"}
-      }
+        "max_avg": {"type": "number"},
+        "currency": {"type": "string"}
+      },
+      "required": ["min_count", "min_total", "max_avg"]
     },
     "candidates": {
       "type": "array",
@@ -29,6 +34,9 @@
         "type": "object",
         "properties": {
           "name": {"type": "string"},
+          "merchant_id": {"type": "string"},
+          "grouped_by": {"enum": ["merchant", "name"]},
+          "currency": {"type": "string"},
           "count": {"type": "integer"},
           "total_amount": {"type": "number"},
           "avg_amount": {"type": "number"},
@@ -38,9 +46,9 @@
           "reason": {"type": "string"},
           "suggested_action": {"type": "string"}
         },
-        "required": ["name", "count", "total_amount", "confidence"]
+        "required": ["name", "grouped_by", "currency", "count", "total_amount", "confidence"]
       }
     }
   },
-  "required": ["window", "candidates"]
+  "required": ["window", "params", "candidates"]
 }

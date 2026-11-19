@@ -30,12 +30,5 @@ func newConfigCmd() *cobra.Command {
 			_ = output.Print(format, output.Envelope{Data: map[string]any{"ok": true}})
 		},
 	})
-	cmd.AddCommand(&cobra.Command{
-		Use:   "heuristics",
-		Short: "Show current heuristics configuration",
-		Run: func(cmd *cobra.Command, args []string) {
-			_ = output.Print(format, output.Envelope{Data: config.GetHeuristics()})
-		},
-	})
 	return cmd
 }

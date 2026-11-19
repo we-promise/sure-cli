@@ -159,7 +159,7 @@ sure-cli insights ack <insight_id>            # dry-run
 sure-cli insights ack <insight_id> --apply    # read_write scope; guests refused; idempotent
 
 # Analyze: client-side heuristics Sure does not compute
-sure-cli analyze leaks --months 3
+sure-cli analyze leaks --months 3            # or --start-date/--end-date; --currency to keep one
 sure-cli analyze runway --account-id <id> --days 90   # balance from balance_cents; burn counts only expenses in the account currency
 
 # Propose automations
@@ -336,24 +336,15 @@ Totals count what Sure's own income statement counts. These rows are skipped:
 
 `export transactions` writes every row. Its `amount` column is the exact signed decimal; `kind`, `excluded` and `split_parent` columns tell you which rows to leave out of a sum.
 
-## Heuristics Configuration
+## Heuristics
 
-All insight heuristics are configurable via `~/.config/sure-cli/config.yaml`:
+`analyze leaks` groups the window's expenses by the merchant Sure matched (by id, else by name), falling back to the transaction name, and keeps one group per currency: amounts in different currencies are never added. Thresholds are flags, in major units of each group's currency:
 
-```yaml
-heuristics:
-  leaks:
-    min_count: 3
-    min_total: 15.0
-    max_avg: 10.0
-  rules:
-    min_consistency: 0.7
-    min_occurrences: 2
-```
-
-Inspect current config:
 ```bash
-sure-cli config heuristics      # show all heuristic settings
+sure-cli analyze leaks --months 3 --min-count 3 --min-total 15 --max-avg 10
+sure-cli analyze leaks --start-date 2026-01-01 --end-date 2026-03-31 --currency EUR
 ```
+
+The output echoes the window (`start`, `end`, inclusive, and `days`) and the thresholds used.
 
 See `docs/ROADMAP.md` for planned features.
