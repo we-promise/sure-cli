@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/we-promise/sure-cli/internal/config"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 )
 
 type Client struct {
@@ -190,9 +191,32 @@ func (c *Client) Delete(path string, out any) (*resty.Response, error) {
 	return req.Delete(path)
 }
 
+// GetToFile streams a GET response body to outputPath. The body lands in a
+// temp file next to outputPath and is renamed into place only on a 2xx, so
+// an error body (e.g. 409 export_not_ready) never replaces or masquerades as
+// the downloaded file; it is returned as a classified *errors.CLIError.
 func (c *Client) GetToFile(path, outputPath string) (*resty.Response, error) {
 	if err := c.ensureFreshToken(); err != nil {
 		return nil, err
 	}
-	return c.http.R().SetOutput(outputPath).Get(path)
+	tmp, err := os.CreateTemp(filepath.Dir(outputPath), "."+filepath.Base(outputPath)+".part-*")
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeExportFailed, "cannot create output file: "+err.Error(), err)
+	}
+	tmpPath := tmp.Name()
+	_ = tmp.Close()
+	defer os.Remove(tmpPath) // no-op once renamed
+
+	r, err := c.http.R().SetOutput(tmpPath).Get(path)
+	if err != nil {
+		return r, err
+	}
+	if r.StatusCode() >= 400 {
+		body, _ := os.ReadFile(tmpPath)
+		return r, errs.ClassifyHTTPError(r.StatusCode(), body, r.Header())
+	}
+	if err := os.Rename(tmpPath, outputPath); err != nil {
+		return r, errs.Wrap(errs.CodeExportFailed, "cannot write output file: "+err.Error(), err)
+	}
+	return r, nil
 }
