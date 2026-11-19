@@ -158,11 +158,9 @@ sure-cli insights list
 sure-cli insights ack <insight_id>            # dry-run
 sure-cli insights ack <insight_id> --apply    # read_write scope; guests refused; idempotent
 
-# Phase 4 (read-only heuristics)
-sure-cli insights leaks --days 120
-
-# Plan (client-side runway)
-sure-cli plan runway --account-id <id> --days 90   # balance from balance_cents; burn counts only expenses in the account currency
+# Analyze: client-side heuristics Sure does not compute
+sure-cli analyze leaks --months 3
+sure-cli analyze runway --account-id <id> --days 90   # balance from balance_cents; burn counts only expenses in the account currency
 
 # Propose automations
 sure-cli propose rules --months 3
@@ -328,7 +326,7 @@ Required device payload fields are stored under `auth.device.*` in config (defau
 
 Sure stores transaction amounts in the entry convention: positive is an outflow (expense), negative an inflow (income). The `amount` field is a localized display string rounded to the currency's precision (`"-€2,000.00"`).
 
-`status`, `plan`, `insights`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against a server without `amount_decimal` they fall back to parsing `amount` and take the sign from `classification`.
+`status`, `analyze`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against a server without `amount_decimal` they fall back to parsing `amount` and take the sign from `classification`.
 
 Totals count what Sure's own income statement counts. These rows are skipped:
 

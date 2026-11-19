@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/we-promise/sure-cli/docs/schemas/v1/plan_runway.schema.json",
-  "title": "sure-cli plan runway v1",
+  "$id": "https://github.com/we-promise/sure-cli/docs/schemas/v1/analyze_runway.schema.json",
+  "title": "sure-cli analyze runway v1",
   "type": "object",
   "additionalProperties": false,
   "properties": {

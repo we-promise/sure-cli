@@ -1,12 +1,14 @@
-package insights
+package analyze
 
 import (
 	"testing"
 	"time"
+
+	"github.com/we-promise/sure-cli/internal/models"
 )
 
 func TestDetectLeaks_SmallFrequent(t *testing.T) {
-	txs := []Transaction{
+	txs := []models.Transaction{
 		{ID: "1", Name: "Coffee", Classification: "expense", Amount: -2.50, Date: mustDate("2026-01-01")},
 		{ID: "2", Name: "Coffee", Classification: "expense", Amount: -2.75, Date: mustDate("2026-01-02")},
 		{ID: "3", Name: "Coffee", Classification: "expense", Amount: -2.25, Date: mustDate("2026-01-03")},

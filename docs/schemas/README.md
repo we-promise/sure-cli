@@ -16,10 +16,10 @@ Agent-first contracts for `sure-cli` outputs.
 
 ### Insights
 - `insights_list.schema.json` — `insights list` (Sure's server feed)
-- `insights_leaks.schema.json` — `insights leaks`
 
-### Plan
-- `plan_runway.schema.json` — `plan runway`
+### Analyze
+- `analyze_leaks.schema.json` — `analyze leaks`
+- `analyze_runway.schema.json` — `analyze runway`
 
 ### Automation
 - `propose_rules.schema.json` — `propose rules`

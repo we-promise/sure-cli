@@ -1,8 +1,12 @@
-package insights
+// Package analyze holds client-side heuristics over Sure data that Sure does
+// not compute itself.
+package analyze
 
 import (
 	"math"
 	"sort"
+
+	"github.com/we-promise/sure-cli/internal/models"
 )
 
 type LeakCandidate struct {
@@ -27,7 +31,7 @@ type LeakCandidate struct {
 // - average <= maxAvg (focus on small but frequent)
 //
 // NOTE: Defaults are intentionally conservative to avoid noise.
-func DetectLeaks(txs []Transaction, minCount int, minTotal float64, maxAvg float64) []LeakCandidate {
+func DetectLeaks(txs []models.Transaction, minCount int, minTotal float64, maxAvg float64) []LeakCandidate {
 	if minCount <= 0 {
 		minCount = 3
 	}
@@ -38,7 +42,7 @@ func DetectLeaks(txs []Transaction, minCount int, minTotal float64, maxAvg float
 		maxAvg = 10
 	}
 
-	byName := map[string][]Transaction{}
+	byName := map[string][]models.Transaction{}
 	for _, tx := range txs {
 		if tx.Classification != "expense" {
 			continue

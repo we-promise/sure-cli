@@ -1,4 +1,4 @@
-package plan
+package analyze
 
 import (
 	"testing"

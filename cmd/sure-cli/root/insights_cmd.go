@@ -25,7 +25,6 @@ func newInsightsCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newInsightsListCmd())
 	cmd.AddCommand(newInsightsAckCmd())
-	cmd.AddCommand(newInsightsLeaksCmd())
 	return cmd
 }
 

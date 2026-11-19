@@ -12,7 +12,7 @@
     "candidates": []
   },
   "meta": {
-    "schema": "docs/schemas/v1/insights_leaks.schema.json",
+    "schema": "docs/schemas/v1/analyze_leaks.schema.json",
     "status": 200
   }
 }
