@@ -34,14 +34,22 @@ func New() *cobra.Command {
 		Use:   "sure-cli",
 		Short: "Agent-first CLI for Sure (self-hosted personal finance)",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return config.Init(cfgFile)
+			if err := config.Init(cfgFile); err != nil {
+				return err
+			}
+			if ce := config.Validate(); ce != nil {
+				fail(ce)
+			}
+			return nil
 		},
 	}
 
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.config/sure-cli/config.yaml)")
 	cmd.PersistentFlags().StringVar(&format, "format", "json", "output format: json|table (table for list commands that have one; others print JSON)")
-	cmd.PersistentFlags().Duration("timeout", config.DefaultTimeout, "limit for one API call, retries included; for downloads, for each pause in the transfer (0 disables)")
+	cmd.PersistentFlags().String("timeout", config.DefaultTimeout.String(), "limit for one API call, retries included; for downloads, for each pause in the transfer: a duration (90s, 2m) or seconds (0 disables)")
 	_ = viper.BindPFlag("timeout", cmd.PersistentFlags().Lookup("timeout"))
+	cmd.PersistentFlags().Bool("allow-insecure-http", false, "allow a plain http:// api_url on a host other than this machine (sends credentials unencrypted)")
+	_ = viper.BindPFlag(config.AllowInsecureHTTP, cmd.PersistentFlags().Lookup("allow-insecure-http"))
 
 	cmd.AddCommand(newConfigCmd())
 	cmd.AddCommand(newLoginCmd())

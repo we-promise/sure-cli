@@ -17,7 +17,7 @@ Agent-first CLI for **Sure** (we-promise/sure) — self-hosted personal finance 
 - **Unknown subcommands** exit 1 with `error.code` `unknown_command` and cobra's `suggestions`. For a command an earlier version had, `error.details.hint` names its replacement (see [CHANGELOG.md](CHANGELOG.md))
 - **`invalid_response`** means Sure (or something in front of it, such as a captive portal or an SSO proxy answering with HTML) returned a 2xx the CLI cannot read, a body over 64 MiB, a pagination block past 1000 pages, or a download shorter than the export's `byte_size`. `details.status` tells whether a write was accepted (e.g. `201`), so do not blindly repeat a POST that failed this way
 - **Retries**: only GET/HEAD/PUT/OPTIONS are retried, on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s. POST/PATCH/DELETE are never retried, since Sure may have committed the change before the answer was lost. A 2xx body that cannot be decoded is never retried
-- **Timeouts**: `--timeout` (default `30s`, or the `timeout` config key) bounds each API call, retries included. For `family-exports download` it bounds the wait for the response and any pause in the transfer, so a large export that keeps flowing is not cut off; Ctrl-C cancels it and removes the partial file
+- **Timeouts**: `--timeout` (default `30s`, or the `timeout` config key) bounds each API call, retries included. It takes a duration (`90s`, `2m`) or a number of seconds (`90`); `0` disables it, and a negative or unreadable value fails with `validation_failed`. For `family-exports download` it bounds the wait for the response and any pause in the transfer, so a large export that keeps flowing is not cut off; Ctrl-C cancels it and removes the partial file
 - **Write operations are safe by default**: `--dry-run` is the default; use `--apply` to execute
 - **Schemas are versioned** under `docs/schemas/v1/`. Changes that break scripts, schema renames included, are listed in [CHANGELOG.md](CHANGELOG.md)
 
@@ -75,7 +75,7 @@ go install github.com/we-promise/sure-cli@latest
 sure-cli --help
 
 # Configure
-sure-cli config set api_url http://localhost:3000
+sure-cli config set api_url https://sure.example.com
 
 # Auth
 sure-cli config set auth.mode api_key
@@ -336,7 +336,11 @@ If the account has two-factor authentication, login fails with `error.code=mfa_r
 
 Required device payload fields are stored under `auth.device.*` in config (defaults are provided; `device_type` accepts `ios`, `android` or `web`). Sure revokes a device's previous tokens on every login, so the first login stores a random per-install `auth.device.device_id`; logging in on another machine no longer logs this one out. A custom `device_id` you set is kept.
 
-The config file is written atomically with owner-only permissions (0600), and only the keys the command changed are merged into the file as it is on disk, so concurrent commands do not undo each other's token rotation. Before an automatic token refresh the CLI checks that the config file is writable and fails with `config_save_failed` otherwise, since Sure revokes the old refresh token on rotation; if saving still fails after Sure rotated, `details.refresh_token` carries the new token to put back with `sure-cli config set auth.refresh_token <token>`. When two commands refresh at once, the one Sure rejects picks up the tokens the other saved.
+The config file is written atomically with owner-only permissions (0600); a file you made stricter (e.g. 0400) keeps its mode, and a looser one is tightened to 0600. Only the keys the command changed are merged into the file as it is on disk, under a lock file (`.config.yaml.lock` next to it), so concurrent commands do not undo each other's changes or token rotation. A symlinked config is written through to its target, even one that does not exist yet. The CLI refuses to replace a config file another user owns, so `sudo sure-cli ...` cannot hand yours to root. Temp files a crashed save left behind are removed on the next run.
+
+Before `login`, `refresh` or an automatic token refresh the CLI checks that the config file is writable and fails with `config_save_failed` otherwise, since Sure revokes the old tokens when it issues new ones. If saving still fails after that, the new tokens are written to a new owner-only file in the user cache directory (`~/.cache/sure-cli/` on Linux, `~/Library/Caches/sure-cli/` on macOS, `%LocalAppData%\sure-cli\` on Windows) and `details.rescue_file` gives its path; copy `auth.token` and `auth.refresh_token` from it with `sure-cli config set`, then delete it. The tokens themselves never appear in the output. When two commands refresh at once, the one Sure rejects picks up the tokens the other saved.
+
+`api_url` must be `https://`, except for this machine (`localhost`, `*.localhost`, `127.0.0.0/8`, `::1`). Any other `http://` URL fails with `validation_failed` before a request is sent, because tokens and API keys would cross the network unencrypted; pass `--allow-insecure-http` or set `allow_insecure_http: true` to accept that, e.g. on a trusted LAN. `config` commands skip this check and the timeout check, so they can repair either setting.
 
 ## Docs
 

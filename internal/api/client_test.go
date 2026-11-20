@@ -461,10 +461,13 @@ func TestClient_RefreshNotAttemptedWhenConfigIsNotWritable(t *testing.T) {
 	}
 }
 
-func TestClient_RefreshSaveFailureReturnsTheRotatedRefreshToken(t *testing.T) {
+func TestClient_RefreshSaveFailureRescuesTheRotatedPair(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("needs POSIX permissions enforced")
 	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
 	dir := t.TempDir()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The directory turns read-only between the writability check and
@@ -482,8 +485,9 @@ func TestClient_RefreshSaveFailureReturnsTheRotatedRefreshToken(t *testing.T) {
 	if ce == nil || ce.Code != errs.CodeConfigSaveFailed {
 		t.Fatalf("got %v, want config_save_failed", ce)
 	}
-	if ce.Details["refresh_token"] != "rt-new" {
-		t.Fatalf("details = %v, want the rotated refresh_token so the session can be recovered", ce.Details)
+	file, _ := ce.Details["rescue_file"].(string)
+	if b, err := os.ReadFile(file); err != nil || !strings.Contains(string(b), "rt-new") || ce.Details["refresh_token"] != nil {
+		t.Fatalf("details = %v, want only the path of a file holding the rotated pair (%v)", ce.Details, err)
 	}
 	if config.RefreshToken() != "rt-new" || config.Token() != "at-new" {
 		t.Fatal("rotated tokens dropped from memory")
