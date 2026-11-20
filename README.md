@@ -182,12 +182,31 @@ sure-cli holdings show <holding_id>
 sure-cli securities list --ticker AAPL
 sure-cli securities show <security_id>
 sure-cli security-prices list --security-id <security_id> --start-date 2026-01-01
+# Import closes for an offline security no provider tracks (self-hosted Sure only).
+# CSV header with date,price,currency, or JSON [{"date","price","currency"}] / {"prices":[...]}.
+# 1-1000 rows, unique ISO dates, price > 0 with at most 4 decimals, one currency.
+sure-cli security-prices create --security-id <security_id> --file closes.csv
+sure-cli security-prices create --security-id <security_id> --file - --apply < closes.json
 
 # Trades (requires Sure investment API)
+# create --type: buy|sell|sweep_in|sweep_out|reinvestment need --qty, --price and one of
+#   --security-id/--ticker/--manual-ticker (--fee optional); dividend needs --amount and a security;
+#   interest|fee need --amount (security optional); deposit|withdrawal need --amount
+#   (--transfer-account-id optional). Sure sets the activity label from the type.
+# create returns a trade for share types, dividend, interest and fee; deposit/withdrawal return a
+#   transaction, or a transfer when --transfer-account-id is set.
+# update --type: buy|sell|sweep_in|sweep_out|reinvestment; --investment-activity-label must then
+#   be that type's label ("Buy", "Sell", "Sweep In", "Sweep Out", "Reinvestment").
 sure-cli trades list
 sure-cli trades show <trade_id>
 sure-cli trades create --account-id <account_id> --date 2026-05-01 --type buy --qty 1 --price 100 --security-id <security_id>
 sure-cli trades create --account-id <account_id> --date 2026-05-01 --type buy --qty 1 --price 100 --security-id <security_id> --apply
+sure-cli trades create --account-id <account_id> --date 2026-05-01 --type sell --qty 2 --price 101.25 --fee 1.50 --ticker AAPL --apply
+sure-cli trades create --account-id <account_id> --date 2026-05-01 --type dividend --amount 12.34 --security-id <security_id> --apply
+sure-cli trades create --account-id <account_id> --date 2026-05-01 --type interest --amount 3.10 --apply
+sure-cli trades create --account-id <account_id> --date 2026-05-01 --type deposit --amount 1000 --transfer-account-id <checking_id> --apply
+sure-cli trades update <trade_id> --type sweep_in --qty 5 --apply
+sure-cli trades delete <trade_id> --apply
 
 # Recurring transactions
 sure-cli recurring-transactions list --status active

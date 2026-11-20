@@ -3,6 +3,7 @@ package root
 import (
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/output"
@@ -75,19 +76,108 @@ func newTradesCmd() *cobra.Command {
 	return cmd
 }
 
+// securityTradeLabels mirrors Trade::CreateForm::SECURITY_TRADE_LABELS: the
+// types that move shares, and the only label Sure accepts for each. Order is
+// the one shown in help and error messages.
+var securityTradeLabels = []struct{ Type, Label string }{
+	{"buy", "Buy"},
+	{"sell", "Sell"},
+	{"sweep_in", "Sweep In"},
+	{"sweep_out", "Sweep Out"},
+	{"reinvestment", "Reinvestment"},
+}
+
+func securityTradeLabel(typ string) (string, bool) {
+	for _, l := range securityTradeLabels {
+		if l.Type == typ {
+			return l.Label, true
+		}
+	}
+	return "", false
+}
+
+type securityUse int
+
+const (
+	securityForbidden securityUse = iota
+	securityOptional
+	securityRequired
+)
+
+// tradeCreateRule is what the branch of Sure's TradesController#create for a
+// type reads: share types need qty and price (fee optional), every other type
+// needs a positive amount. Flags a branch never reads are rejected instead of
+// being silently dropped by Sure.
+type tradeCreateRule struct {
+	Security securityUse
+	Shares   bool
+	Transfer bool
+}
+
+type tradeCreateType struct {
+	Type string
+	Rule tradeCreateRule
+}
+
+// tradeCreateTypes mirrors Trade::CreateForm::SUPPORTED_TYPES.
+var tradeCreateTypes = func() []tradeCreateType {
+	var types []tradeCreateType
+	for _, l := range securityTradeLabels {
+		types = append(types, tradeCreateType{l.Type, tradeCreateRule{Security: securityRequired, Shares: true}})
+	}
+	return append(types,
+		tradeCreateType{"dividend", tradeCreateRule{Security: securityRequired}},
+		tradeCreateType{"interest", tradeCreateRule{Security: securityOptional}},
+		tradeCreateType{"fee", tradeCreateRule{Security: securityOptional}},
+		tradeCreateType{"deposit", tradeCreateRule{Transfer: true}},
+		tradeCreateType{"withdrawal", tradeCreateRule{Transfer: true}},
+	)
+}()
+
+func tradeCreateRuleFor(typ string) (tradeCreateRule, bool) {
+	for _, t := range tradeCreateTypes {
+		if t.Type == typ {
+			return t.Rule, true
+		}
+	}
+	return tradeCreateRule{}, false
+}
+
+func tradeCreateTypeNames() string {
+	names := make([]string, len(tradeCreateTypes))
+	for i, t := range tradeCreateTypes {
+		names[i] = t.Type
+	}
+	return strings.Join(names, ", ")
+}
+
+func securityTradeTypeNames() string {
+	names := make([]string, len(securityTradeLabels))
+	for i, l := range securityTradeLabels {
+		names[i] = l.Type
+	}
+	return strings.Join(names, ", ")
+}
+
+// normalizeTradeType matches Sure, which downcases the type param.
+func normalizeTradeType(typ string) string {
+	return strings.ToLower(strings.TrimSpace(typ))
+}
+
 type tradeCreateOpts struct {
-	AccountID               string
-	Date                    string
-	Type                    string
-	Qty                     string
-	Price                   string
-	Currency                string
-	SecurityID              string
-	Ticker                  string
-	ManualTicker            string
-	InvestmentActivityLabel string
-	CategoryID              string
-	Apply                   bool
+	AccountID         string
+	Date              string
+	Type              string
+	Qty               string
+	Price             string
+	Fee               string
+	Amount            string
+	Currency          string
+	SecurityID        string
+	Ticker            string
+	ManualTicker      string
+	TransferAccountID string
+	Apply             bool
 }
 
 type tradeUpdateOpts struct {
@@ -101,7 +191,6 @@ type tradeUpdateOpts struct {
 	Qty                     string
 	Price                   string
 	InvestmentActivityLabel string
-	CategoryID              string
 	Apply                   bool
 }
 
@@ -109,7 +198,18 @@ func newTradesCreateCmd() *cobra.Command {
 	var o tradeCreateOpts
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create trade (default dry-run; use --apply to execute)",
+		Short: "Create trade or investment activity (default dry-run; use --apply to execute)",
+		Long: `Create a trade or investment-account activity.
+
+Required flags depend on --type:
+  buy, sell, sweep_in, sweep_out, reinvestment: --qty, --price and one security (--fee optional)
+  dividend:            --amount and one security
+  interest, fee:       --amount (security optional)
+  deposit, withdrawal: --amount (--transfer-account-id optional)
+
+Sure stores the activity label from the type. The response shape depends on the
+type: share types, dividend, interest and fee return a trade; deposit and
+withdrawal return a transaction, or a transfer when --transfer-account-id is set.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := buildTradeCreatePayload(o)
 			if err != nil {
@@ -119,17 +219,18 @@ func newTradesCreateCmd() *cobra.Command {
 			dispatchWrite(o.Apply, "POST", "/api/v1/trades", payload)
 		},
 	}
-	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "account id (required)")
+	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "investment or crypto exchange account id (required)")
 	cmd.Flags().StringVar(&o.Date, "date", "", "date YYYY-MM-DD (required)")
-	cmd.Flags().StringVar(&o.Type, "type", "", "trade type: buy|sell (required)")
-	cmd.Flags().StringVar(&o.Qty, "qty", "", "quantity (required)")
-	cmd.Flags().StringVar(&o.Price, "price", "", "price (required)")
-	cmd.Flags().StringVar(&o.Currency, "currency", "", "currency")
+	cmd.Flags().StringVar(&o.Type, "type", "", "type (required): "+tradeCreateTypeNames())
+	cmd.Flags().StringVar(&o.Qty, "qty", "", "quantity, positive (share types)")
+	cmd.Flags().StringVar(&o.Price, "price", "", "price per share, positive (share types)")
+	cmd.Flags().StringVar(&o.Fee, "fee", "", "trade fee (share types)")
+	cmd.Flags().StringVar(&o.Amount, "amount", "", "amount, positive (dividend, interest, fee, deposit, withdrawal)")
+	cmd.Flags().StringVar(&o.Currency, "currency", "", "currency (defaults to the account currency)")
 	cmd.Flags().StringVar(&o.SecurityID, "security-id", "", "security id")
-	cmd.Flags().StringVar(&o.Ticker, "ticker", "", "ticker")
-	cmd.Flags().StringVar(&o.ManualTicker, "manual-ticker", "", "manual ticker")
-	cmd.Flags().StringVar(&o.InvestmentActivityLabel, "investment-activity-label", "", "investment activity label")
-	cmd.Flags().StringVar(&o.CategoryID, "category-id", "", "category id")
+	cmd.Flags().StringVar(&o.Ticker, "ticker", "", "ticker, optionally TICKER|MIC")
+	cmd.Flags().StringVar(&o.ManualTicker, "manual-ticker", "", "manual (offline) ticker")
+	cmd.Flags().StringVar(&o.TransferAccountID, "transfer-account-id", "", "other account of a deposit or withdrawal")
 	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the create (otherwise dry-run)")
 	return cmd
 }
@@ -155,11 +256,10 @@ func newTradesUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.Currency, "currency", "", "currency")
 	cmd.Flags().StringVar(&o.Notes, "notes", "", "notes")
 	cmd.Flags().StringVar(&o.Nature, "nature", "", "nature: inflow|outflow")
-	cmd.Flags().StringVar(&o.Type, "type", "", "trade type: buy|sell")
+	cmd.Flags().StringVar(&o.Type, "type", "", "trade type: "+securityTradeTypeNames())
 	cmd.Flags().StringVar(&o.Qty, "qty", "", "quantity")
 	cmd.Flags().StringVar(&o.Price, "price", "", "price")
-	cmd.Flags().StringVar(&o.InvestmentActivityLabel, "investment-activity-label", "", "investment activity label")
-	cmd.Flags().StringVar(&o.CategoryID, "category-id", "", "category id")
+	cmd.Flags().StringVar(&o.InvestmentActivityLabel, "investment-activity-label", "", "investment activity label (with --type it must be that type's label, e.g. sweep_in -> \"Sweep In\")")
 	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the update (otherwise dry-run)")
 	return cmd
 }
@@ -185,32 +285,116 @@ func buildTradeCreatePayload(o tradeCreateOpts) (map[string]any, error) {
 	if o.Date == "" {
 		return nil, fmt.Errorf("date is required")
 	}
-	if o.Type != "buy" && o.Type != "sell" {
-		return nil, fmt.Errorf("type must be buy or sell")
+	typ := normalizeTradeType(o.Type)
+	rule, ok := tradeCreateRuleFor(typ)
+	if !ok {
+		return nil, fmt.Errorf("type must be one of %s", tradeCreateTypeNames())
 	}
-	if o.Qty == "" || o.Price == "" {
-		return nil, fmt.Errorf("qty and price are required")
+	if err := checkTradeCreateFields(o, typ, rule); err != nil {
+		return nil, err
 	}
-	if o.SecurityID == "" && o.Ticker == "" && o.ManualTicker == "" {
-		return nil, fmt.Errorf("one of security-id, ticker, or manual-ticker is required")
-	}
+
 	trade := map[string]any{
 		"account_id": o.AccountID,
 		"date":       o.Date,
-		"type":       o.Type,
-		"qty":        o.Qty,
-		"price":      o.Price,
+		"type":       typ,
 	}
+	addAny(trade, "qty", o.Qty)
+	addAny(trade, "price", o.Price)
+	addAny(trade, "fee", o.Fee)
+	addAny(trade, "amount", o.Amount)
 	addAny(trade, "currency", o.Currency)
 	addAny(trade, "security_id", o.SecurityID)
 	addAny(trade, "ticker", o.Ticker)
 	addAny(trade, "manual_ticker", o.ManualTicker)
-	addAny(trade, "investment_activity_label", o.InvestmentActivityLabel)
-	addAny(trade, "category_id", o.CategoryID)
+	addAny(trade, "transfer_account_id", o.TransferAccountID)
 	return map[string]any{"trade": trade}, nil
 }
 
+type tradeFlag struct{ Name, Value string }
+
+func checkTradeCreateFields(o tradeCreateOpts, typ string, rule tradeCreateRule) error {
+	notApplicable := func(flags ...tradeFlag) error {
+		for _, f := range flags {
+			if f.Value != "" {
+				return fmt.Errorf("%s does not apply to %s", f.Name, typ)
+			}
+		}
+		return nil
+	}
+
+	securityFlags := []tradeFlag{{"security-id", o.SecurityID}, {"ticker", o.Ticker}, {"manual-ticker", o.ManualTicker}}
+	given := 0
+	for _, f := range securityFlags {
+		if f.Value != "" {
+			given++
+		}
+	}
+	switch {
+	case rule.Security == securityForbidden:
+		if err := notApplicable(securityFlags...); err != nil {
+			return err
+		}
+	case given > 1:
+		return fmt.Errorf("provide only one of security-id, ticker, or manual-ticker")
+	case given == 0 && rule.Security == securityRequired:
+		return fmt.Errorf("one of security-id, ticker, or manual-ticker is required for %s", typ)
+	}
+
+	if rule.Shares {
+		if err := notApplicable(tradeFlag{"amount", o.Amount}); err != nil {
+			return err
+		}
+		if err := requirePositiveDecimal("qty", o.Qty); err != nil {
+			return err
+		}
+		if err := requirePositiveDecimal("price", o.Price); err != nil {
+			return err
+		}
+		if o.Fee != "" && !isDecimalText(o.Fee) {
+			return fmt.Errorf("fee must be a decimal number, got %q", o.Fee)
+		}
+	} else {
+		if err := notApplicable(tradeFlag{"qty", o.Qty}, tradeFlag{"price", o.Price}, tradeFlag{"fee", o.Fee}); err != nil {
+			return err
+		}
+		if err := requirePositiveDecimal("amount", o.Amount); err != nil {
+			return err
+		}
+	}
+
+	if !rule.Transfer {
+		return notApplicable(tradeFlag{"transfer-account-id", o.TransferAccountID})
+	}
+	// Transfer::Creator books each side in its own account's currency.
+	if o.TransferAccountID != "" && o.Currency != "" {
+		return fmt.Errorf("currency does not apply to a %s with transfer-account-id; each account keeps its own currency", typ)
+	}
+	return nil
+}
+
+func requirePositiveDecimal(name, value string) error {
+	if value == "" {
+		return fmt.Errorf("%s is required", name)
+	}
+	if !isPositiveDecimalText(value) {
+		return fmt.Errorf("%s must be a positive decimal number, got %q", name, value)
+	}
+	return nil
+}
+
 func buildTradeUpdatePayload(o tradeUpdateOpts) (map[string]any, error) {
+	typ := normalizeTradeType(o.Type)
+	if typ != "" {
+		label, ok := securityTradeLabel(typ)
+		if !ok {
+			return nil, fmt.Errorf("type must be one of %s", securityTradeTypeNames())
+		}
+		if o.InvestmentActivityLabel != "" && o.InvestmentActivityLabel != label {
+			return nil, fmt.Errorf("investment-activity-label must be %q for type %s", label, typ)
+		}
+	}
+
 	trade := map[string]any{}
 	addAny(trade, "name", o.Name)
 	addAny(trade, "date", o.Date)
@@ -218,11 +402,10 @@ func buildTradeUpdatePayload(o tradeUpdateOpts) (map[string]any, error) {
 	addAny(trade, "currency", o.Currency)
 	addAny(trade, "notes", o.Notes)
 	addAny(trade, "nature", o.Nature)
-	addAny(trade, "type", o.Type)
+	addAny(trade, "type", typ)
 	addAny(trade, "qty", o.Qty)
 	addAny(trade, "price", o.Price)
 	addAny(trade, "investment_activity_label", o.InvestmentActivityLabel)
-	addAny(trade, "category_id", o.CategoryID)
 	if len(trade) == 0 {
 		return nil, fmt.Errorf("no fields provided to update")
 	}
