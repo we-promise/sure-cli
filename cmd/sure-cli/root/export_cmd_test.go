@@ -2,6 +2,8 @@ package root
 
 import (
 	"encoding/csv"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -38,5 +40,32 @@ func TestExportTransactionsCSV_ExactAmountsAndReportingFlags(t *testing.T) {
 	}
 	if !reflect.DeepEqual(rows, want) {
 		t.Fatalf("csv rows\n got %v\nwant %v", rows, want)
+	}
+}
+
+// failingWriter accepts nothing, like a full disk.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("no space left on device") }
+
+func TestExportTransactions_ReportsWriteFailures(t *testing.T) {
+	// The CSV writer buffers: a failed write only surfaces on Flush.
+	txs := []models.Transaction{{ID: "t1", AmountDecimal: "-1"}}
+	if err := writeTransactionsCSV(failingWriter{}, txs); err == nil {
+		t.Error("CSV export to a failing writer reported success")
+	}
+	if err := writeTransactionsJSON(failingWriter{}, txs); err == nil {
+		t.Error("JSON export to a failing writer reported success")
+	}
+}
+
+func TestWriteFile_ReportsWriterError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out")
+	err := writeFile(path, func(io.Writer) error { return errors.New("boom") })
+	if err == nil || err.Error() != "boom" {
+		t.Fatalf("err = %v, want boom", err)
+	}
+	if err := writeFile(filepath.Join(t.TempDir(), "missing", "out"), func(io.Writer) error { return nil }); err == nil {
+		t.Fatal("expected an error creating a file in a missing directory")
 	}
 }

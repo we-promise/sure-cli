@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"time"
@@ -39,7 +40,7 @@ func newExportTransactionsCmd() *cobra.Command {
 				months = 12
 			}
 			end := time.Now().UTC()
-			start := end.AddDate(0, -months, 0)
+			start := lookbackStart(end, months)
 			// Every row, flagged: an export is a dump, not a total.
 			txs, err := api.FetchAllTransactionsWindow(client, start, end, 1000)
 			checkResponse(nil, err)
@@ -79,23 +80,37 @@ func newExportTransactionsCmd() *cobra.Command {
 }
 
 func exportTransactionsCSV(txs []models.Transaction, path string) error {
+	return writeFile(path, func(w io.Writer) error { return writeTransactionsCSV(w, txs) })
+}
+
+func exportTransactionsJSON(txs []models.Transaction, path string) error {
+	return writeFile(path, func(w io.Writer) error { return writeTransactionsJSON(w, txs) })
+}
+
+// writeFile creates path and hands it to write. A failure to write or to
+// close the file is the error: the data may not be on disk.
+func writeFile(path string, write func(io.Writer) error) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}()
+	return write(f)
+}
 
-	w := csv.NewWriter(f)
-	defer w.Flush()
+func writeTransactionsCSV(out io.Writer, txs []models.Transaction) error {
+	w := csv.NewWriter(out)
 
-	// Header
 	// amount is exact and signed (income positive, expense negative).
 	// excluded/split_parent rows are exported but do not count in totals.
 	header := []string{"id", "date", "name", "amount", "currency", "classification", "kind", "category", "account", "merchant", "excluded", "split_parent"}
 	if err := w.Write(header); err != nil {
 		return err
 	}
-
 	for _, tx := range txs {
 		row := []string{
 			tx.ID,
@@ -115,24 +130,17 @@ func exportTransactionsCSV(txs []models.Transaction, path string) error {
 			return err
 		}
 	}
-
-	return nil
+	// csv.Writer buffers: a failed write only surfaces here.
+	w.Flush()
+	return w.Error()
 }
 
-func exportTransactionsJSON(txs []models.Transaction, path string) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
+func writeTransactionsJSON(out io.Writer, txs []models.Transaction) error {
+	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
-
-	data := map[string]any{
+	return enc.Encode(map[string]any{
 		"exported_at":  time.Now().UTC().Format(time.RFC3339),
 		"count":        len(txs),
 		"transactions": txs,
-	}
-	return enc.Encode(data)
+	})
 }
