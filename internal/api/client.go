@@ -18,6 +18,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/we-promise/sure-cli/internal/config"
 	errs "github.com/we-promise/sure-cli/internal/errors"
+	"github.com/we-promise/sure-cli/internal/fsutil"
 )
 
 // MaxResponseBytes caps a buffered API response; a larger body is an
@@ -316,47 +317,45 @@ func (c *Client) GetToFile(ctx context.Context, path, outputPath string, wantByt
 	if err := c.ensureFreshToken(); err != nil {
 		return nil, err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(outputPath), "."+filepath.Base(outputPath)+".part-*")
-	if err != nil {
-		return nil, writeFailed(err)
-	}
-	defer os.Remove(tmp.Name()) // no-op once renamed
-	defer tmp.Close()
-
 	ctx, stall, stop := c.stallContext(ctx)
 	defer stop()
-	r, err := c.http.R().SetContext(ctx).SetDoNotParseResponse(true).Get(path)
-	if err != nil {
-		return r, c.transportError(ctx, http.MethodGet, path, false, err)
-	}
-	body := r.RawBody()
-	defer body.Close()
 
-	if r.StatusCode() >= 400 {
-		return r, errs.ClassifyHTTPError(r.StatusCode(), readCapped(body), r.Header())
-	}
-	if mt, _, _ := mime.ParseMediaType(r.Header().Get("Content-Type")); mt == "text/html" {
-		return r, errs.InvalidResponse(r.StatusCode(), readCapped(body), r.Header(), errors.New("expected a file, got an HTML page"))
-	}
+	var r *resty.Response
+	err := fsutil.WriteFileAtomic(outputPath, func(out io.Writer) error {
+		var err error
+		r, err = c.http.R().SetContext(ctx).SetDoNotParseResponse(true).Get(path)
+		if err != nil {
+			return c.transportError(ctx, http.MethodGet, path, false, err)
+		}
+		body := r.RawBody()
+		defer body.Close()
 
-	dst := &fileWriter{f: tmp}
-	n, err := io.Copy(dst, stall.reader(body))
+		if r.StatusCode() >= 400 {
+			return errs.ClassifyHTTPError(r.StatusCode(), readCapped(body), r.Header())
+		}
+		if mt, _, _ := mime.ParseMediaType(r.Header().Get("Content-Type")); mt == "text/html" {
+			return errs.InvalidResponse(r.StatusCode(), readCapped(body), r.Header(), errors.New("expected a file, got an HTML page"))
+		}
+
+		dst := &fileWriter{w: out}
+		n, err := io.Copy(dst, stall.reader(body))
+		switch {
+		case dst.err != nil:
+			return writeFailed(dst.err)
+		case err != nil:
+			return c.transportError(ctx, http.MethodGet, path, false, err)
+		case wantBytes > 0 && n != wantBytes:
+			return errs.New(errs.CodeInvalidResponse, fmt.Sprintf("download incomplete: received %d of %d bytes", n, wantBytes)).
+				WithDetails(map[string]any{"status": r.StatusCode(), "received_bytes": n, "expected_bytes": wantBytes})
+		}
+		return nil
+	})
+	var ce *errs.CLIError
 	switch {
-	case dst.err != nil:
-		return r, writeFailed(dst.err)
+	case errors.As(err, &ce):
+		return r, ce
 	case err != nil:
-		return r, c.transportError(ctx, http.MethodGet, path, false, err)
-	case wantBytes > 0 && n != wantBytes:
-		return r, errs.New(errs.CodeInvalidResponse, fmt.Sprintf("download incomplete: received %d of %d bytes", n, wantBytes)).
-			WithDetails(map[string]any{"status": r.StatusCode(), "received_bytes": n, "expected_bytes": wantBytes})
-	}
-	if err := tmp.Sync(); err != nil {
-		return r, writeFailed(err)
-	}
-	if err := tmp.Close(); err != nil {
-		return r, writeFailed(err)
-	}
-	if err := os.Rename(tmp.Name(), outputPath); err != nil {
+		// Creating, syncing or renaming the file failed.
 		return r, writeFailed(err)
 	}
 	return r, nil
@@ -385,12 +384,12 @@ func writeFailed(err error) *errs.CLIError {
 // fileWriter records a local write error so it is not mistaken for a
 // network failure while copying the body.
 type fileWriter struct {
-	f   *os.File
+	w   io.Writer
 	err error
 }
 
 func (w *fileWriter) Write(p []byte) (int, error) {
-	n, err := w.f.Write(p)
+	n, err := w.w.Write(p)
 	if err != nil {
 		w.err = err
 	}
