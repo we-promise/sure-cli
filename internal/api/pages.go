@@ -30,9 +30,12 @@ const StreamMaxPages = 10000
 // returns that response so callers can report it as usual. It fails, as a
 // CLIError, on a page with more than perPage rows (invalid_response), on
 // more than maxPages pages (too_many_pages), when the pages left exceed
-// X-RateLimit-Remaining (rate_limited), and when total_count changes between
-// pages or differs from the rows read, each id once (list_changed): offset
-// paging over a list that loses rows mid-walk skips rows.
+// X-RateLimit-Remaining (rate_limited), and when rows may have been skipped
+// (list_changed): offset paging over a list that loses rows mid-walk skips
+// one, which shows as a total_count lower than the page before or, as Sure
+// serves its last page again for a page past the end (Pagy overflow
+// :last_page), fewer rows read, each id once, than the first total_count.
+// A row inserted mid-walk only makes a row repeat, which is dropped.
 func walkPages(c *Client, path string, q url.Values, perPage, maxPages int, visit func(body []byte) error) (*resty.Response, error) {
 	query := url.Values{}
 	for k, v := range q {
@@ -41,7 +44,7 @@ func walkPages(c *Client, path string, q url.Values, perPage, maxPages int, visi
 	query.Set("per_page", strconv.Itoa(perPage))
 
 	seen := map[string]bool{}
-	read, totalCount := 0, -1
+	read, firstTotal, lastTotal := 0, -1, -1
 	for page := 1; ; page++ {
 		query.Set("page", strconv.Itoa(page))
 		r, err := c.Get(path+"?"+query.Encode(), nil)
@@ -81,14 +84,17 @@ func walkPages(c *Client, path string, q url.Values, perPage, maxPages int, visi
 			read++
 		}
 		if meta.TotalCount != nil {
-			if totalCount >= 0 && *meta.TotalCount != totalCount {
+			if *meta.TotalCount < lastTotal {
 				return r, listChanged(path, read, *meta.TotalCount)
 			}
-			totalCount = *meta.TotalCount
+			if firstTotal < 0 {
+				firstTotal = *meta.TotalCount
+			}
+			lastTotal = *meta.TotalCount
 		}
 		if len(rows) == 0 || page >= meta.TotalPages {
-			if totalCount >= 0 && read != totalCount {
-				return r, listChanged(path, read, totalCount)
+			if read < firstTotal {
+				return r, listChanged(path, read, firstTotal)
 			}
 			return r, nil
 		}

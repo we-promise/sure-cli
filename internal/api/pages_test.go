@@ -255,11 +255,12 @@ func TestFetchAllPages_StopsOnEmptyPage(t *testing.T) {
 func TestFetchAllPages_FollowsTheLatestTotalPages(t *testing.T) {
 	// t6 lands at the head after page 1 is served: t4 is served twice and
 	// t2, which existed before the walk began, is pushed onto a third page.
+	// total_count grows with the insert, which skips no row.
 	ids := []string{"t5", "t4", "t3", "t2"}
 	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		rows := ids[min(2*(page-1), len(ids)):min(2*page, len(ids))]
-		body, _ := json.Marshal(map[string]any{"accounts": idRows(rows...), "pagination": map[string]any{"total_pages": (len(ids) + 1) / 2}})
+		body, _ := json.Marshal(map[string]any{"accounts": idRows(rows...), "pagination": map[string]any{"total_pages": (len(ids) + 1) / 2, "total_count": len(ids)}})
 		if page == 1 {
 			ids = append([]string{"t6"}, ids...)
 		}
@@ -272,6 +273,30 @@ func TestFetchAllPages_FollowsTheLatestTotalPages(t *testing.T) {
 	}
 	if got := itemIDs(items); fmt.Sprint(got) != "[t5 t4 t3 t2]" {
 		t.Fatalf("ids = %v, want every row that existed when the walk began", got)
+	}
+}
+
+func TestFetchAllPages_InsertMidWalkGrowsTotalCountWithoutFailing(t *testing.T) {
+	// t6 lands at the head after page 1 and the page count stays 2: t4 is
+	// served twice and t2 not at all, yet t2 is a row the walk began
+	// without, so every row that existed then is read.
+	ids := []string{"t5", "t4", "t3"}
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		rows := ids[min(2*(page-1), len(ids)):min(2*page, len(ids))]
+		body, _ := json.Marshal(map[string]any{"accounts": idRows(rows...), "pagination": map[string]any{"total_pages": (len(ids) + 1) / 2, "total_count": len(ids)}})
+		if page == 1 {
+			ids = append([]string{"t6"}, ids...)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	})
+	items, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
+	if err != nil {
+		t.Fatalf("an insert mid-walk failed the walk: %v", err)
+	}
+	if got := itemIDs(items); fmt.Sprint(got) != "[t5 t4 t3]" {
+		t.Fatalf("ids = %v", got)
 	}
 }
 
@@ -307,11 +332,12 @@ func TestFetchAllPages_ListThatChangesMidWalkIsListChanged(t *testing.T) {
 	for name, pages := range map[string][2]string{
 		// A row deleted after page 1 pulls c back onto page 1, so c is
 		// never served.
-		"total_count moves": {
+		"total_count drops": {
 			`{"accounts":[{"id":"a"},{"id":"b"}],"pagination":{"total_pages":2,"total_count":4}}`,
 			`{"accounts":[{"id":"d"}],"pagination":{"total_pages":2,"total_count":3}}`,
 		},
-		"rows read differ from total_count": {
+		// Sure overflows to the last page: a delete serves it again.
+		"rows read fall short of the first total_count": {
 			`{"accounts":[{"id":"a"},{"id":"b"}],"pagination":{"total_pages":2,"total_count":4}}`,
 			`{"accounts":[{"id":"b"},{"id":"c"}],"pagination":{"total_pages":2,"total_count":4}}`,
 		},
@@ -401,10 +427,10 @@ func TestFetchAllPages_DropsRowsRepeatedByAShiftingList(t *testing.T) {
 	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Query().Get("page") == "1" {
-			_, _ = w.Write([]byte(`{"accounts":[{"id":"a5"},{"id":"a4"}],"pagination":{"total_pages":2}}`))
+			_, _ = w.Write([]byte(`{"accounts":[{"id":"a5"},{"id":"a4"}],"pagination":{"total_pages":2,"total_count":3}}`))
 			return
 		}
-		_, _ = w.Write([]byte(`{"accounts":[{"id":"a4"},{"id":"a3"}],"pagination":{"total_pages":2}}`))
+		_, _ = w.Write([]byte(`{"accounts":[{"id":"a4"},{"id":"a3"}],"pagination":{"total_pages":2,"total_count":4}}`))
 	})
 	items, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
 	if err != nil {
