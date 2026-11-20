@@ -120,8 +120,12 @@ func guardCommandGroups(cmd *cobra.Command) {
 			return nil
 		}
 		// A removed command's flags fail to parse on its group before RunE
-		// runs; the words parsed so far still name the command.
+		// runs; the words parsed so far still name the command. Commands under
+		// the group inherit this func: their flag errors are about the flag.
 		cmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+			if c != cmd {
+				failValidation(err)
+			}
 			if args := c.Flags().Args(); len(args) > 0 {
 				failUnknownCommand(c, args)
 			}
