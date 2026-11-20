@@ -72,10 +72,18 @@ func retryWait(r *resty.Response, base, ceiling time.Duration) time.Duration {
 }
 
 // fitsDeadline reports whether waiting wait before retrying r leaves time
-// before the call's deadline. Without it the deadline would expire during
-// the wait, and the call would end in a timeout instead of the answer Sure
-// last gave (e.g. a 503 with its maintenance message).
+// before the call's deadline, or for a transfer before its stall timer
+// fires. Without it the call would end in a timeout during the wait instead
+// of the answer Sure last gave (e.g. a 503 with its maintenance message).
 func fitsDeadline(r *resty.Response, wait time.Duration) bool {
-	deadline, ok := r.Request.Context().Deadline()
+	ctx := r.Request.Context()
+	if s := stallOf(ctx); s != nil {
+		// r is data that just moved: the stall counts from now.
+		s.touch()
+		if wait >= s.idle {
+			return false
+		}
+	}
+	deadline, ok := ctx.Deadline()
 	return !ok || time.Until(deadline) > wait
 }

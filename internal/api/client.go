@@ -48,7 +48,7 @@ func New() *Client {
 		SetRetryWaitTime(1 * time.Second).
 		SetRetryMaxWaitTime(5 * time.Second).
 		SetRedirectPolicy(resty.RedirectPolicyFunc(refuseRedirect)).
-		SetPreRequestHook(watchRequestBody)
+		SetPreRequestHook(watchStall)
 	// No http.Client timeout: it would also cut a download or upload that is
 	// still flowing. Calls are bounded by a context deadline (see do),
 	// transfers by a stall timer (see stallContext), and the wait for
@@ -336,8 +336,10 @@ var errStalled = errors.New("transfer stalled")
 // wantBytes, when positive, is the size the body must have (Sure streams
 // exports chunked, without Content-Length). The client timeout bounds the
 // wait for headers and each pause in the body, never the whole transfer, and
-// a body already flowing is never restarted. Cancelling ctx removes the temp
-// file. Every failure is a *errors.CLIError.
+// a body already flowing is never restarted. Each attempt gets the whole
+// timeout to answer, and a retry that would wait longer than it is not
+// made, so Sure's last answer is reported instead of a stall. Cancelling
+// ctx removes the temp file. Every failure is a *errors.CLIError.
 func (c *Client) GetToFile(ctx context.Context, path, outputPath string, wantBytes int64) (*resty.Response, error) {
 	if err := c.prepare(); err != nil {
 		return nil, err
@@ -348,7 +350,7 @@ func (c *Client) GetToFile(ctx context.Context, path, outputPath string, wantByt
 	var r *resty.Response
 	err := fsutil.WriteFileAtomic(outputPath, func(out io.Writer) error {
 		var err error
-		r, err = c.http.R().SetContext(ctx).SetDoNotParseResponse(true).Get(path)
+		r, err = c.http.R().SetContext(context.WithValue(ctx, stallKey{}, stall)).SetDoNotParseResponse(true).Get(path)
 		if err != nil {
 			return c.transportError(ctx, http.MethodGet, path, false, err)
 		}
@@ -427,9 +429,21 @@ type stallTimer struct {
 	idle  time.Duration
 }
 
-// stallKey carries the *stallTimer that the request body resets as it is
-// sent (see watchRequestBody).
+// stallKey carries the *stallTimer of a transfer, which each attempt and
+// the request body as it is sent reset (see watchStall), and the retry
+// condition checks (see fitsDeadline).
 type stallKey struct{}
+
+// stallOf returns the *stallTimer ctx carries, nil when there is none.
+func stallOf(ctx context.Context) *stallTimer {
+	s, _ := ctx.Value(stallKey{}).(*stallTimer)
+	return s
+}
+
+// touch pushes the stall back by idle: data just moved.
+func (s *stallTimer) touch() {
+	s.timer.Reset(s.idle)
+}
 
 // stallContext returns ctx cancelled with errStalled once no data has moved
 // for the client timeout, the timer that data movement resets (nil without
@@ -451,10 +465,16 @@ func (s *stallTimer) reader(r io.Reader) io.Reader {
 	return &idleReader{r: r, stall: s}
 }
 
-// watchRequestBody makes the request body reset the stall timer its
+// watchStall gives each attempt of a transfer the whole stall timeout to
+// get an answer, and makes the request body reset the stall timer its
 // context carries, so an upload counts as progress while it is sent.
-func watchRequestBody(_ *resty.Client, req *http.Request) error {
-	if s, ok := req.Context().Value(stallKey{}).(*stallTimer); ok && s != nil && req.Body != nil {
+func watchStall(_ *resty.Client, req *http.Request) error {
+	s := stallOf(req.Context())
+	if s == nil {
+		return nil
+	}
+	s.touch()
+	if req.Body != nil {
 		req.Body = struct {
 			io.Reader
 			io.Closer
@@ -472,6 +492,6 @@ type idleReader struct {
 
 func (i *idleReader) Read(p []byte) (int, error) {
 	n, err := i.r.Read(p)
-	i.stall.timer.Reset(i.stall.idle)
+	i.stall.touch()
 	return n, err
 }
