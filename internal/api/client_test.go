@@ -733,3 +733,37 @@ func TestClient_InvalidConfigFailsEveryCallWithoutSendingIt(t *testing.T) {
 		t.Fatalf("%d requests sent with an invalid config", hits.Load())
 	}
 }
+
+// The CLI reports failures in its own envelope; the HTTP library must not
+// print its log lines (WARN RESTY ... Attempt 1) to stderr as well.
+func TestClient_LogsNothingToStderr(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			http.Redirect(w, r, "https://elsewhere.example/x", http.StatusMovedPermanently)
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable) // retried, then reported
+	}))
+	t.Cleanup(srv.Close)
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := os.Stderr
+	os.Stderr = w
+	c := testClient(t, srv.URL)
+	var out any
+	_, redirectErr := c.Get("/redirect", &out)
+	_, _ = c.Get("/unavailable", &out)
+	os.Stderr = orig
+	_ = w.Close()
+	logged, _ := io.ReadAll(r)
+
+	if redirectErr == nil {
+		t.Fatal("redirect was followed")
+	}
+	if len(logged) != 0 {
+		t.Fatalf("stderr = %q, want nothing", logged)
+	}
+}

@@ -48,7 +48,8 @@ func New() *Client {
 		SetRetryWaitTime(1 * time.Second).
 		SetRetryMaxWaitTime(5 * time.Second).
 		SetRedirectPolicy(resty.RedirectPolicyFunc(refuseRedirect)).
-		SetPreRequestHook(watchStall)
+		SetPreRequestHook(watchStall).
+		SetLogger(silentLogger{}) // failures reach the user once, in the envelope
 	// No http.Client timeout: it would also cut a download or upload that is
 	// still flowing. Calls are bounded by a context deadline (see do),
 	// transfers by a stall timer (see stallContext), and the wait for
@@ -495,3 +496,11 @@ func (i *idleReader) Read(p []byte) (int, error) {
 	i.stall.touch()
 	return n, err
 }
+
+// silentLogger drops resty's log lines ("WARN RESTY ... Attempt 1"): every
+// failure is already reported once, as a CLIError in the envelope.
+type silentLogger struct{}
+
+func (silentLogger) Errorf(string, ...any) {}
+func (silentLogger) Warnf(string, ...any)  {}
+func (silentLogger) Debugf(string, ...any) {}
