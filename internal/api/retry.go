@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+
+	errs "github.com/we-promise/sure-cli/internal/errors"
 )
 
 // retriedMethods are the only methods the client retries. Sure can fail
@@ -32,9 +34,10 @@ func shouldRetry(r *resty.Response, err error, maxWait time.Duration) bool {
 		return false
 	}
 	if err != nil {
-		// An oversized body or an expired/cancelled call fails the same way
-		// on every attempt.
-		return !errors.Is(err, resty.ErrResponseBodyTooLarge) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+		// An oversized body, a refused redirect or an expired/cancelled call
+		// fails the same way on every attempt.
+		var ce *errs.CLIError
+		return !errors.As(err, &ce) && !errors.Is(err, resty.ErrResponseBodyTooLarge) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
 	}
 	if r.StatusCode() == http.StatusTooManyRequests {
 		d, ok := retryAfter(r.Header())

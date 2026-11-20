@@ -37,7 +37,8 @@ func New() *Client {
 		SetResponseBodyLimit(MaxResponseBytes).
 		SetRetryCount(2).
 		SetRetryWaitTime(1 * time.Second).
-		SetRetryMaxWaitTime(5 * time.Second)
+		SetRetryMaxWaitTime(5 * time.Second).
+		SetRedirectPolicy(resty.RedirectPolicyFunc(refuseRedirect))
 	// No http.Client timeout: it would also cut a download that is still
 	// flowing. Calls are bounded by a context deadline (see do) and the wait
 	// for response headers by the transport.
@@ -187,6 +188,19 @@ func (c *Client) do(method, path string, out any, build func(*resty.Request)) (*
 	return r, nil
 }
 
+// refuseRedirect stops at the first redirect. Sure's API never redirects,
+// and following one would send the API key, bearer token or login password
+// to whatever host the Location names.
+func refuseRedirect(req *http.Request, _ []*http.Request) error {
+	status := 0
+	if req.Response != nil {
+		status = req.Response.StatusCode
+	}
+	location := req.URL.Redacted()
+	return errs.New(errs.CodeRedirectRefused, fmt.Sprintf("Sure answered with a redirect to %s, which the CLI does not follow; set api_url to the address that serves the API", location)).
+		WithDetails(map[string]any{"status": status, "location": location})
+}
+
 func withBody(body any) func(*resty.Request) {
 	return func(req *resty.Request) { req.SetBody(body) }
 }
@@ -272,7 +286,7 @@ func (c *Client) GetToFile(ctx context.Context, path, outputPath string, wantByt
 	defer cancel(nil)
 	r, err := c.http.R().SetContext(ctx).SetDoNotParseResponse(true).Get(path)
 	if err != nil {
-		return r, errs.ClassifyNetworkError(contextErr(ctx, err))
+		return r, CheckResponse(r, contextErr(ctx, err))
 	}
 	body := r.RawBody()
 	defer body.Close()

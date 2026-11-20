@@ -49,6 +49,13 @@ const (
 	CodeUnknown      = "unknown_error"
 )
 
+// Transport and paging codes.
+const (
+	// CodeRedirectRefused means Sure (or a proxy in front of it) answered
+	// with a redirect, which the CLI never follows.
+	CodeRedirectRefused = "redirect_refused"
+)
+
 // CLIError is a structured error with code and details for agent consumption.
 type CLIError struct {
 	Code    string         `json:"code"`

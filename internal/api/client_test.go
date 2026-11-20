@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -526,5 +528,56 @@ func TestClient_AdoptsTokensAnotherProcessRotated(t *testing.T) {
 	}
 	if refreshes != 1 || out["ok"] != true {
 		t.Fatalf("refreshes=%d out=%v", refreshes, out)
+	}
+}
+
+// Sure's API never redirects. Following one would hand the API key, bearer
+// token or login password to whatever host the Location names.
+func TestClient_RefusesRedirects(t *testing.T) {
+	var leaked atomic.Int32
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked.Add(1)
+	}))
+	t.Cleanup(other.Close)
+	otherURL := strings.Replace(other.URL, "127.0.0.1", "localhost", 1)
+
+	for name, tc := range map[string]struct {
+		status int
+		call   func(c *Client) error
+	}{
+		"GET": {http.StatusFound, func(c *Client) error {
+			var out any
+			_, err := c.Get("/api/v1/accounts", &out)
+			return err
+		}},
+		"login POST": {http.StatusTemporaryRedirect, func(c *Client) error {
+			_, err := c.Login(LoginRequest{Email: "a@b.c", Password: "pw"})
+			return err
+		}},
+		"download": {http.StatusFound, func(c *Client) error {
+			_, err := c.GetToFile(context.Background(), "/dl", filepath.Join(t.TempDir(), "e.zip"), 0)
+			return err
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			leaked.Store(0)
+			var hits atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				http.Redirect(w, r, otherURL+"/sso", tc.status)
+			}))
+			t.Cleanup(srv.Close)
+
+			ce := assertCode(t, tc.call(testClient(t, srv.URL)), errs.CodeRedirectRefused)
+			if leaked.Load() != 0 {
+				t.Fatal("the redirect target received the request")
+			}
+			if hits.Load() != 1 {
+				t.Fatalf("requests = %d, want 1 (a refused redirect is not retried)", hits.Load())
+			}
+			if ce.Details["status"] != tc.status || ce.Details["location"] != otherURL+"/sso" {
+				t.Fatalf("details = %v", ce.Details)
+			}
+		})
 	}
 }
