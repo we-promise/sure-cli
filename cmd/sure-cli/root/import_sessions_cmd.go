@@ -55,10 +55,10 @@ type importSessionCreateOpts struct {
 func buildImportSessionCreatePayload(o importSessionCreateOpts) (map[string]any, error) {
 	t := strings.TrimSpace(o.Type)
 	if t == "" {
-		return nil, errors.New("type is required (e.g. SureImport)")
+		return nil, errors.New("--type is required (e.g. SureImport)")
 	}
 	if o.ExpectedChunks < 0 {
-		return nil, fmt.Errorf("expected-chunks must be >= 0, got %d", o.ExpectedChunks)
+		return nil, fmt.Errorf("--expected-chunks must be >= 0, got %d", o.ExpectedChunks)
 	}
 	body := map[string]any{"type": t}
 	if o.ClientSessionID != "" {
@@ -102,10 +102,10 @@ type chunkCreateOpts struct {
 // client-side because the controller only accepts NDJSON/JSON content types.
 func buildChunkCreate(o chunkCreateOpts) (upload, error) {
 	if o.Sequence < 1 {
-		return upload{}, fmt.Errorf("sequence is required and must be >= 1, got %d", o.Sequence)
+		return upload{}, fmt.Errorf("--sequence is required and must be >= 1, got %d", o.Sequence)
 	}
 	if ext := strings.ToLower(filepath.Ext(o.File)); o.File != "" && ext != ".ndjson" && ext != ".json" {
-		return upload{}, fmt.Errorf("file must be a Sure NDJSON file (.ndjson or .json), got %q", filepath.Ext(o.File))
+		return upload{}, fmt.Errorf("--file must be a Sure NDJSON file (.ndjson or .json), got %q", filepath.Ext(o.File))
 	}
 	if err := checkUploadContent(o.File, o.RawContent, "raw-content"); err != nil {
 		return upload{}, err

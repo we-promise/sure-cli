@@ -84,8 +84,8 @@ func TestLeakParams(t *testing.T) {
 		{name: "explicit zero minimum total", set: []string{"min-total"}, minTotal: 0, currency: "EUR", wantTotal: 0, wantAvg: 1000, wantCurrency: "EUR"},
 		{name: "min-total needs a currency", set: []string{"min-total"}, minTotal: 20, wantErr: "--min-total"},
 		{name: "max-avg needs a currency", set: []string{"max-avg"}, maxAvg: 2, wantErr: "--max-avg"},
-		{name: "zero max-avg", set: []string{"max-avg"}, maxAvg: 0, currency: "EUR", wantErr: "max_avg"},
-		{name: "negative min-total", set: []string{"min-total"}, minTotal: -1, currency: "EUR", wantErr: "min_total"},
+		{name: "zero max-avg", set: []string{"max-avg"}, maxAvg: 0, currency: "EUR", wantErr: "--max-avg must be positive"},
+		{name: "negative min-total", set: []string{"min-total"}, minTotal: -1, currency: "EUR", wantErr: "--min-total must not be negative"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

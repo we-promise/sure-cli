@@ -251,8 +251,8 @@ func buildRecurringCreatePayload(o recurringCreateOpts) (map[string]any, error) 
 	}
 	// amount follows the entry convention (an income series is negative).
 	for _, f := range []struct{ name, value string }{
-		{"--amount", o.Amount}, {"--expected-amount-min", o.ExpectedAmountMin},
-		{"--expected-amount-max", o.ExpectedAmountMax}, {"--expected-amount-avg", o.ExpectedAmountAvg},
+		{"amount", o.Amount}, {"expected-amount-min", o.ExpectedAmountMin},
+		{"expected-amount-max", o.ExpectedAmountMax}, {"expected-amount-avg", o.ExpectedAmountAvg},
 	} {
 		if err := checkOptionalDecimal(f.name, f.value, moneyColumn); err != nil {
 			return nil, err
@@ -314,10 +314,10 @@ func checkRecurringSchedule(dayOfMonth, lastOccurrence, nextExpected string) err
 			return fmt.Errorf("--expected-day-of-month must be a whole number from 1 to 31, got %q", dayOfMonth)
 		}
 	}
-	if _, err := parseOptionalISODate("--last-occurrence-date", lastOccurrence); err != nil {
+	if _, err := parseOptionalISODate("last-occurrence-date", lastOccurrence); err != nil {
 		return err
 	}
-	_, err := parseOptionalISODate("--next-expected-date", nextExpected)
+	_, err := parseOptionalISODate("next-expected-date", nextExpected)
 	return err
 }
 
@@ -334,7 +334,7 @@ func validateRecurringStatus(status string) error {
 	if status == "" || slices.Contains(recurringWritableStatuses, status) {
 		return nil
 	}
-	return fmt.Errorf("status must be one of: %s (got %q)", strings.Join(recurringWritableStatuses, "|"), status)
+	return fmt.Errorf("--status must be one of: %s (got %q)", strings.Join(recurringWritableStatuses, "|"), status)
 }
 
 func addRecurringBillFlags(cmd *cobra.Command, paymentURL, autopay, notes *string) {
@@ -351,7 +351,7 @@ func addRecurringBillFields(recurring map[string]any, paymentURL, autopay, notes
 	case "true", "false":
 		recurring["autopay"] = autopay == "true"
 	default:
-		return fmt.Errorf("autopay must be true or false (got %q)", autopay)
+		return fmt.Errorf("--autopay must be true or false (got %q)", autopay)
 	}
 	return nil
 }

@@ -39,11 +39,11 @@ const (
 func (p LeakParams) Validate() error {
 	switch {
 	case p.MinCount < 1:
-		return errors.New("min_count must be at least 1")
+		return errors.New("--min-count must be at least 1")
 	case p.MinTotalMinor < 0:
-		return errors.New("min_total must not be negative")
+		return errors.New("--min-total must not be negative")
 	case p.MaxAvgMinor <= 0:
-		return errors.New("max_avg must be positive (at least one minor unit)")
+		return errors.New("--max-avg must be positive (at least one minor unit)")
 	}
 	return nil
 }

@@ -179,10 +179,10 @@ func newValuationsUpdateCmd() *cobra.Command {
 
 func buildValuationCreatePayload(o valuationCreateOpts) (map[string]any, error) {
 	if o.AccountID == "" {
-		return nil, fmt.Errorf("account-id is required")
+		return nil, fmt.Errorf("--account-id is required")
 	}
 	if o.Amount == "" {
-		return nil, fmt.Errorf("amount is required")
+		return nil, fmt.Errorf("--amount is required")
 	}
 	if err := checkDecimal("amount", o.Amount, moneyColumn); err != nil {
 		return nil, err
@@ -210,7 +210,7 @@ func buildValuationUpdatePayload(o valuationUpdateOpts) (map[string]any, error) 
 		return nil, fmt.Errorf("no fields provided to update")
 	}
 	if (o.Amount == "") != (o.Date == "") {
-		return nil, fmt.Errorf("amount and date must both be provided when updating valuation amount")
+		return nil, fmt.Errorf("--amount and --date must both be given to change a valuation's amount")
 	}
 	valuation := map[string]any{}
 	if o.Amount != "" {

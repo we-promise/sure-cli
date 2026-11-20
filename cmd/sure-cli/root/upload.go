@@ -54,9 +54,9 @@ func (u upload) dryRunBody() map[string]any {
 func checkUploadContent(file, raw, rawFlag string) error {
 	switch {
 	case file == "" && raw == "":
-		return fmt.Errorf("file or %s is required", rawFlag)
+		return fmt.Errorf("--file or --%s is required", rawFlag)
 	case file != "" && raw != "":
-		return fmt.Errorf("provide only one of file or %s", rawFlag)
+		return fmt.Errorf("provide only one of --file or --%s", rawFlag)
 	case file != "":
 		_, err := regularFile(file)
 		return err
@@ -68,10 +68,10 @@ func checkUploadContent(file, raw, rawFlag string) error {
 func regularFile(path string) (os.FileInfo, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("file not accessible: %w", err)
+		return nil, fmt.Errorf("--file not accessible: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return nil, errors.New("file must be a regular file")
+		return nil, errors.New("--file must be a regular file")
 	}
 	return info, nil
 }

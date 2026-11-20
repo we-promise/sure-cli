@@ -16,7 +16,7 @@ import (
 func parseISODate(flag, s string) (time.Time, error) {
 	t, err := time.Parse(time.DateOnly, s)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("%s: invalid date %q (expected YYYY-MM-DD)", flag, s)
+		return time.Time{}, fmt.Errorf("--%s: invalid date %q (expected YYYY-MM-DD)", flag, s)
 	}
 	return t, nil
 }
@@ -51,14 +51,14 @@ func parsePairedDateRange(start, end string) (bool, error) {
 		return false, nil
 	}
 	if start == "" || end == "" {
-		return false, errors.New("start-date and end-date must be given together")
+		return false, errors.New("--start-date and --end-date must be given together")
 	}
 	s, e, err := parseOptionalDateRange(start, end)
 	if err != nil {
 		return false, err
 	}
 	if s.After(e) {
-		return false, errors.New("start-date must be on or before end-date")
+		return false, errors.New("--start-date must be on or before --end-date")
 	}
 	return true, nil
 }

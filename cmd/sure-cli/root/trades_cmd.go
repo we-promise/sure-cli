@@ -278,10 +278,10 @@ func newTradesDeleteCmd() *cobra.Command {
 
 func buildTradeCreatePayload(o tradeCreateOpts) (map[string]any, error) {
 	if o.AccountID == "" {
-		return nil, fmt.Errorf("account-id is required")
+		return nil, fmt.Errorf("--account-id is required")
 	}
 	if o.Date == "" {
-		return nil, fmt.Errorf("date is required")
+		return nil, fmt.Errorf("--date is required")
 	}
 	if _, err := parseISODate("date", o.Date); err != nil {
 		return nil, err
@@ -289,7 +289,7 @@ func buildTradeCreatePayload(o tradeCreateOpts) (map[string]any, error) {
 	typ := normalizeTradeType(o.Type)
 	rule, ok := tradeCreateRuleFor(typ)
 	if !ok {
-		return nil, fmt.Errorf("type must be one of %s", tradeCreateTypeNames())
+		return nil, fmt.Errorf("--type must be one of %s", tradeCreateTypeNames())
 	}
 	if err := checkTradeCreateFields(o, typ, rule); err != nil {
 		return nil, err
@@ -318,7 +318,7 @@ func checkTradeCreateFields(o tradeCreateOpts, typ string, rule tradeCreateRule)
 	notApplicable := func(flags ...tradeFlag) error {
 		for _, f := range flags {
 			if f.Value != "" {
-				return fmt.Errorf("%s does not apply to %s", f.Name, typ)
+				return fmt.Errorf("--%s does not apply to %s", f.Name, typ)
 			}
 		}
 		return nil
@@ -337,9 +337,9 @@ func checkTradeCreateFields(o tradeCreateOpts, typ string, rule tradeCreateRule)
 			return err
 		}
 	case given > 1:
-		return fmt.Errorf("provide only one of security-id, ticker, or manual-ticker")
+		return fmt.Errorf("provide only one of --security-id, --ticker or --manual-ticker")
 	case given == 0 && rule.Security == securityRequired:
-		return fmt.Errorf("one of security-id, ticker, or manual-ticker is required for %s", typ)
+		return fmt.Errorf("one of --security-id, --ticker or --manual-ticker is required for %s", typ)
 	}
 
 	if rule.Shares {
@@ -356,7 +356,7 @@ func checkTradeCreateFields(o tradeCreateOpts, typ string, rule tradeCreateRule)
 			// Sure adds the fee to the trade's cost; a negative one would
 			// silently lower it.
 			if !models.IsDecimal(o.Fee) || strings.HasPrefix(o.Fee, "-") {
-				return fmt.Errorf("fee must be a decimal number of 0 or more, got %q", o.Fee)
+				return fmt.Errorf("--fee must be a decimal number of 0 or more, got %q", o.Fee)
 			}
 			if err := moneyColumn.check("fee", o.Fee); err != nil {
 				return err
@@ -376,7 +376,7 @@ func checkTradeCreateFields(o tradeCreateOpts, typ string, rule tradeCreateRule)
 	}
 	// Transfer::Creator books each side in its own account's currency.
 	if o.TransferAccountID != "" && o.Currency != "" {
-		return fmt.Errorf("currency does not apply to a %s with transfer-account-id; each account keeps its own currency", typ)
+		return fmt.Errorf("--currency does not apply to a %s with --transfer-account-id; each account keeps its own currency", typ)
 	}
 	return nil
 }
@@ -386,10 +386,10 @@ func buildTradeUpdatePayload(o tradeUpdateOpts) (map[string]any, error) {
 	if typ != "" {
 		label, ok := securityTradeLabel(typ)
 		if !ok {
-			return nil, fmt.Errorf("type must be one of %s", securityTradeTypeNames())
+			return nil, fmt.Errorf("--type must be one of %s", securityTradeTypeNames())
 		}
 		if o.InvestmentActivityLabel != "" && o.InvestmentActivityLabel != label {
-			return nil, fmt.Errorf("investment-activity-label must be %q for type %s", label, typ)
+			return nil, fmt.Errorf("--investment-activity-label must be %q for type %s", label, typ)
 		}
 	}
 
@@ -423,13 +423,13 @@ func checkTradeUpdateFields(o tradeUpdateOpts, typ string) error {
 	shares := o.Qty != "" || o.Price != ""
 	switch {
 	case typ != "" && o.Nature != "":
-		return fmt.Errorf("use either type or nature, not both")
+		return fmt.Errorf("use either --type or --nature, not both")
 	case o.Nature != "" && o.Nature != "inflow" && o.Nature != "outflow":
-		return fmt.Errorf("nature must be inflow or outflow, got %q", o.Nature)
+		return fmt.Errorf("--nature must be inflow or outflow, got %q", o.Nature)
 	case (typ != "" || o.Nature != "") && !shares:
-		return fmt.Errorf("type and nature only apply with qty or price; Sure ignores them otherwise")
+		return fmt.Errorf("--type and --nature only apply with --qty or --price; Sure ignores them otherwise")
 	case o.Amount != "" && shares:
-		return fmt.Errorf("amount cannot be combined with qty or price; Sure recomputes it as qty × price")
+		return fmt.Errorf("--amount cannot be combined with --qty or --price; Sure recomputes it as qty × price")
 	}
 	if o.Qty != "" {
 		if err := requirePositiveDecimal("qty", o.Qty, tradeQtyColumn); err != nil {

@@ -112,7 +112,7 @@ Responses: 201 stored; 200 the same file is already in the vault (meta.duplicate
 
 func buildAccountStatementListQuery(o accountStatementListOpts) (url.Values, error) {
 	if !oneOfOrEmpty(o.ReviewStatus, accountStatementReviewStatuses...) {
-		return nil, fmt.Errorf("review-status must be one of: %s", strings.Join(accountStatementReviewStatuses, ", "))
+		return nil, fmt.Errorf("--review-status must be one of: %s", strings.Join(accountStatementReviewStatuses, ", "))
 	}
 	if _, _, err := parseOptionalDateRange(o.StartDate, o.EndDate); err != nil {
 		return nil, err
@@ -139,21 +139,21 @@ func buildAccountStatementListQuery(o accountStatementListOpts) (url.Values, err
 // non-empty, at most 25 MB) so obviously bad uploads never leave the machine.
 func buildAccountStatementUpload(o accountStatementUploadOpts) (accountStatementUpload, error) {
 	if o.File == "" {
-		return accountStatementUpload{}, errors.New("file is required")
+		return accountStatementUpload{}, errors.New("--file is required")
 	}
 	ext := strings.ToLower(filepath.Ext(o.File))
 	if !slices.Contains(accountStatementExtensions, ext) {
-		return accountStatementUpload{}, fmt.Errorf("file must be one of: %s", strings.Join(accountStatementExtensions, ", "))
+		return accountStatementUpload{}, fmt.Errorf("--file must be one of: %s", strings.Join(accountStatementExtensions, ", "))
 	}
 	info, err := regularFile(o.File)
 	if err != nil {
 		return accountStatementUpload{}, err
 	}
 	if info.Size() == 0 {
-		return accountStatementUpload{}, errors.New("file is empty")
+		return accountStatementUpload{}, errors.New("--file is empty")
 	}
 	if info.Size() > accountStatementMaxBytes {
-		return accountStatementUpload{}, fmt.Errorf("file is %d bytes; the maximum is %d (25 MB)", info.Size(), accountStatementMaxBytes)
+		return accountStatementUpload{}, fmt.Errorf("--file is %d bytes; the maximum is %d (25 MB)", info.Size(), accountStatementMaxBytes)
 	}
 
 	fields := map[string]string{}

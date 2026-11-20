@@ -162,7 +162,7 @@ func (c importConfig) upload(file, raw, importType string) (upload, error) {
 	}
 	if c.RowsToSkip != "" {
 		if n, err := strconv.Atoi(c.RowsToSkip); err != nil || n < 0 {
-			return upload{}, fmt.Errorf("rows-to-skip must be a non-negative integer (got %q)", c.RowsToSkip)
+			return upload{}, fmt.Errorf("--rows-to-skip must be a non-negative integer (got %q)", c.RowsToSkip)
 		}
 	}
 	fields := map[string]string{}

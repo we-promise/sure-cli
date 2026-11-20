@@ -61,10 +61,10 @@ func newTransactionsCreateCmd() *cobra.Command {
 
 func buildTxCreatePayload(o txCreateOpts) (map[string]any, error) {
 	if o.AccountID == "" {
-		return nil, errors.New("account-id is required")
+		return nil, errors.New("--account-id is required")
 	}
 	if o.Name == "" {
-		return nil, errors.New("name is required")
+		return nil, errors.New("--name is required")
 	}
 	if err := validateTxAmount(o.Amount); err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func buildTxCreatePayload(o txCreateOpts) (map[string]any, error) {
 		return nil, err
 	}
 	if o.Source != "" && o.ExternalID == "" {
-		return nil, errors.New("source requires external-id")
+		return nil, errors.New("--source requires --external-id")
 	}
 
 	tx := map[string]any{
@@ -132,13 +132,13 @@ const maxTxAmountDigits = 15
 // more than 15 digits would not survive the float.
 func validateTxAmount(amount string) error {
 	if !models.IsPositiveDecimal(amount) {
-		return fmt.Errorf("amount must be a positive decimal like 12.34 (got %q); the sign comes from --nature", amount)
+		return fmt.Errorf("--amount must be a positive decimal like 12.34 (got %q); the sign comes from --nature", amount)
 	}
 	if err := moneyColumn.check("amount", amount); err != nil {
 		return err
 	}
 	if models.DecimalIntegerDigits(amount)+models.DecimalScale(amount) > maxTxAmountDigits {
-		return fmt.Errorf("amount has more than %d digits, which Sure cannot store exactly, got %q", maxTxAmountDigits, amount)
+		return fmt.Errorf("--amount has more than %d digits, which Sure cannot store exactly, got %q", maxTxAmountDigits, amount)
 	}
 	return nil
 }
@@ -148,6 +148,6 @@ func validateTxNature(nature string) error {
 	case "income", "expense", "inflow", "outflow":
 		return nil
 	default:
-		return errors.New("nature must be one of: income|expense|inflow|outflow")
+		return errors.New("--nature must be one of: income|expense|inflow|outflow")
 	}
 }
