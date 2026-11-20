@@ -14,6 +14,7 @@ Agent-first CLI for **Sure** (we-promise/sure) — self-hosted personal finance 
 
 - **Default output is JSON** (`--format=json`) wrapped in a stable **Envelope**: `{data, meta, error}`
 - **API errors** set `error.code` from a stable CLI set (`bad_request`, `auth_required`, `mfa_required`, `auth_invalid` for a missing scope, `forbidden`, `not_found`, `conflict`, `validation_failed`, `rate_limited`, `server_error`, `network_error`, ...) and `error.message` to Sure's own message. `error.details` holds `status`, the capped `body`, Sure's machine code as `api_error` (e.g. `insufficient_scope`, `feature_disabled`, `export_not_ready`), and on 429 `retry_after` and `rate_limit`
+- **Unknown subcommands** exit 1 with `error.code` `unknown_command` and cobra's `suggestions`. For commands earlier versions had, `error.details.hint` names the replacement: `insights subscriptions` and `insights fees` (now `status` and Sure's `insights list`), `insights leaks` (`analyze leaks`), `plan runway`, `plan budget` and `plan forecast` (`analyze runway`, `budgets list`, `insights list`); `config heuristics` and `config fee-keywords` are gone
 - **Retries**: only idempotent requests (GET/HEAD/PUT/DELETE/OPTIONS) are retried, on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s. POST/PATCH are never retried, since Sure may have persisted the write before failing
 - **Write operations are safe by default**: `--dry-run` is the default; use `--apply` to execute
 - **Schemas are versioned** under `docs/schemas/v1/` and should remain backward compatible
@@ -154,13 +155,13 @@ sure-cli budget-categories show <budget_category_id>
 # warnings, subscription audits, bank fees, budgets at risk, ...).
 # Needs Preview features on (Sure: Settings > Preferences); otherwise 403
 # forbidden with details.api_error feature_disabled. No filters or paging.
-sure-cli insights list
 # JSON only: --format table prints the same JSON.
+sure-cli insights list
 sure-cli insights ack <insight_id>            # dry-run; the id must be a UUID
 sure-cli insights ack <insight_id> --apply    # read_write scope; guests refused; idempotent
-
 # Sure answers 204 also when the insight was already acknowledged or expired,
 # so ack reports {"id": ..., "in_feed": false}, not that this call acknowledged it.
+
 # Analyze: client-side heuristics Sure does not compute (JSON only)
 sure-cli analyze leaks --months 3            # or --start-date/--end-date; --currency to keep one
 sure-cli analyze runway --account-id <id> --days 90
