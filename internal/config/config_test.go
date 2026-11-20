@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 )
 
 func TestInit_NoConfigFile_DoesNotError(t *testing.T) {
@@ -204,9 +205,62 @@ func TestTimeout(t *testing.T) {
 	if got := Timeout(); got != 30*time.Second {
 		t.Fatalf("default timeout = %v, want 30s", got)
 	}
-	viper.Set("timeout", "90s")
-	if got := Timeout(); got != 90*time.Second {
-		t.Fatalf("timeout = %v, want 90s", got)
+	for v, want := range map[any]time.Duration{"90s": 90 * time.Second, "30": 30 * time.Second, 45: 45 * time.Second, "0": 0} {
+		viper.Set("timeout", v)
+		if got := Timeout(); got != want {
+			t.Fatalf("timeout %#v = %v, want %v", v, got, want)
+		}
+	}
+}
+
+func TestParseTimeout(t *testing.T) {
+	for in, want := range map[string]time.Duration{"30": 30 * time.Second, " 2m ": 2 * time.Minute, "1.5s": 1500 * time.Millisecond, "0": 0, "0s": 0} {
+		if got, err := ParseTimeout(in); err != nil || got != want {
+			t.Errorf("ParseTimeout(%q) = %v, %v; want %v", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "abc", "-5s", "-1", "30x", "9300000000", "-9300000000"} {
+		if _, err := ParseTimeout(in); err == nil {
+			t.Errorf("ParseTimeout(%q) accepted", in)
+		}
+	}
+}
+
+func TestValidate(t *testing.T) {
+	cases := []struct {
+		apiURL, timeout string
+		allowHTTP       bool
+		wantErr         string
+	}{
+		{"https://sure.example.com", "30s", false, ""},
+		{"http://localhost:3000", "30s", false, ""},
+		{"http://127.0.0.1:8080/", "30s", false, ""},
+		{"http://[::1]:3000", "30s", false, ""},
+		{"http://app.localhost", "30s", false, ""},
+		{"http://sure.example.com", "30s", false, "allow-insecure-http"},
+		{"http://localhost.evil.com", "30s", false, "allow-insecure-http"},
+		{"http://192.168.1.10:3000", "30s", false, "allow-insecure-http"},
+		{"http://sure.example.com", "30s", true, ""},
+		{"ftp://sure.example.com", "30s", true, "api_url"},
+		{"sure.example.com", "30s", false, "api_url"},
+		{"https://sure.example.com", "abc", false, "timeout"},
+		{"https://sure.example.com", "-5s", false, "timeout"},
+	}
+	for _, c := range cases {
+		viper.Reset()
+		if err := Init(filepath.Join(t.TempDir(), "none.yaml")); err != nil {
+			t.Fatal(err)
+		}
+		viper.Set("api_url", c.apiURL)
+		viper.Set("timeout", c.timeout)
+		viper.Set("allow_insecure_http", c.allowHTTP)
+		err := Validate()
+		switch {
+		case c.wantErr == "" && err != nil:
+			t.Errorf("%+v: unexpected error %v", c, err)
+		case c.wantErr != "" && (err == nil || err.Code != errs.CodeValidation || !strings.Contains(err.Message, c.wantErr)):
+			t.Errorf("%+v: error = %v, want validation_failed mentioning %q", c, err, c.wantErr)
+		}
 	}
 }
 

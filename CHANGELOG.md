@@ -78,11 +78,13 @@ The `heuristics.*` config keys are no longer read.
 - POST, PATCH and DELETE are no longer retried. GET, HEAD, PUT and OPTIONS retry on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s.
 - `--timeout` (default 30 s) bounds a whole call, retries included; it bounded each attempt.
 - `login` stores a random per-install `auth.device.device_id`, so logging in on another machine no longer logs this one out.
+- A plain `http://` `api_url` on a host other than this machine fails with `validation_failed` unless `--allow-insecure-http` or the `allow_insecure_http` config key is set (SURE-SEC-002).
 
 #### Config and tokens
 
 - When saving the config fails after Sure issued new tokens, `error.details.refresh_token` is gone: the new pair is written to an owner-only file in the user cache directory and `error.details.rescue_file` gives its path. This also covers `refresh` and `login`, which reported only the save error.
 - `refresh` and `login` check that the config file is writable before contacting Sure and fail with `config_save_failed` otherwise.
+- `--timeout` and the `timeout` config key take a bare number as seconds (`30` was 30 ns for the key and rejected by the flag). A negative or unreadable value fails with `validation_failed`; the key fell back to no timeout at all. `config set timeout` checks the value.
 - Saving the config never loosens its mode: 0400 stays 0400, and anything looser than 0600 becomes 0600. It refuses a file owned by another user, and writes through a symlink whose target does not exist yet instead of replacing the link.
 
 ### Added
