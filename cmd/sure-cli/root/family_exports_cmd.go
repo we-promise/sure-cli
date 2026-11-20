@@ -61,9 +61,11 @@ func newFamilyExportsCmd() *cobra.Command {
 				failValidation(errors.New("--out is required"))
 			}
 			// Ctrl-C cancels the transfer instead of killing the process, so
-			// the partial temp file next to --out is removed.
+			// the partial temp file next to --out is removed. A second Ctrl-C
+			// kills the process as usual.
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
+			context.AfterFunc(ctx, stop)
 
 			client := api.New()
 			exportPath := fmt.Sprintf("/api/v1/family_exports/%s", url.PathEscape(args[0]))
@@ -76,7 +78,7 @@ func newFamilyExportsCmd() *cobra.Command {
 					} `json:"file"`
 				} `json:"data"`
 			}
-			checkResponse(client.Get(exportPath, &export))
+			checkResponse(client.GetContext(ctx, exportPath, &export))
 			r, err := client.GetToFile(ctx, exportPath+"/download", outFile, export.Data.File.ByteSize)
 			// Download returns the file path as the data payload on success.
 			// On a non-2xx (e.g. 409 export_not_ready) or an incomplete body
