@@ -1,0 +1,97 @@
+# Changelog
+
+Releases are tagged on [GitHub](https://github.com/we-promise/sure-cli/releases). This file lists what changes for scripts and agents that call `sure-cli`.
+
+## Unreleased
+
+### Breaking changes
+
+#### Removed and renamed commands
+
+| Before | Now |
+|---|---|
+| `insights leaks` | `analyze leaks` |
+| `plan runway` | `analyze runway` |
+| `plan budget` | `budgets list`, `budget-categories list`, `status` (`data.budget_pacing`) |
+| `plan forecast` | `insights list` (Sure's cash flow insights) |
+| `insights subscriptions` | `status` (`data.monthly.subscriptions`), `recurring-transactions list` |
+| `insights fees` | `insights list` (Sure's bank fee insights) |
+| `config heuristics`, `config fee-keywords` | none: leak thresholds are `analyze leaks` flags |
+
+The `plan` group is gone. A removed command now exits 1 with `error.code` `unknown_command` and `error.details.hint` naming its replacement. Before, a command group given a subcommand it lacks printed its help and exited 0.
+
+The `heuristics.*` config keys are no longer read.
+
+#### Removed flags
+
+- `imports create --file-format` and `--source`: Sure neither permits nor reads them.
+- `merchants list --page` and `--per-page`: the endpoint returns every merchant.
+- `transactions update --currency`: Sure ignores it on update.
+- `trades create --category-id` and `--investment-activity-label`, `trades update --category-id`: Sure no longer permits a category, and it sets the activity label from `--type`.
+
+#### Schemas
+
+- `insights_leaks.schema.json` is now `analyze_leaks.schema.json`, and `plan_runway.schema.json` is now `analyze_runway.schema.json`. `meta.schema` names the new files.
+- `insights_subscriptions`, `insights_fees`, `plan_budget` and `plan_forecast` schemas are deleted with their commands.
+
+#### Error codes
+
+- 403 is `forbidden`. `auth_invalid` now means only a missing scope (403 `insufficient_scope`). Before, every 403 was `auth_invalid`.
+- 400 is `bad_request` and 409 is `conflict`; both were `unknown_error`.
+- A 401 asking for a second factor is `mfa_required`, also from `login`.
+- `request_failed` is gone: `status`, `export`, `propose` and `analyze` report the classified code (`forbidden`, `not_found`, `server_error`, ...) with Sure's message and details.
+- `account_not_found` is gone: `analyze runway` reads the account by id and reports `not_found`.
+- `missing_account` and `invalid_format` are now `validation_failed`, as is every input the CLI rejects before sending a request, unknown flags and wrong argument counts included.
+- `compute_failed`, `invalid_month`, `auth_expired`, `config_invalid` and `internal_error` are gone.
+- New codes: `invalid_response` (a 2xx body the CLI cannot read, too large or cut short), `canceled` (Ctrl-C or SIGTERM), `unknown_command`.
+
+`internal/errors/errors.go` lists every code the CLI emits.
+
+#### Output
+
+- `status`: `data.accounts.total_balance` is replaced by `data.net_worth` (`currency`, `net_worth`, `assets`, `liabilities`, from Sure's balance sheet) and `data.accounts.by_currency`. Entries of `data.accounts.list` add `classification` and `exclude_from_reports`. `data.budget_pacing` is now a list with one entry per current budget, in that budget's currency (`id`, `name`, `currency`, `start_date`, `end_date`, `initialized`, `budgeted_spending`, `actual_spending`, `available_to_spend`, `percent_spent`, `percent_elapsed`); it was one object with `month`, `days_elapsed`, `spent`, `projected` and `avg_per_day`. `data.monthly.subscriptions` comes from Sure's active recurring transactions, and `data.monthly.subscriptions_by_currency` is new. `data.alerts` is `[]` when empty. Amounts use each currency's own decimals.
+- `meta.status` appears only when `data` is a single Sure response. `status`, `analyze runway`, `export transactions` and `propose rules` no longer report `meta.status: 200`. `analyze runway` reports an account body without a readable balance as `invalid_response`.
+- `analyze leaks` (was `insights leaks`): `data.params` echoes the thresholds applied as `min_count`, `min_total_minor`, `max_avg_minor` and, with `--currency`, `currency`, in place of `min_total` and `max_avg`. `data.window` adds `days`. Candidates add `merchant_id`, `grouped_by` and `currency`; amounts round to the currency's minor unit.
+- `analyze runway`: `currency` is the account's own, not always `EUR`.
+- `export transactions` CSV: `amount` is the exact signed decimal, income positive and expense negative, where it was Sure's localized display string (`"-€2,000.00"`). The columns are now `id, date, name, amount, currency, classification, kind, category, account, merchant, excluded, split_parent`. Every row is exported, split parents and excluded rows included; the new columns mark the rows to leave out of a sum.
+- The `imports create` dry run lists the request fields; it printed the internal Go struct. A raw `import-sessions add-chunk` dry run shows `sequence` as a string.
+
+#### Stricter input
+
+- Decimal flags are plain decimal text: `3.` and `.5` are rejected. This covers `valuations create` and `update --amount` and the `recurring-transactions create` amounts, which were sent as typed: Sure read `1,234.56` as 1 and `abc` as 0.
+- `transactions create` and `update`: `--amount` must be a positive decimal with at most 4 decimals and 15 digits; `--nature` gives the sign. It was a float sent with two decimals. `update --nature` without `--amount` fails instead of being dropped.
+- `trades create` and `update`: `--date` must be `YYYY-MM-DD`; Rails read `05/01/2026` as 5 January.
+- `trades update`: `--type` or `--nature` needs `--qty` or `--price`; `--nature` is `inflow` or `outflow`; `--amount` cannot be combined with `--qty` or `--price`; qty, price and amount are checked against Sure's columns. `trades create --fee` must be 0 or more.
+- `analyze leaks --min-total` and `--max-avg` are major units of `--currency` and require it. Without them the defaults are 1500 and 1000 minor units of each group's currency (15.00 and 10.00 EUR, ¥1500 and ¥1000).
+- `propose rules --months` and `export transactions --months` of 0 or less fail with `validation_failed`; they fell back to 3 and 12. `analyze leaks --months` and `analyze runway --days` reject them too.
+- `export transactions` checks `--out-format` before fetching anything.
+- `insights ack` requires a UUID.
+- `recurring-transactions create` and `update`: `--status` accepts only `active` or `inactive`; `--expected-day-of-month` is a whole number from 1 to 31 and the dates are `YYYY-MM-DD`. `create` requires `--amount`, `--currency` and `--expected-day-of-month`, which Sure validates and does not fill in, so a create without them always failed with a 422.
+- A `--file` must be a regular file: devices, pipes and directories are rejected before any request. `merchants import` requires a `.csv` file.
+
+#### Windows and totals
+
+- `--months` windows start one day later: run on 2026-11-20, `--months 1` covers 2026-10-21 to 2026-11-20, so each day of the month counts once. This applies to `status` (monthly), `analyze leaks`, `propose rules` and `export transactions`.
+- Totals in `status`, `analyze` and `propose` approximate Sure's income statement. They skip split parents, excluded rows, transfers (`funds_movement`, `cc_payment`, `one_time`) and accounts excluded from reports or not draft or active. `loan_payment` and `investment_contribution` rows count as expenses. See "Amounts and Totals" in the README for what the API does not let the CLI reproduce.
+
+#### Requests
+
+- POST, PATCH and DELETE are no longer retried. GET, HEAD, PUT and OPTIONS retry on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s.
+- `--timeout` (default 30 s) bounds a whole call, retries included; it bounded each attempt.
+- `login` stores a random per-install `auth.device.device_id`, so logging in on another machine no longer logs this one out.
+
+### Added
+
+- `account-statements list`, `show` and `upload`.
+- `analyze leaks --currency`, `--start-date` and `--end-date`.
+- `accounts list --all` (every page, without `meta.status`) and `--include-disabled`.
+- `cash-flow show` and `spending-vs-normal show`.
+- `insights list` and `insights ack` for Sure's insights feed. Sure answers 204 also for an insight already acknowledged or expired, so `ack --apply` reports `{"id": ..., "in_feed": false}`.
+- `merchants import`.
+- `recurring-transactions create` and `update`: `--autopay`, `--notes` and `--payment-url`.
+- `security-prices create`.
+- `trades create`: every Sure trade type, with `--amount`, `--fee` and `--transfer-account-id`.
+- `transactions create`: `--category-id`, `--merchant-id`, `--tag-id`, `--external-id`, `--source`, `--user-modified`. `transactions update`: `--merchant-id`, `--tag-id`, `--clear-tags`, `--user-modified`.
+- `imports create --rows-to-skip`.
+- `version --server`.
+- The global `--timeout` flag and `timeout` config key.

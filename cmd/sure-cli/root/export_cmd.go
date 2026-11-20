@@ -3,19 +3,21 @@ package root
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/models"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newExportCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "export", Short: "Export data (transactions, accounts)"}
+	cmd := &cobra.Command{Use: "export", Short: "Export transactions"}
 	cmd.AddCommand(newExportTransactionsCmd())
 	return cmd
 }
@@ -23,53 +25,39 @@ func newExportCmd() *cobra.Command {
 func newExportTransactionsCmd() *cobra.Command {
 	var months int
 	var outFile string
-	// Local --out-format avoids colliding with the persistent --format
-	// (json|table) declared on the root command. Previously both flags were
-	// named --format and only worked because they happened to be read from
-	// different package-level variables.
+	// --out-format is the file's format; the persistent --format (json|table)
+	// is how the result envelope prints.
 	var exportFormat string
 
 	cmd := &cobra.Command{
 		Use:   "transactions",
 		Short: "Export transactions to CSV or JSON",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := api.New()
-
-			if months <= 0 {
-				months = 12
+			write, ok := transactionWriters[exportFormat]
+			if !ok {
+				failValidation(errors.New("--out-format must be csv or json"))
 			}
-			end := time.Now().UTC()
-			start := end.AddDate(0, -months, 0)
+			start, end, err := lookbackWindow("months", months, lookbackStart, time.Now())
+			failValidation(err)
+			client := api.New()
 			// Every row, flagged: an export is a dump, not a total.
-			txs, err := api.FetchAllTransactionsWindow(client, start, end, 1000)
+			txs, err := api.FetchAllTransactionsWindow(client, start, end)
 			checkResponse(nil, err)
 
 			if outFile == "" {
-				outFile = fmt.Sprintf("transactions_%s.%s", time.Now().Format("2006-01-02"), exportFormat)
+				outFile = fmt.Sprintf("transactions_%s.%s", time.Now().Format(time.DateOnly), exportFormat)
 			}
 
-			switch exportFormat {
-			case "csv":
-				if err := exportTransactionsCSV(txs, outFile); err != nil {
-					output.Fail("export_failed", err.Error(), nil)
-					return
-				}
-			case "json":
-				if err := exportTransactionsJSON(txs, outFile); err != nil {
-					output.Fail("export_failed", err.Error(), nil)
-					return
-				}
-			default:
-				output.Fail("invalid_format", "out-format must be csv or json", nil)
-				return
+			if err := writeFile(outFile, func(w io.Writer) error { return write(w, txs) }); err != nil {
+				fail(errs.Wrap(errs.CodeExportFailed, err.Error(), err))
 			}
 
-			_ = output.Print(format, output.Envelope{Data: map[string]any{
+			printEnvelope(map[string]any{
 				"exported":   len(txs),
 				"file":       outFile,
 				"out_format": exportFormat,
-				"date_range": map[string]string{"start": start.Format("2006-01-02"), "end": end.Format("2006-01-02")},
-			}, Meta: &output.Meta{Status: 200}})
+				"date_range": map[string]string{"start": start.Format(time.DateOnly), "end": end.Format(time.DateOnly)},
+			}, nil)
 		},
 	}
 	cmd.Flags().IntVar(&months, "months", 12, "lookback months")
@@ -78,28 +66,40 @@ func newExportTransactionsCmd() *cobra.Command {
 	return cmd
 }
 
-func exportTransactionsCSV(txs []models.Transaction, path string) error {
+// transactionWriters maps each --out-format to the writer of its file.
+var transactionWriters = map[string]func(io.Writer, []models.Transaction) error{
+	"csv":  writeTransactionsCSV,
+	"json": writeTransactionsJSON,
+}
+
+// writeFile creates path and hands it to write. A failure to write or to
+// close the file is the error: the data may not be on disk.
+func writeFile(path string, write func(io.Writer) error) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}()
+	return write(f)
+}
 
-	w := csv.NewWriter(f)
-	defer w.Flush()
+func writeTransactionsCSV(out io.Writer, txs []models.Transaction) error {
+	w := csv.NewWriter(out)
 
-	// Header
 	// amount is exact and signed (income positive, expense negative).
 	// excluded/split_parent rows are exported but do not count in totals.
 	header := []string{"id", "date", "name", "amount", "currency", "classification", "kind", "category", "account", "merchant", "excluded", "split_parent"}
 	if err := w.Write(header); err != nil {
 		return err
 	}
-
 	for _, tx := range txs {
 		row := []string{
 			tx.ID,
-			tx.Date.Format("2006-01-02"),
+			tx.Date.Format(time.DateOnly),
 			tx.Name,
 			tx.AmountDecimal,
 			tx.Currency,
@@ -115,24 +115,17 @@ func exportTransactionsCSV(txs []models.Transaction, path string) error {
 			return err
 		}
 	}
-
-	return nil
+	// csv.Writer buffers: a failed write only surfaces here.
+	w.Flush()
+	return w.Error()
 }
 
-func exportTransactionsJSON(txs []models.Transaction, path string) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
+func writeTransactionsJSON(out io.Writer, txs []models.Transaction) error {
+	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
-
-	data := map[string]any{
+	return enc.Encode(map[string]any{
 		"exported_at":  time.Now().UTC().Format(time.RFC3339),
 		"count":        len(txs),
 		"transactions": txs,
-	}
-	return enc.Encode(data)
+	})
 }

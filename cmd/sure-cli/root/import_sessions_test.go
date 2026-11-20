@@ -74,17 +74,18 @@ func TestBuildChunkCreate_RawContentBuildsJSONBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if plan.Multipart {
+	if plan.FilePath != "" {
 		t.Fatal("raw content should not be multipart")
 	}
-	if plan.JSONBody["sequence"] != 2 {
-		t.Fatalf("sequence = %v", plan.JSONBody["sequence"])
+	body := plan.jsonBody()
+	if body["sequence"] != "2" {
+		t.Fatalf("sequence = %v", body["sequence"])
 	}
-	if plan.JSONBody["raw_file_content"] != `{"a":1}` {
-		t.Fatalf("raw_file_content = %v", plan.JSONBody["raw_file_content"])
+	if body["raw_file_content"] != `{"a":1}` {
+		t.Fatalf("raw_file_content = %v", body["raw_file_content"])
 	}
-	if plan.JSONBody["client_chunk_id"] != "c-2" {
-		t.Fatalf("client_chunk_id = %v", plan.JSONBody["client_chunk_id"])
+	if body["client_chunk_id"] != "c-2" {
+		t.Fatalf("client_chunk_id = %v", body["client_chunk_id"])
 	}
 }
 
@@ -103,9 +104,6 @@ func TestBuildChunkCreate_FileBuildsMultipart(t *testing.T) {
 	plan, err := buildChunkCreate(chunkCreateOpts{Sequence: 1, File: fp})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if !plan.Multipart {
-		t.Fatal("file path should be multipart")
 	}
 	if plan.FilePath != fp {
 		t.Fatalf("FilePath = %q", plan.FilePath)

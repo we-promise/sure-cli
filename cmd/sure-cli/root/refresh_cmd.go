@@ -17,8 +17,7 @@ func newRefreshCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			rt := config.RefreshToken()
 			if rt == "" {
-				output.Fail("missing_refresh_token", "no refresh token stored; run sure-cli login", nil)
-				return
+				output.Fail(errs.CodeRefreshTokenMissing, "no refresh token stored; run sure-cli login", nil)
 			}
 
 			client := api.New()
@@ -28,12 +27,10 @@ func newRefreshCmd() *cobra.Command {
 			})
 			if err != nil {
 				ce := errs.From(err)
-				output.Fail("refresh_failed", ce.Message, ce.Details)
-				return
+				output.Fail(errs.CodeRefreshFailed, ce.Message, ce.Details)
 			}
 			if res.AccessToken == "" {
-				output.Fail("refresh_failed", "refresh response returned empty access token", nil)
-				return
+				output.Fail(errs.CodeRefreshFailed, "refresh response returned empty access token", nil)
 			}
 
 			config.SetAuthMode("bearer")
@@ -47,15 +44,14 @@ func newRefreshCmd() *cobra.Command {
 				config.SetTokenExpiresAt(time.Now().Add(time.Duration(res.ExpiresIn) * time.Second))
 			}
 			if err := config.Save(); err != nil {
-				output.Fail("config_save_failed", err.Error(), nil)
-				return
+				output.Fail(errs.CodeConfigSaveFailed, err.Error(), nil)
 			}
 
-			_ = output.Print(format, output.Envelope{Data: map[string]any{
+			printEnvelope(map[string]any{
 				"token_type": res.TokenType,
 				"expires_in": res.ExpiresIn,
 				"created_at": res.CreatedAt,
-			}})
+			}, nil)
 		},
 	}
 

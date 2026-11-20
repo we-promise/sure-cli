@@ -1,0 +1,18 @@
+{
+  "data": {
+    "dry_run": true,
+    "request": {
+      "method": "POST",
+      "path": "/api/v1/transactions",
+      "body": {
+        "transaction": {
+          "account_id": "4ef4978e-9f99-4f3d-a180-d8d0c70e156b",
+          "amount": "12.34",
+          "date": "2026-02-04",
+          "name": "Coffee",
+          "nature": "expense"
+        }
+      }
+    }
+  }
+}

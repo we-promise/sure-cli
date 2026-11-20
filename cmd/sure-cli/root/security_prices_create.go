@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
+	errs "github.com/we-promise/sure-cli/internal/errors"
+	"github.com/we-promise/sure-cli/internal/models"
 	"github.com/we-promise/sure-cli/internal/output"
 )
 
@@ -68,11 +68,9 @@ dates, price > 0 with at most 4 decimals, one currency per request.`,
 			if err != nil {
 				var rowErrs securityPriceRowErrors
 				if errors.As(err, &rowErrs) {
-					output.Fail("validation_failed", "Prices were not sent", map[string]any{"errors": rowErrs})
-					return
+					output.Fail(errs.CodeValidation, "Prices were not sent", map[string]any{"errors": rowErrs})
 				}
-				output.Fail("validation_failed", err.Error(), nil)
-				return
+				failValidation(err)
 			}
 			dispatchWrite(apply, "POST", "/api/v1/security_prices", payload)
 		},
@@ -213,8 +211,6 @@ func jsonScalarText(raw json.RawMessage) (string, error) {
 	}
 }
 
-var isoCalendarDateRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
-
 // validateSecurityPriceRows applies the row rules of
 // Security::ManualPriceImport that need no server state. Not checked here:
 // future dates (Sure's "today" is its own time zone), ISO 4217 membership,
@@ -262,10 +258,7 @@ func validateSecurityPriceRows(rows []securityPriceRow) error {
 }
 
 func securityPriceDateError(date string) string {
-	if !isoCalendarDateRE.MatchString(date) {
-		return "date must be an ISO 8601 date"
-	}
-	if _, err := time.Parse(time.DateOnly, date); err != nil {
+	if _, err := parseISODate("date", date); err != nil {
 		return "date must be an ISO 8601 date"
 	}
 	return ""
@@ -273,13 +266,13 @@ func securityPriceDateError(date string) string {
 
 func securityPriceError(price string) string {
 	switch {
-	case !isDecimalText(price):
+	case !models.IsDecimal(price):
 		return "price must be a number written as plain decimal text"
-	case !isPositiveDecimalText(price):
+	case !models.IsPositiveDecimal(price):
 		return "price must be greater than 0"
-	case decimalScale(price) > 4:
+	case models.DecimalScale(price) > moneyColumn.Scale:
 		return "price must have at most 4 decimal places"
-	case decimalIntegerDigits(price) > 15:
+	case models.DecimalIntegerDigits(price) > moneyColumn.IntegerDigits:
 		return "price is too large"
 	}
 	return ""

@@ -29,10 +29,12 @@ func TestBuildImportPreflightPayload_RawContent(t *testing.T) {
 	p, err := buildImportPreflightPayload(importPreflightOpts{
 		Type:           "TransactionImport",
 		RawFileContent: "Date,Name,Amount\n2026-01-01,Coffee,-3.50\n",
-		DateColLabel:   "Date",
-		AmountColLabel: "Amount",
-		NameColLabel:   "Name",
-		RowsToSkip:     "0",
+		importConfig: importConfig{
+			DateColLabel:   "Date",
+			AmountColLabel: "Amount",
+			NameColLabel:   "Name",
+			RowsToSkip:     "0",
+		},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -40,7 +42,7 @@ func TestBuildImportPreflightPayload_RawContent(t *testing.T) {
 	if p.Fields["type"] != "TransactionImport" {
 		t.Fatalf("type field: %q", p.Fields["type"])
 	}
-	if p.Fields["raw_file_content"] == "" {
+	if p.jsonBody()["raw_file_content"] == "" {
 		t.Fatal("raw_file_content should be set")
 	}
 	if p.Fields["date_col_label"] != "Date" || p.Fields["amount_col_label"] != "Amount" || p.Fields["name_col_label"] != "Name" {

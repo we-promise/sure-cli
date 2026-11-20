@@ -17,6 +17,13 @@ func TestBuildTxUpdatePayload_ValidAmountRequiresNature(t *testing.T) {
 	}
 }
 
+// Sure applies nature only through the amount; alone it is dropped.
+func TestBuildTxUpdatePayload_NatureRequiresAmount(t *testing.T) {
+	if _, err := buildTxUpdatePayload(txUpdateOpts{Nature: "income", Name: "x"}); err == nil {
+		t.Fatalf("expected err for --nature without --amount")
+	}
+}
+
 func TestBuildTxUpdatePayload_Valid(t *testing.T) {
 	p, err := buildTxUpdatePayload(txUpdateOpts{Name: "x", Amount: "1.2", Nature: "expense", Date: "2026-02-04"})
 	if err != nil {

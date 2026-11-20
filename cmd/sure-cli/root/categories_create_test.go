@@ -80,9 +80,7 @@ func TestBuildCategoryCreatePayload_WhitespaceOnlyNameRejected(t *testing.T) {
 }
 
 func TestBuildCategoryCreatePayload_TrimsNameInPayload(t *testing.T) {
-	// Regression: trimming was applied for validation but the original value
-	// was sent in the payload, leaking whitespace into the upstream uniqueness
-	// check.
+	// The trimmed name is the one sent, so Sure's uniqueness check sees it.
 	payload, err := buildCategoryCreatePayload(categoryCreateOpts{Name: "  Food  ", Color: "#3b82f6"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

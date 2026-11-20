@@ -27,21 +27,17 @@ func newProposeRulesCmd() *cobra.Command {
 		Use:   "rules",
 		Short: "Propose categorization rules based on transaction patterns",
 		Run: func(cmd *cobra.Command, args []string) {
+			start, end, err := lookbackWindow("months", months, lookbackStart, time.Now())
+			failValidation(err)
 			client := api.New()
-
-			if months <= 0 {
-				months = 3
-			}
-			end := time.Now().UTC()
-			start := end.AddDate(0, -months, 0)
-			txs, err := api.FetchTransactionsWindow(client, start, end, 500)
+			txs, err := api.FetchTransactionsWindow(client, start, end)
 			checkResponse(nil, err)
 
 			result := rules.ProposeRules(txs)
 
 			if !apply {
 				// Just show proposals
-				_ = output.Print(format, output.Envelope{Data: result, Meta: &output.Meta{Schema: "docs/schemas/v1/propose_rules.schema.json", Status: 200}})
+				printEnvelope(result, &output.Meta{Schema: "docs/schemas/v1/propose_rules.schema.json"})
 				return
 			}
 
@@ -107,14 +103,14 @@ func newProposeRulesCmd() *cobra.Command {
 				}
 			}
 
-			_ = output.Print(format, output.Envelope{Data: map[string]any{
+			printEnvelope(map[string]any{
 				"applied_count": len(applied),
 				"skipped_count": len(skipped),
 				"error_count":   len(errors),
 				"applied":       applied,
 				"skipped":       skipped,
 				"errors":        errors,
-			}, Meta: &output.Meta{Status: 200}})
+			}, nil)
 		},
 	}
 	cmd.Flags().IntVar(&months, "months", 3, "lookback months")

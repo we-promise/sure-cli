@@ -16,12 +16,11 @@ func PrintTable(env Envelope) bool {
 	}
 
 	// Accounts list
-	if accounts, ok := m["accounts"].([]any); ok {
+	if accounts, ok := rows(m["accounts"]); ok {
 		tw := table.NewWriter()
 		tw.SetOutputMirror(os.Stdout)
 		tw.AppendHeader(table.Row{"id", "name", "type", "currency", "balance", "classification"})
-		for _, a := range accounts {
-			rowm, _ := a.(map[string]any)
+		for _, rowm := range accounts {
 			tw.AppendRow(table.Row{
 				fmt.Sprint(rowm["id"]),
 				fmt.Sprint(rowm["name"]),
@@ -36,12 +35,11 @@ func PrintTable(env Envelope) bool {
 	}
 
 	// Transactions list
-	if txs, ok := m["transactions"].([]any); ok {
+	if txs, ok := rows(m["transactions"]); ok {
 		tw := table.NewWriter()
 		tw.SetOutputMirror(os.Stdout)
 		tw.AppendHeader(table.Row{"id", "date", "name", "classification", "amount", "account"})
-		for _, tx := range txs {
-			rowm, _ := tx.(map[string]any)
+		for _, rowm := range txs {
 			acct := ""
 			if am, ok := rowm["account"].(map[string]any); ok {
 				acct = fmt.Sprint(am["name"])
@@ -60,12 +58,11 @@ func PrintTable(env Envelope) bool {
 	}
 
 	// Holdings list (Sure api/v1/holdings/_holding)
-	if holdings, ok := m["holdings"].([]any); ok {
+	if holdings, ok := rows(m["holdings"]); ok {
 		tw := table.NewWriter()
 		tw.SetOutputMirror(os.Stdout)
 		tw.AppendHeader(table.Row{"id", "date", "ticker", "security", "qty", "price", "amount", "avg_cost", "lots", "account"})
-		for _, h := range holdings {
-			rowm, _ := h.(map[string]any)
+		for _, rowm := range holdings {
 			tw.AppendRow(table.Row{
 				cell(rowm["id"]),
 				cell(rowm["date"]),
@@ -84,12 +81,11 @@ func PrintTable(env Envelope) bool {
 	}
 
 	// Trades list (Sure api/v1/trades/_trade)
-	if trades, ok := m["trades"].([]any); ok {
+	if trades, ok := rows(m["trades"]); ok {
 		tw := table.NewWriter()
 		tw.SetOutputMirror(os.Stdout)
 		tw.AppendHeader(table.Row{"id", "date", "ticker", "activity", "qty", "price", "amount", "lot_source", "account"})
-		for _, tr := range trades {
-			rowm, _ := tr.(map[string]any)
+		for _, rowm := range trades {
 			tw.AppendRow(table.Row{
 				cell(rowm["id"]),
 				cell(rowm["date"]),
@@ -107,6 +103,22 @@ func PrintTable(env Envelope) bool {
 	}
 
 	return false
+}
+
+// rows reads a list of objects, decoded from one response ([]any) or
+// gathered across pages ([]map[string]any).
+func rows(v any) ([]map[string]any, bool) {
+	switch list := v.(type) {
+	case []map[string]any:
+		return list, true
+	case []any:
+		out := make([]map[string]any, len(list))
+		for i, item := range list {
+			out[i], _ = item.(map[string]any)
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 // cell renders a JSON value, leaving null blank instead of "<nil>".

@@ -1,8 +1,10 @@
 package root
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
@@ -32,18 +34,14 @@ func newInsightsListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List the visible insights (active and read)",
+		Long:  "Lists the insights Sure shows in its feed, active and read." + jsonOnly,
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			res, status, ce := fetchInsights()
 			if ce != nil {
-				output.Fail(ce.Code, ce.Message, ce.Details)
+				fail(ce)
 			}
-			if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{
-				Schema: "docs/schemas/v1/insights_list.schema.json",
-				Status: status,
-			}}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			printEnvelope(res, &output.Meta{Schema: "docs/schemas/v1/insights_list.schema.json", Status: status})
 		},
 	}
 }
@@ -53,28 +51,38 @@ func newInsightsAckCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ack <id>",
 		Short: "Acknowledge an insight so it leaves the feed (default dry-run; use --apply to execute)",
-		Long: "Acknowledges an insight. Repeating it is harmless. Sure may show the insight " +
-			"again when its numbers change materially or in a new period.",
+		Long: "Acknowledges an insight so it leaves the feed. Sure answers the same way when " +
+			"the insight was already acknowledged or had expired, so the result only says the " +
+			"insight is no longer in the feed. Sure may show it again when its numbers change " +
+			"materially or in a new period.",
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			failValidation(validateInsightID(args[0]))
 			if !apply {
 				printDryRun(http.MethodPatch, insightAckPath(args[0]), nil)
 				return
 			}
 			status, ce := acknowledgeInsight(args[0])
 			if ce != nil {
-				output.Fail(ce.Code, ce.Message, ce.Details)
+				fail(ce)
 			}
-			if err := output.Print(format, output.Envelope{
-				Data: map[string]any{"id": args[0], "acknowledged": true},
-				Meta: &output.Meta{Status: status},
-			}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			printEnvelope(map[string]any{"id": args[0], "in_feed": false}, &output.Meta{Status: status})
 		},
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "execute the request (otherwise dry-run)")
 	return cmd
+}
+
+// uuidRE matches the canonical UUID text Sure's insight ids use.
+var uuidRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// validateInsightID rejects ids Sure would answer with 404 (insight ids are
+// UUIDs), so a typo fails before any request.
+func validateInsightID(id string) error {
+	if !uuidRE.MatchString(id) {
+		return fmt.Errorf("insight id %q is not a UUID; take it from `insights list`", id)
+	}
+	return nil
 }
 
 func insightAckPath(id string) string {

@@ -20,7 +20,11 @@ func newAccountsCmd() *cobra.Command {
 			client := api.New()
 			if all {
 				accounts, r, err := api.FetchAllAccounts(client, includeDisabled)
-				respond(r, err, map[string]any{"accounts": accounts})
+				if accounts == nil {
+					accounts = []map[string]any{} // render [], never null
+				}
+				checkResponse(r, err)
+				printEnvelope(map[string]any{"accounts": accounts}, nil) // several pages: no meta.status
 				return
 			}
 			q := api.AccountsQuery(includeDisabled)

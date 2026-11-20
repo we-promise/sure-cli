@@ -83,7 +83,7 @@ func buildCashFlowQuery(o cashFlowOpts) (url.Values, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid --month %q (expected YYYY-MM)", o.Month)
 		}
-		q.Set("month", m.Format(isoDateLayout))
+		q.Set("month", m.Format(time.DateOnly))
 	}
 
 	for k, v := range map[string]string{"view": o.View, "group_by": o.GroupBy, "include": o.Include} {

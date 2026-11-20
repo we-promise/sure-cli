@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -43,10 +42,8 @@ type accountStatementUploadOpts struct {
 }
 
 type accountStatementUpload struct {
-	FilePath    string
-	ContentType string
-	ByteSize    int64
-	Fields      map[string]string
+	upload
+	ByteSize int64
 }
 
 func newAccountStatementsCmd() *cobra.Command {
@@ -99,7 +96,7 @@ Responses: 201 stored; 200 the same file is already in the vault (meta.duplicate
 			u, err := buildAccountStatementUpload(o)
 			failValidation(err)
 			if !o.Apply {
-				printDryRun("POST", accountStatementsPath, accountStatementDryRunBody(u))
+				printDryRun("POST", accountStatementsPath, u.dryRunBody())
 				return
 			}
 			var res any
@@ -148,12 +145,9 @@ func buildAccountStatementUpload(o accountStatementUploadOpts) (accountStatement
 	if !slices.Contains(accountStatementExtensions, ext) {
 		return accountStatementUpload{}, fmt.Errorf("file must be one of: %s", strings.Join(accountStatementExtensions, ", "))
 	}
-	info, err := os.Stat(o.File)
+	info, err := regularFile(o.File)
 	if err != nil {
-		return accountStatementUpload{}, fmt.Errorf("file not accessible: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return accountStatementUpload{}, errors.New("file must be a regular file")
+		return accountStatementUpload{}, err
 	}
 	if info.Size() == 0 {
 		return accountStatementUpload{}, errors.New("file is empty")
@@ -167,27 +161,19 @@ func buildAccountStatementUpload(o accountStatementUploadOpts) (accountStatement
 		fields["account_id"] = o.AccountID
 	}
 	return accountStatementUpload{
-		FilePath:    o.File,
-		ContentType: mimeForUploadFile(o.File),
-		ByteSize:    info.Size(),
-		Fields:      fields,
+		upload:   upload{Fields: fields, FilePath: o.File},
+		ByteSize: info.Size(),
 	}, nil
 }
 
-// accountStatementDryRunBody describes the planned multipart request without
-// embedding the document itself.
-func accountStatementDryRunBody(u accountStatementUpload) map[string]any {
-	body := map[string]any{
-		"file":         u.FilePath,
-		"content_type": u.ContentType,
-		"byte_size":    u.ByteSize,
-	}
-	for k, v := range u.Fields {
-		body[k] = v
-	}
+// dryRunBody adds the part's content type and size to the planned request.
+func (u accountStatementUpload) dryRunBody() map[string]any {
+	body := u.upload.dryRunBody()
+	body["content_type"] = mimeForUploadFile(u.FilePath)
+	body["byte_size"] = u.ByteSize
 	return body
 }
 
 func postAccountStatement(client *api.Client, u accountStatementUpload, out any) (*resty.Response, error) {
-	return client.PostMultipart(accountStatementsPath, u.Fields, "file", u.FilePath, u.ContentType, out)
+	return u.send(client, accountStatementsPath, out)
 }

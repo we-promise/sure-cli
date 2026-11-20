@@ -3,40 +3,49 @@
 package analyze
 
 import (
+	"errors"
 	"math"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/we-promise/sure-cli/internal/models"
+	"github.com/we-promise/sure-cli/internal/money"
 )
 
-// LeakParams are the DetectLeaks thresholds. Amounts are major units of
-// each candidate's own currency. A zero field takes its DefaultLeakParams
-// value.
+// LeakParams are the DetectLeaks thresholds, applied as given. Amounts are
+// minor units (cents, yen, satoshis) of each group's currency, so one set of
+// thresholds scales with every currency without FX rates.
 type LeakParams struct {
-	MinCount int     `json:"min_count"`
-	MinTotal float64 `json:"min_total"`
-	MaxAvg   float64 `json:"max_avg"`
+	MinCount      int     `json:"min_count"`
+	MinTotalMinor float64 `json:"min_total_minor"`
+	MaxAvgMinor   float64 `json:"max_avg_minor"`
 	// Currency, when set, keeps only expenses in that currency.
 	Currency string `json:"currency,omitempty"`
 }
 
-// DefaultLeakParams are conservative on purpose, to keep noise out.
-var DefaultLeakParams = LeakParams{MinCount: 3, MinTotal: 15, MaxAvg: 10}
+// DefaultLeakParams are conservative on purpose, to keep noise out: 15.00
+// total and 10.00 average in two-decimal currencies, ¥1500 and ¥1000 in yen.
+var DefaultLeakParams = LeakParams{MinCount: 3, MinTotalMinor: 1500, MaxAvgMinor: 1000}
 
-func (p LeakParams) withDefaults() LeakParams {
-	if p.MinCount <= 0 {
-		p.MinCount = DefaultLeakParams.MinCount
+// Minor-unit totals that raise a candidate's confidence and change its
+// suggested action (50.00 and 100.00 in two-decimal currencies).
+const (
+	notableTotalMinor     = 5000
+	significantTotalMinor = 10000
+)
+
+// Validate rejects thresholds that would make every group pass or none.
+func (p LeakParams) Validate() error {
+	switch {
+	case p.MinCount < 1:
+		return errors.New("min_count must be at least 1")
+	case p.MinTotalMinor < 0:
+		return errors.New("min_total must not be negative")
+	case p.MaxAvgMinor <= 0:
+		return errors.New("max_avg must be positive (at least one minor unit)")
 	}
-	if p.MinTotal <= 0 {
-		p.MinTotal = DefaultLeakParams.MinTotal
-	}
-	if p.MaxAvg <= 0 {
-		p.MaxAvg = DefaultLeakParams.MaxAvg
-	}
-	p.Currency = strings.ToUpper(p.Currency)
-	return p
+	return nil
 }
 
 type LeakCandidate struct {
@@ -45,10 +54,11 @@ type LeakCandidate struct {
 	Name       string `json:"name"`
 	MerchantID string `json:"merchant_id,omitempty"`
 	// GroupedBy is "merchant" or "name".
-	GroupedBy       string   `json:"grouped_by"`
-	Currency        string   `json:"currency"`
-	Count           int      `json:"count"`
-	TotalAmount     float64  `json:"total_amount"` // positive
+	GroupedBy string `json:"grouped_by"`
+	Currency  string `json:"currency"`
+	Count     int    `json:"count"`
+	// Amounts are positive major units, rounded to the currency's minor unit.
+	TotalAmount     float64  `json:"total_amount"`
 	AvgAmount       float64  `json:"avg_amount"`
 	SpikeAmount     float64  `json:"spike_amount"`
 	SampleTxIDs     []string `json:"sample_tx_ids"`
@@ -79,22 +89,23 @@ func groupOf(tx models.Transaction) leakGroup {
 // DetectLeaks finds "money leakage": small expenses that add up without
 // being periodic subscriptions. It looks at expenses dated within
 // [start, end] (whole days, inclusive) and keeps groups with at least
-// MinCount occurrences, a total of at least MinTotal and an average of at
-// most MaxAvg.
+// MinCount occurrences, a total of at least MinTotalMinor and an average of
+// at most MaxAvgMinor.
 func DetectLeaks(txs []models.Transaction, start, end time.Time, p LeakParams) []LeakCandidate {
-	p = p.withDefaults()
 	first, last := day(start), day(end)
 
 	groups := map[leakGroup][]models.Transaction{}
 	for _, tx := range txs {
-		if tx.Classification != "expense" {
+		// Loan payments and investment contributions are commitments, not
+		// discretionary spend.
+		if tx.Classification != "expense" || tx.Kind == "loan_payment" || tx.Kind == "investment_contribution" {
 			continue
 		}
 		if d := day(tx.Date); d.Before(first) || d.After(last) {
 			continue
 		}
 		g := groupOf(tx)
-		if p.Currency != "" && g.currency != p.Currency {
+		if p.Currency != "" && !strings.EqualFold(g.currency, p.Currency) {
 			continue
 		}
 		groups[g] = append(groups[g], tx)
@@ -105,18 +116,19 @@ func DetectLeaks(txs []models.Transaction, start, end time.Time, p LeakParams) [
 		if len(list) < p.MinCount {
 			continue
 		}
-		var total, spike float64
+		conv := money.MinorUnitConversion(g.currency)
+		var totalMinor, spikeMinor float64
 		ids := make([]string, 0, min(3, len(list)))
 		for i, tx := range list {
-			amt := math.Abs(tx.Amount)
-			total += amt
-			spike = math.Max(spike, amt)
+			amt := math.Round(math.Abs(tx.Amount) * conv)
+			totalMinor += amt
+			spikeMinor = math.Max(spikeMinor, amt)
 			if i < 3 {
 				ids = append(ids, tx.ID)
 			}
 		}
-		avg := total / float64(len(list))
-		if total < p.MinTotal || avg > p.MaxAvg {
+		avgMinor := totalMinor / float64(len(list))
+		if totalMinor < p.MinTotalMinor || avgMinor > p.MaxAvgMinor {
 			continue
 		}
 
@@ -124,12 +136,12 @@ func DetectLeaks(txs []models.Transaction, start, end time.Time, p LeakParams) [
 		if len(list) >= 5 {
 			conf += 0.15
 		}
-		if total >= 50 {
+		if totalMinor >= notableTotalMinor {
 			conf += 0.1
 		}
 
 		action := "Track and set a budget"
-		if total > 100 {
+		if totalMinor > significantTotalMinor {
 			action = "Significant leak; consider reducing frequency or finding alternatives"
 		} else if len(list) >= 10 {
 			action = "Very frequent small expense; batch or eliminate some occurrences"
@@ -140,9 +152,9 @@ func DetectLeaks(txs []models.Transaction, start, end time.Time, p LeakParams) [
 			GroupedBy:       g.by,
 			Currency:        g.currency,
 			Count:           len(list),
-			TotalAmount:     round2(total),
-			AvgAmount:       round2(avg),
-			SpikeAmount:     round2(spike),
+			TotalAmount:     totalMinor / conv,
+			AvgAmount:       math.Round(avgMinor) / conv,
+			SpikeAmount:     spikeMinor / conv,
 			SampleTxIDs:     ids,
 			Confidence:      conf,
 			Reason:          "small_frequent_expenses",
@@ -170,11 +182,12 @@ func DetectLeaks(txs []models.Transaction, start, end time.Time, p LeakParams) [
 	return out
 }
 
+// InclusiveDays counts the calendar days in [start, end], both ends included.
+func InclusiveDays(start, end time.Time) int {
+	return int(day(end).Sub(day(start)).Hours()/24) + 1
+}
+
 // day truncates t to its calendar date in UTC, as Sure's dates are parsed.
 func day(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
-}
-
-func round2(v float64) float64 {
-	return math.Round(v*100) / 100
 }

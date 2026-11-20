@@ -13,10 +13,13 @@ Agent-first CLI for **Sure** (we-promise/sure) — self-hosted personal finance 
 ## Agent-first contract
 
 - **Default output is JSON** (`--format=json`) wrapped in a stable **Envelope**: `{data, meta, error}`
-- **API errors** set `error.code` from a stable CLI set (`bad_request`, `auth_required`, `mfa_required`, `auth_invalid` for a missing scope, `forbidden`, `not_found`, `conflict`, `validation_failed`, `rate_limited`, `server_error`, `network_error`, ...) and `error.message` to Sure's own message. `error.details` holds `status`, the capped `body`, Sure's machine code as `api_error` (e.g. `insufficient_scope`, `feature_disabled`, `export_not_ready`), `import_id` when Sure created an import before failing (do not repeat the request: read that import), and on 429 `retry_after` and `rate_limit`
-- **Retries**: only idempotent requests (GET/HEAD/PUT/DELETE/OPTIONS) are retried, on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s. POST/PATCH are never retried, since Sure may have persisted the write before failing
+- **API errors** set `error.code` from a stable CLI set (`bad_request`, `auth_required`, `mfa_required`, `auth_invalid` for a missing scope, `forbidden`, `not_found`, `conflict`, `validation_failed`, `rate_limited`, `server_error`, `network_error`, `timeout`, `canceled`, `invalid_response`, `config_save_failed`, ...) and `error.message` to Sure's own message. `error.details` holds `status`, the capped `body`, Sure's machine code as `api_error` (e.g. `insufficient_scope`, `feature_disabled`, `export_not_ready`), `import_id` when Sure created an import before failing (do not repeat the request: read that import), and on 429 `retry_after` and `rate_limit`. Input the CLI rejects before sending a request fails with `validation_failed`. `internal/errors/errors.go` lists every code
+- **Unknown subcommands** exit 1 with `error.code` `unknown_command` and cobra's `suggestions`. For a command an earlier version had, `error.details.hint` names its replacement (see [CHANGELOG.md](CHANGELOG.md))
+- **`invalid_response`** means Sure (or something in front of it, such as a captive portal or an SSO proxy answering with HTML) returned a 2xx the CLI cannot read, a body over 64 MiB, a pagination block past 1000 pages, or a download shorter than the export's `byte_size`. `details.status` tells whether a write was accepted (e.g. `201`), so do not blindly repeat a POST that failed this way
+- **Retries**: only GET/HEAD/PUT/OPTIONS are retried, on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s. POST/PATCH/DELETE are never retried, since Sure may have committed the change before the answer was lost. A 2xx body that cannot be decoded is never retried
+- **Timeouts**: `--timeout` (default `30s`, or the `timeout` config key) bounds each API call, retries included. For `family-exports download` it bounds the wait for the response and any pause in the transfer, so a large export that keeps flowing is not cut off; Ctrl-C cancels it and removes the partial file
 - **Write operations are safe by default**: `--dry-run` is the default; use `--apply` to execute
-- **Schemas are versioned** under `docs/schemas/v1/` and should remain backward compatible
+- **Schemas are versioned** under `docs/schemas/v1/`. Changes that break scripts, schema renames included, are listed in [CHANGELOG.md](CHANGELOG.md)
 
 Links:
 - ADR: `docs/ADR-001-go-agent-first.md`
@@ -78,7 +81,7 @@ sure-cli config set api_url http://localhost:3000
 sure-cli config set auth.mode api_key
 sure-cli config set auth.api_key <key>
 # or OAuth:
-sure-cli login --email you@example.com --password "..." [--otp 123456]
+sure-cli login --email you@example.com [--otp 123456]   # prompts for the password
 
 # Accounts
 sure-cli accounts list --format=table
@@ -92,8 +95,10 @@ sure-cli transactions list --start-date 2026-01-01 --end-date 2026-02-01 --per-p
 sure-cli transactions show <transaction_id>
 
 # Safe writes (default is --dry-run)
-# --amount is a positive decimal sent exactly as typed (Sure stores 4 decimals);
-# --nature (expense|income|outflow|inflow) gives the sign.
+# --amount is a positive decimal (digits, optional point and fraction) sent as
+# typed. Sure reads it as a float into 4 decimals, so at most 4 decimals and 15
+# digits are accepted. --nature (expense|income|outflow|inflow) gives the sign;
+# on update it needs --amount.
 sure-cli transactions create --amount 12.34 --nature expense --date 2026-02-04 --name "Coffee" --account-id <id>
 sure-cli transactions create --amount 12.34 --date 2026-02-04 --name "Coffee" --account-id <id> \
   --category-id <category_id> --merchant-id <merchant_id> --tag-id <tag_id> --tag-id <tag_id> --apply
@@ -154,13 +159,19 @@ sure-cli budget-categories show <budget_category_id>
 # warnings, subscription audits, bank fees, budgets at risk, ...).
 # Needs Preview features on (Sure: Settings > Preferences); otherwise 403
 # forbidden with details.api_error feature_disabled. No filters or paging.
+# JSON only: --format table prints the same JSON.
 sure-cli insights list
-sure-cli insights ack <insight_id>            # dry-run
+sure-cli insights ack <insight_id>            # dry-run; the id must be a UUID
 sure-cli insights ack <insight_id> --apply    # read_write scope; guests refused; idempotent
+# Sure answers 204 also when the insight was already acknowledged or expired,
+# so ack reports {"id": ..., "in_feed": false}, not that this call acknowledged it.
 
-# Analyze: client-side heuristics Sure does not compute
+# Analyze: client-side heuristics Sure does not compute (JSON only)
 sure-cli analyze leaks --months 3            # or --start-date/--end-date; --currency to keep one
-sure-cli analyze runway --account-id <id> --days 90   # balance from balance_cents; burn counts only expenses in the account currency
+sure-cli analyze runway --account-id <id> --days 90
+# runway: balance from balance_cents; burn is the whole family's reportable
+# expenses in the account currency, from every account, over the last --days
+# days (today included), extrapolated to 30-day months.
 
 # Propose automations
 sure-cli propose rules --months 3
@@ -184,8 +195,13 @@ sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026
 # Status (financial snapshot)
 # net_worth comes from /api/v1/balance_sheet (family currency, FX-converted,
 # excludes exclude_from_reports accounts). accounts.by_currency totals assets,
-# liabilities, net worth and cash per native currency with the same exclusions.
+# liabilities, net worth and cash per native currency with the same exclusions;
+# unlike Sure it cannot leave out accounts a user has taken out of their
+# finances (include_in_finances is not in the API).
 # Runway uses depository cash in the family currency only.
+# monthly covers the last month, each day once (run on 2026-11-20: 2026-10-21..2026-11-20),
+# and counts transactions as described under "Amounts and Totals".
+# Amounts show the currency's own decimals (1234 JPY, 1.235 KWD, 0.00012345 BTC).
 # monthly.subscriptions is Sure's active recurring outflows (no income, no
 # transfers, no one-offs) priced per month from each series' cadence, in the
 # family currency; subscriptions_by_currency lists every currency apart.
@@ -216,6 +232,11 @@ sure-cli security-prices create --security-id <security_id> --file - --apply < c
 #   transaction, or a transfer when --transfer-account-id is set.
 # update --type: buy|sell|sweep_in|sweep_out|reinvestment; --investment-activity-label must then
 #   be that type's label ("Buy", "Sell", "Sweep In", "Sweep Out", "Reinvestment").
+# update --type or --nature (inflow = sell, outflow = buy) only signs a --qty/--price change and
+#   needs one of them; Sure would ignore it otherwise. --amount is the signed entry amount and
+#   cannot be combined with --qty/--price, from which Sure recomputes it. --fee is 0 or more.
+# qty, price, fee and amount are plain decimals within Sure's columns: qty up to 18 decimals,
+#   price up to 10 decimals and 9 integer digits, fee and amount up to 4 decimals.
 sure-cli trades list
 sure-cli trades show <trade_id>
 sure-cli trades create --account-id <account_id> --date 2026-05-01 --type buy --qty 1 --price 100 --security-id <security_id>
@@ -229,8 +250,11 @@ sure-cli trades delete <trade_id> --apply
 
 # Recurring transactions
 sure-cli recurring-transactions list --status active
-sure-cli recurring-transactions create --name Rent --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01
-sure-cli recurring-transactions create --name Rent --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01 --apply
+# amount follows Sure's entry convention: positive is a bill, negative an income
+sure-cli recurring-transactions create --name Rent --amount 1200 --currency EUR --expected-day-of-month 1 \
+  --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01
+sure-cli recurring-transactions create --name Rent --amount 1200 --currency EUR --expected-day-of-month 1 \
+  --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01 --apply
 # --status accepts active|inactive (the API writes only these)
 sure-cli recurring-transactions update <id> --status inactive --autopay true \
   --payment-url https://example.com/pay --notes "paid by direct debit" --apply
@@ -315,8 +339,11 @@ If the account has two-factor authentication, login fails with `error.code=mfa_r
 
 Required device payload fields are stored under `auth.device.*` in config (defaults are provided; `device_type` accepts `ios`, `android` or `web`). Sure revokes a device's previous tokens on every login, so the first login stores a random per-install `auth.device.device_id`; logging in on another machine no longer logs this one out. A custom `device_id` you set is kept.
 
+The config file is written atomically with owner-only permissions (0600), and only the keys the command changed are merged into the file as it is on disk, so concurrent commands do not undo each other's token rotation. Before an automatic token refresh the CLI checks that the config file is writable and fails with `config_save_failed` otherwise, since Sure revokes the old refresh token on rotation; if saving still fails after Sure rotated, `details.refresh_token` carries the new token to put back with `sure-cli config set auth.refresh_token <token>`. When two commands refresh at once, the one Sure rejects picks up the tokens the other saved.
+
 ## Docs
 
+- Changelog: `CHANGELOG.md`
 - Roadmap: `docs/ROADMAP.md`
 - ADR: `docs/ADR-001-go-agent-first.md`
 - JSON Schemas: `docs/schemas/v1/`
@@ -326,25 +353,33 @@ Required device payload fields are stored under `auth.device.*` in config (defau
 
 Sure stores transaction amounts in the entry convention: positive is an outflow (expense), negative an inflow (income). The `amount` field is a localized display string rounded to the currency's precision (`"-€2,000.00"`).
 
-`status`, `analyze`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against a server without `amount_decimal` they fall back to parsing `amount` and take the sign from `classification`.
+`status`, `analyze`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against an older server they read `signed_amount_cents` (Sure #899) divided by the currency's minor unit (100 for EUR, 1 for JPY, 1000 for KWD), and only without it parse the localized `amount`, taking the sign from `classification`. The separators of that string depend on the server's locale, so the CLI infers them: a `.` or `,` that repeats, or one followed by exactly three digits in a currency without three decimals, groups thousands.
 
-Totals count what Sure's own income statement counts. These rows are skipped:
+Totals approximate Sure's income statement with what the API exposes. These rows are skipped:
 
 - `split_parent: true`: the split's children carry the amount, so counting the parent would count it twice.
 - `excluded: true`: the user left the row out of budgets and reports.
 - `kind` `funds_movement`, `cc_payment` or `one_time` (Sure's `BUDGET_EXCLUDED_KINDS`): transfers between your own accounts, card payments and one-offs.
+- Rows on accounts marked `exclude_from_reports`, or not draft or active (absent from `accounts list` without `--include-disabled`).
+
+`loan_payment` rows count as expenses whatever their sign, as in Sure. `investment_contribution` rows count as expenses too: that is Sure's default, but a family can turn off `investment_contributions_as_spending`, and the API does not say whether it did.
+
+Sure also leaves out rows the API gives a client no way to spot, so the CLI counts them: rows on tax-advantaged accounts (401k, IRA, ISA, HSA, ...), on accounts the user took out of their finances (`include_in_finances`), pending rows, and investment-account rows labelled Transfer, Sweep In, Sweep Out or Exchange. A family with any of these sees CLI totals that differ from Sure's.
 
 `export transactions` writes every row. Its `amount` column is the exact signed decimal; `kind`, `excluded` and `split_parent` columns tell you which rows to leave out of a sum.
 
 ## Heuristics
 
-`analyze leaks` groups the window's expenses by the merchant Sure matched (by id, else by name), falling back to the transaction name, and keeps one group per currency: amounts in different currencies are never added. Thresholds are flags, in major units of each group's currency:
+`analyze leaks` groups the window's expenses by the merchant Sure matched (by id, else by name), falling back to the transaction name, and keeps one group per currency: amounts in different currencies are never added.
+
+A group is a leak with at least `--min-count` expenses (default 3), a total of at least 1500 and an average of at most 1000 minor units of its currency: 15.00 and 10.00 in EUR or USD, ¥1500 and ¥1000 in yen. Minor units follow Sure's currency table, so for currencies with a tiny minor unit (BTC, ETH) the defaults are close to zero; pass your own thresholds there. `--min-total` and `--max-avg` are major units of one currency and need `--currency`; `--min-total 0` keeps groups of any total:
 
 ```bash
-sure-cli analyze leaks --months 3 --min-count 3 --min-total 15 --max-avg 10
-sure-cli analyze leaks --start-date 2026-01-01 --end-date 2026-03-31 --currency EUR
+sure-cli analyze leaks --months 3 --min-count 5
+sure-cli analyze leaks --start-date 2026-01-01 --end-date 2026-03-31 --currency EUR --min-total 20 --max-avg 5
+sure-cli analyze leaks --currency JPY --min-total 3000 --max-avg 800
 ```
 
-The output echoes the window (`start`, `end`, inclusive, and `days`) and the thresholds used.
+The output echoes the window (`start`, `end`, inclusive, and `days`) and the thresholds applied (`min_count`, `min_total_minor`, `max_avg_minor`, `currency`). Candidate amounts are major units rounded to the currency's minor unit.
 
 See `docs/ROADMAP.md` for planned features.

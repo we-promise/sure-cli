@@ -63,7 +63,7 @@ func TestValidateSecurityPriceRows(t *testing.T) {
 	if err := validateSecurityPriceRows([]securityPriceRow{
 		row("2026-03-02", "12.34000", "usd"),
 		row("2026-03-03", "999999999999999.9999", "USD"),
-		row("2024-02-29", ".5", " USD "),
+		row("2024-02-29", "0.5", " USD "),
 	}); err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -79,6 +79,8 @@ func TestValidateSecurityPriceRows(t *testing.T) {
 		{"zero price", []securityPriceRow{row("2026-03-02", "0.00", "USD")}, "prices[0]: price must be greater than 0"},
 		{"negative price", []securityPriceRow{row("2026-03-02", "-1", "USD")}, "prices[0]: price must be greater than 0"},
 		{"non-numeric price", []securityPriceRow{row("2026-03-02", "12,5", "USD")}, "prices[0]: price must be a number"},
+		{"trailing point", []securityPriceRow{row("2026-03-02", "3.", "USD")}, "prices[0]: price must be a number"},
+		{"no leading digit", []securityPriceRow{row("2026-03-02", ".5", "USD")}, "prices[0]: price must be a number"},
 		{"five decimals", []securityPriceRow{row("2026-03-02", "1.00001", "USD")}, "prices[0]: price must have at most 4 decimal places"},
 		{"too large", []securityPriceRow{row("2026-03-02", "1000000000000000", "USD")}, "prices[0]: price is too large"},
 		{"missing currency", []securityPriceRow{row("2026-03-02", "1", " ")}, "prices[0]: currency is required"},

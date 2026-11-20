@@ -1,14 +1,14 @@
 {
   "data": {
     "window": {
-      "start": "2026-08-20",
+      "start": "2026-08-21",
       "end": "2026-11-20",
-      "days": 93
+      "days": 92
     },
     "params": {
       "min_count": 3,
-      "min_total": 15,
-      "max_avg": 10
+      "min_total_minor": 1500,
+      "max_avg_minor": 1000
     },
     "candidates": [
       {

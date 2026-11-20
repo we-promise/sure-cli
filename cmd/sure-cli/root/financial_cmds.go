@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newBalanceSheetCmd() *cobra.Command {
@@ -144,16 +142,13 @@ func newValuationsCreateCmd() *cobra.Command {
 		Short: "Create valuation (default dry-run; use --apply to execute)",
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := buildValuationCreatePayload(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-				return
-			}
+			failValidation(err)
 			dispatchWrite(o.Apply, "POST", "/api/v1/valuations", payload)
 		},
 	}
 	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "account id (required)")
 	cmd.Flags().StringVar(&o.Amount, "amount", "", "valuation amount (required)")
-	cmd.Flags().StringVar(&o.Date, "date", time.Now().Format("2006-01-02"), "date YYYY-MM-DD")
+	cmd.Flags().StringVar(&o.Date, "date", time.Now().Format(time.DateOnly), "date YYYY-MM-DD")
 	cmd.Flags().StringVar(&o.Notes, "notes", "", "notes")
 	cmd.Flags().BoolVar(&o.Upsert, "upsert", false, "request upsert response semantics")
 	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the create (otherwise dry-run)")
@@ -168,10 +163,7 @@ func newValuationsUpdateCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := buildValuationUpdatePayload(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-				return
-			}
+			failValidation(err)
 			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/valuations/%s", url.PathEscape(args[0])), payload)
 		},
 	}
@@ -189,8 +181,11 @@ func buildValuationCreatePayload(o valuationCreateOpts) (map[string]any, error) 
 	if o.Amount == "" {
 		return nil, fmt.Errorf("amount is required")
 	}
-	if _, err := time.Parse("2006-01-02", o.Date); err != nil {
-		return nil, fmt.Errorf("invalid date (expected YYYY-MM-DD): %w", err)
+	if err := checkDecimal("amount", o.Amount, moneyColumn); err != nil {
+		return nil, err
+	}
+	if _, err := parseISODate("date", o.Date); err != nil {
+		return nil, err
 	}
 	valuation := map[string]any{
 		"account_id": o.AccountID,
@@ -216,8 +211,11 @@ func buildValuationUpdatePayload(o valuationUpdateOpts) (map[string]any, error) 
 	}
 	valuation := map[string]any{}
 	if o.Amount != "" {
-		if _, err := time.Parse("2006-01-02", o.Date); err != nil {
-			return nil, fmt.Errorf("invalid date (expected YYYY-MM-DD): %w", err)
+		if err := checkDecimal("amount", o.Amount, moneyColumn); err != nil {
+			return nil, err
+		}
+		if _, err := parseISODate("date", o.Date); err != nil {
+			return nil, err
 		}
 		valuation["amount"] = o.Amount
 		valuation["date"] = o.Date

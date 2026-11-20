@@ -231,3 +231,94 @@ func TestFetchAllPages_MalformedBodyIsInvalidResponse(t *testing.T) {
 		t.Fatalf("err = %v, want CLIError %q", err, errs.CodeInvalidResponse)
 	}
 }
+
+func TestFetchAllPages_StopsOnEmptyPage(t *testing.T) {
+	// A total_pages that never ends must not walk forever.
+	calls := 0
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("page") == "1" {
+			_, _ = w.Write([]byte(`{"accounts":[{"id":"a"}],"pagination":{"page":1,"total_pages":500}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"accounts":[],"pagination":{"total_pages":500}}`))
+	})
+	items, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
+	if err != nil || len(items) != 1 || calls != 2 {
+		t.Fatalf("items=%v calls=%d err=%v", items, calls, err)
+	}
+}
+
+func TestFetchAllPages_FollowsOnlyTheFirstTotalPages(t *testing.T) {
+	// total_pages growing on every page must not extend the walk.
+	calls := 0
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"accounts":[{"id":"a%d"}],"pagination":{"total_pages":%d}}`, calls, calls+1)
+	})
+	items, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
+	if err != nil || len(items) != 2 || calls != 2 {
+		t.Fatalf("items=%v calls=%d err=%v", items, calls, err)
+	}
+}
+
+func TestFetchAllPages_ImplausiblePageCountIsInvalidResponse(t *testing.T) {
+	calls := 0
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"accounts":[{"id":"a"}],"pagination":{"total_pages":2147483647}}`))
+	})
+	_, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
+	var ce *errs.CLIError
+	if !errors.As(err, &ce) || ce.Code != errs.CodeInvalidResponse {
+		t.Fatalf("err = %v, want invalid_response", err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+}
+
+func TestFetchAllPages_DropsRowsRepeatedByAShiftingList(t *testing.T) {
+	// A row inserted at the head between page requests pushes the last row
+	// of page 1 onto page 2.
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("page") == "1" {
+			_, _ = w.Write([]byte(`{"accounts":[{"id":"a5"},{"id":"a4"}],"pagination":{"total_pages":2}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"accounts":[{"id":"a4"},{"id":"a3"}],"pagination":{"total_pages":2}}`))
+	})
+	items, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, it := range items {
+		ids = append(ids, it["id"].(string))
+	}
+	if fmt.Sprint(ids) != "[a5 a4 a3]" {
+		t.Fatalf("ids = %v", ids)
+	}
+}
+
+func TestFetchAllPages_EmptyIndexIsAnEmptyList(t *testing.T) {
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"accounts":[],"pagination":{"total_pages":0}}`))
+	})
+	items, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
+	if err != nil || items == nil {
+		t.Fatalf("items=%#v err=%v, want an empty non-nil slice (JSON [] not null)", items, err)
+	}
+}
+
+func TestUniqueByID_KeepsFirstAndRowsWithoutID(t *testing.T) {
+	got := uniqueByID([]string{"a", "", "b", "a", ""}, func(s string) string { return s })
+	if fmt.Sprint(got) != "[a  b ]" {
+		t.Fatalf("got %q", got)
+	}
+}

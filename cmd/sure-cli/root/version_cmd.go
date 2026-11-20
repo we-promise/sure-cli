@@ -8,7 +8,6 @@ import (
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/config"
 	errs "github.com/we-promise/sure-cli/internal/errors"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 // newVersionCmd prints the local build info. --server adds the running Sure
@@ -28,9 +27,7 @@ func newVersionCmd() *cobra.Command {
 				fmt.Printf("  built:  %s\n", date)
 				return
 			}
-			if err := output.Print(format, output.Envelope{Data: buildVersionReport(fetchServerVersion())}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			printEnvelope(buildVersionReport(fetchServerVersion()), nil)
 		},
 	}
 	cmd.Flags().BoolVar(&server, "server", false, "also query the configured Sure server's version (JSON envelope)")

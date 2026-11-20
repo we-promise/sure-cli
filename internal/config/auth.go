@@ -25,19 +25,19 @@ func TokenExpiresAt() (time.Time, bool) {
 }
 
 func SetAuthMode(mode string) {
-	viper.Set("auth.mode", mode)
+	Set("auth.mode", mode)
 }
 
 func SetToken(token string) {
-	viper.Set("auth.token", token)
+	Set("auth.token", token)
 }
 
 func SetRefreshToken(token string) {
-	viper.Set("auth.refresh_token", token)
+	Set("auth.refresh_token", token)
 }
 
 func SetTokenExpiresAt(t time.Time) {
-	viper.Set("auth.token_expires_at", t.UTC().Format(time.RFC3339))
+	Set("auth.token_expires_at", t.UTC().Format(time.RFC3339))
 }
 
 // LegacyDeviceID is the device_id every install shared before per-install
@@ -57,7 +57,7 @@ func EnsureDeviceID() string {
 		return id
 	}
 	id = newUUID()
-	viper.Set(deviceIDKey, id)
+	Set(deviceIDKey, id)
 	return id
 }
 

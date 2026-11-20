@@ -4,13 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 
-	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newCategoriesCmd() *cobra.Command {
@@ -152,12 +151,13 @@ func newMerchantsImportCmd() *cobra.Command {
 			"Names that already exist are skipped. The response reports {imported, skipped, merchants}.",
 		Run: func(cmd *cobra.Command, args []string) {
 			failValidation(validateMerchantsImportFile(file))
+			u := upload{FilePath: file}
 			if !apply {
-				printDryRun("POST", merchantsPath, map[string]any{"file": file})
+				printDryRun("POST", merchantsPath, u.dryRunBody())
 				return
 			}
 			var res any
-			r, err := postMerchantsImport(api.New(), file, &res)
+			r, err := u.send(api.New(), merchantsPath, &res)
 			respond(r, err, res)
 		},
 	}
@@ -166,18 +166,18 @@ func newMerchantsImportCmd() *cobra.Command {
 	return cmd
 }
 
+// validateMerchantsImportFile requires a .csv file: Sure checks the part's
+// content type against Import::ALLOWED_CSV_MIME_TYPES by exact match, and
+// the CLI derives it from the extension.
 func validateMerchantsImportFile(file string) error {
 	if file == "" {
 		return errors.New("file is required")
 	}
-	return requireRegularFile(file)
-}
-
-// postMerchantsImport sends the CSV as the multipart `file` part with an
-// explicit text/csv type: Sure checks it against Import::ALLOWED_CSV_MIME_TYPES
-// by exact match.
-func postMerchantsImport(client *api.Client, file string, out any) (*resty.Response, error) {
-	return client.PostMultipart(merchantsPath, nil, "file", file, "text/csv", out)
+	if !strings.EqualFold(filepath.Ext(file), ".csv") {
+		return fmt.Errorf("file must be a .csv file, got %q", filepath.Base(file))
+	}
+	_, err := regularFile(file)
+	return err
 }
 
 type tagWriteOpts struct {
@@ -380,12 +380,6 @@ func newRuleRunsCmd() *cobra.Command {
 	return cmd
 }
 
-func failValidation(err error) {
-	if err != nil {
-		output.Fail("validation_failed", err.Error(), nil)
-	}
-}
-
 func addPagingFlags(cmd *cobra.Command, page, perPage *int) {
 	cmd.Flags().IntVar(page, "page", 1, "page number")
 	cmd.Flags().IntVar(perPage, "per-page", 25, "items per page (maps to per_page)")
@@ -397,6 +391,16 @@ func addPagingQuery(q url.Values, page, perPage int) {
 	}
 	if perPage > 0 {
 		q.Set("per_page", fmt.Sprintf("%d", perPage))
+	}
+}
+
+// addRepeatedQuery appends q[key][]=v for each non-empty v, Rails' array
+// parameter form.
+func addRepeatedQuery(q url.Values, key string, values []string) {
+	for _, v := range values {
+		if v != "" {
+			q.Add(key+"[]", v)
+		}
 	}
 }
 
@@ -453,7 +457,7 @@ func dispatchWrite(apply bool, method, path string, body any) {
 	case "DELETE":
 		printDelete(path)
 	default:
-		output.Fail("internal_error", "dispatchWrite: unsupported HTTP method "+method, nil)
+		panic("dispatchWrite: unsupported HTTP method " + method)
 	}
 }
 
@@ -465,10 +469,5 @@ func printDryRun(method, path string, body any) {
 	if body != nil {
 		request["body"] = body
 	}
-	if err := output.Print(format, output.Envelope{Data: map[string]any{
-		"dry_run": true,
-		"request": request,
-	}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-	}
+	printEnvelope(map[string]any{"dry_run": true, "request": request}, nil)
 }

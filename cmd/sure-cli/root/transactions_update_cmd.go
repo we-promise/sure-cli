@@ -54,10 +54,11 @@ func buildTxUpdatePayload(o txUpdateOpts) (map[string]any, error) {
 	if o.ClearTags && len(o.TagIDs) > 0 {
 		return nil, errors.New("use either --tag-id or --clear-tags, not both")
 	}
-	if o.Date != "" {
-		if err := validateTxDate(o.Date); err != nil {
-			return nil, err
-		}
+	if _, err := parseOptionalISODate("date", o.Date); err != nil {
+		return nil, err
+	}
+	if o.Nature != "" && o.Amount == "" {
+		return nil, errors.New("nature only applies with amount; Sure ignores it otherwise")
 	}
 	if o.Amount != "" {
 		if err := validateTxAmount(o.Amount); err != nil {
