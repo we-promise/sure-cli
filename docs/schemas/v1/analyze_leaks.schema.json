@@ -19,14 +19,14 @@
     "params": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Amounts are major units of each candidate's currency.",
+      "description": "The thresholds applied. Amounts are minor units (cents, yen) of each candidate's currency.",
       "properties": {
-        "min_count": {"type": "integer"},
-        "min_total": {"type": "number"},
-        "max_avg": {"type": "number"},
+        "min_count": {"type": "integer", "minimum": 1},
+        "min_total_minor": {"type": "number", "minimum": 0},
+        "max_avg_minor": {"type": "number", "exclusiveMinimum": 0},
         "currency": {"type": "string"}
       },
-      "required": ["min_count", "min_total", "max_avg"]
+      "required": ["min_count", "min_total_minor", "max_avg_minor"]
     },
     "candidates": {
       "type": "array",
@@ -38,7 +38,7 @@
           "grouped_by": {"enum": ["merchant", "name"]},
           "currency": {"type": "string"},
           "count": {"type": "integer"},
-          "total_amount": {"type": "number"},
+          "total_amount": {"type": "number", "description": "Major units, rounded to the currency's minor unit; so are avg_amount and spike_amount."},
           "avg_amount": {"type": "number"},
           "spike_amount": {"type": "number"},
           "sample_tx_ids": {"type": "array", "items": {"type": "string"}},

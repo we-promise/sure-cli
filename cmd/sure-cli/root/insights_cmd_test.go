@@ -123,9 +123,13 @@ func TestAcknowledgeInsight_PreviewFeaturesDisabledIsActionable(t *testing.T) {
 	}
 }
 
-func TestInsightsAck_DryRunByDefault(t *testing.T) {
+const insightID = "8f6c0f5e-1111-4222-8333-944445555666"
+
+// runInsights runs `insights args...` and returns the envelope's data.
+func runInsights(t *testing.T, args ...string) map[string]any {
+	t.Helper()
 	cmd := newInsightsCmd()
-	cmd.SetArgs([]string{"ack", "i1"})
+	cmd.SetArgs(args)
 	out := captureStdout(t, func() {
 		format = "json"
 		if err := cmd.Execute(); err != nil {
@@ -138,11 +142,43 @@ func TestInsightsAck_DryRunByDefault(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &env); err != nil {
 		t.Fatalf("unmarshal: %v\nout=%q", err, out)
 	}
-	req, _ := env.Data["request"].(map[string]any)
-	if env.Data["dry_run"] != true || req["method"] != "PATCH" || req["path"] != "/api/v1/insights/i1/acknowledge" {
-		t.Fatalf("dry run = %#v", env.Data)
+	return env.Data
+}
+
+func TestInsightsAck_DryRunByDefault(t *testing.T) {
+	data := runInsights(t, "ack", insightID)
+	req, _ := data["request"].(map[string]any)
+	if data["dry_run"] != true || req["method"] != "PATCH" || req["path"] != "/api/v1/insights/"+insightID+"/acknowledge" {
+		t.Fatalf("dry run = %#v", data)
 	}
 	if _, hasBody := req["body"]; hasBody {
 		t.Fatalf("acknowledge takes no body, got %#v", req)
+	}
+}
+
+func TestInsightsAck_ApplyReportsOnlyWhatSureConfirms(t *testing.T) {
+	var method, path string
+	// Sure answers 204 also when the insight was already acknowledged or expired.
+	insightsServer(t, http.StatusNoContent, ``, &method, &path)
+
+	data := runInsights(t, "ack", insightID, "--apply")
+	if method != http.MethodPatch || data["id"] != insightID || data["in_feed"] != false {
+		t.Fatalf("request %s, data = %#v", method, data)
+	}
+	if _, claimed := data["acknowledged"]; claimed {
+		t.Fatalf("a 204 does not prove this call acknowledged the insight: %#v", data)
+	}
+}
+
+func TestValidateInsightID(t *testing.T) {
+	for _, id := range []string{insightID, strings.ToUpper(insightID)} {
+		if err := validateInsightID(id); err != nil {
+			t.Fatalf("%s rejected: %v", id, err)
+		}
+	}
+	for _, id := range []string{"i1", "../accounts", insightID + "0", insightID[1:], "8f6c0f5e11114222833394444555566600000"} {
+		if validateInsightID(id) == nil {
+			t.Fatalf("%q must be rejected", id)
+		}
 	}
 }
