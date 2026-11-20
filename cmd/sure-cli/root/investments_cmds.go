@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -237,11 +238,28 @@ func newRecurringTransactionsDeleteCmd() *cobra.Command {
 }
 
 func buildRecurringCreatePayload(o recurringCreateOpts) (map[string]any, error) {
-	if o.LastOccurrenceDate == "" {
-		return nil, fmt.Errorf("last-occurrence-date is required")
+	// RecurringTransaction validates amount, currency and
+	// expected_day_of_month; the controller adds both dates and fills in
+	// none of them.
+	for _, f := range []struct{ name, value string }{
+		{"--amount", o.Amount}, {"--currency", o.Currency}, {"--expected-day-of-month", o.ExpectedDayOfMonth},
+		{"--last-occurrence-date", o.LastOccurrenceDate}, {"--next-expected-date", o.NextExpectedDate},
+	} {
+		if f.value == "" {
+			return nil, fmt.Errorf("%s is required", f.name)
+		}
 	}
-	if o.NextExpectedDate == "" {
-		return nil, fmt.Errorf("next-expected-date is required")
+	// amount follows the entry convention (an income series is negative).
+	for _, f := range []struct{ name, value string }{
+		{"--amount", o.Amount}, {"--expected-amount-min", o.ExpectedAmountMin},
+		{"--expected-amount-max", o.ExpectedAmountMax}, {"--expected-amount-avg", o.ExpectedAmountAvg},
+	} {
+		if err := checkOptionalDecimal(f.name, f.value, moneyColumn); err != nil {
+			return nil, err
+		}
+	}
+	if err := checkRecurringSchedule(o.ExpectedDayOfMonth, o.LastOccurrenceDate, o.NextExpectedDate); err != nil {
+		return nil, err
 	}
 	if err := validateRecurringStatus(o.Status); err != nil {
 		return nil, err
@@ -268,6 +286,9 @@ func buildRecurringCreatePayload(o recurringCreateOpts) (map[string]any, error) 
 }
 
 func buildRecurringUpdatePayload(o recurringUpdateOpts) (map[string]any, error) {
+	if err := checkRecurringSchedule(o.ExpectedDayOfMonth, "", o.NextExpectedDate); err != nil {
+		return nil, err
+	}
 	if err := validateRecurringStatus(o.Status); err != nil {
 		return nil, err
 	}
@@ -282,6 +303,22 @@ func buildRecurringUpdatePayload(o recurringUpdateOpts) (map[string]any, error) 
 		return nil, fmt.Errorf("no fields provided to update")
 	}
 	return map[string]any{"recurring_transaction": recurring}, nil
+}
+
+// checkRecurringSchedule checks the schedule flags that are set: the day of
+// month Sure accepts (1-31) and ISO dates, which Rails would otherwise parse
+// loosely (05/01/2026 is 5 January).
+func checkRecurringSchedule(dayOfMonth, lastOccurrence, nextExpected string) error {
+	if dayOfMonth != "" {
+		if day, err := strconv.Atoi(dayOfMonth); err != nil || day < 1 || day > 31 {
+			return fmt.Errorf("--expected-day-of-month must be a whole number from 1 to 31, got %q", dayOfMonth)
+		}
+	}
+	if _, err := parseOptionalISODate("--last-occurrence-date", lastOccurrence); err != nil {
+		return err
+	}
+	_, err := parseOptionalISODate("--next-expected-date", nextExpected)
+	return err
 }
 
 // recurringWritableStatuses mirrors Sure's RecurringTransactionsController

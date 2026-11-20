@@ -250,8 +250,11 @@ sure-cli trades delete <trade_id> --apply
 
 # Recurring transactions
 sure-cli recurring-transactions list --status active
-sure-cli recurring-transactions create --name Rent --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01
-sure-cli recurring-transactions create --name Rent --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01 --apply
+# amount follows Sure's entry convention: positive is a bill, negative an income
+sure-cli recurring-transactions create --name Rent --amount 1200 --currency EUR --expected-day-of-month 1 \
+  --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01
+sure-cli recurring-transactions create --name Rent --amount 1200 --currency EUR --expected-day-of-month 1 \
+  --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01 --apply
 # --status accepts active|inactive (the API writes only these)
 sure-cli recurring-transactions update <id> --status inactive --autopay true \
   --payment-url https://example.com/pay --notes "paid by direct debit" --apply

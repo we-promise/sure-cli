@@ -41,9 +41,9 @@ The `heuristics.*` config keys are no longer read.
 - A 401 asking for a second factor is `mfa_required`, also from `login`.
 - `request_failed` is gone: `status`, `export`, `propose` and `analyze` report the classified code (`forbidden`, `not_found`, `server_error`, ...) with Sure's message and details.
 - `account_not_found` is gone: `analyze runway` reads the account by id and reports `not_found`.
-- `missing_account`, `invalid_format` and `account_balance_missing` are now `validation_failed`, as is every input the CLI rejects before sending a request.
-- `compute_failed`, `invalid_month`, `auth_expired` and `config_invalid` are gone.
-- New codes: `invalid_response` (a 2xx body the CLI cannot read, too large or cut short), `timeout`, `canceled` (Ctrl-C or SIGTERM), `config_save_failed`, `unknown_command`.
+- `missing_account` and `invalid_format` are now `validation_failed`, as is every input the CLI rejects before sending a request, an unknown flag included.
+- `compute_failed`, `invalid_month`, `auth_expired`, `config_invalid` and `internal_error` are gone.
+- New codes: `invalid_response` (a 2xx body the CLI cannot read, too large or cut short), `canceled` (Ctrl-C or SIGTERM), `unknown_command`.
 
 `internal/errors/errors.go` lists every code the CLI emits.
 
@@ -58,14 +58,15 @@ The `heuristics.*` config keys are no longer read.
 
 #### Stricter input
 
-- Decimal flags are plain decimal text: `3.` and `.5` are rejected.
+- Decimal flags are plain decimal text: `3.` and `.5` are rejected. This covers `valuations create` and `update --amount` and the `recurring-transactions create` amounts, which were sent as typed: Sure read `1,234.56` as 1 and `abc` as 0.
 - `transactions create` and `update`: `--amount` must be a positive decimal with at most 4 decimals and 15 digits; `--nature` gives the sign. It was a float sent with two decimals. `update --nature` without `--amount` fails instead of being dropped.
+- `trades create` and `update`: `--date` must be `YYYY-MM-DD`; Rails read `05/01/2026` as 5 January.
 - `trades update`: `--type` or `--nature` needs `--qty` or `--price`; `--nature` is `inflow` or `outflow`; `--amount` cannot be combined with `--qty` or `--price`; qty, price and amount are checked against Sure's columns. `trades create --fee` must be 0 or more.
 - `analyze leaks --min-total` and `--max-avg` are major units of `--currency` and require it. Without them the defaults are 1500 and 1000 minor units of each group's currency (15.00 and 10.00 EUR, ¥1500 and ¥1000).
 - `propose rules --months` and `export transactions --months` of 0 or less fail with `validation_failed`; they fell back to 3 and 12. `analyze leaks --months` and `analyze runway --days` reject them too.
 - `export transactions` checks `--out-format` before fetching anything.
 - `insights ack` requires a UUID.
-- `recurring-transactions --status` accepts only `active` or `inactive`.
+- `recurring-transactions create` and `update`: `--status` accepts only `active` or `inactive`; `--expected-day-of-month` is a whole number from 1 to 31 and the dates are `YYYY-MM-DD`. `create` requires `--amount`, `--currency` and `--expected-day-of-month`, which Sure validates and does not fill in, so a create without them always failed with a 422.
 - A `--file` must be a regular file: devices, pipes and directories are rejected before any request. `merchants import` requires a `.csv` file.
 
 #### Windows and totals

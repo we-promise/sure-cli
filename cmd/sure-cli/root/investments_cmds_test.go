@@ -12,6 +12,7 @@ func TestBuildRecurringCreatePayloadRequiresDates(t *testing.T) {
 	payload, err := buildRecurringCreatePayload(recurringCreateOpts{
 		Name:               "Rent",
 		Amount:             "1200",
+		Currency:           "EUR",
 		LastOccurrenceDate: "2026-04-01",
 		NextExpectedDate:   "2026-05-01",
 		ExpectedDayOfMonth: "1",
@@ -29,7 +30,7 @@ func TestBuildRecurringCreatePayloadRequiresDates(t *testing.T) {
 }
 
 func validRecurringCreateOpts() recurringCreateOpts {
-	return recurringCreateOpts{LastOccurrenceDate: "2026-04-01", NextExpectedDate: "2026-05-01"}
+	return recurringCreateOpts{Amount: "1200", Currency: "EUR", ExpectedDayOfMonth: "1", LastOccurrenceDate: "2026-04-01", NextExpectedDate: "2026-05-01"}
 }
 
 // Sure writes only the statuses it documents (WRITABLE_STATUSES).
@@ -118,6 +119,50 @@ func TestInvestmentCommandsRegistered(t *testing.T) {
 	} {
 		if _, _, err := cmd.Find(args); err != nil {
 			t.Fatalf("expected command %v: %v", args, err)
+		}
+	}
+}
+
+func TestBuildRecurringCreatePayload_RequiresWhatSureValidates(t *testing.T) {
+	// RecurringTransaction validates amount, currency and expected_day_of_month
+	// (1-31) and the controller fills none of them in.
+	full := func(edit func(*recurringCreateOpts)) recurringCreateOpts {
+		o := recurringCreateOpts{Name: "Rent", Amount: "1200", Currency: "EUR", ExpectedDayOfMonth: "1", LastOccurrenceDate: "2026-04-01", NextExpectedDate: "2026-05-01"}
+		edit(&o)
+		return o
+	}
+	for name, tc := range map[string]struct {
+		opts recurringCreateOpts
+		want string
+	}{
+		"no amount":           {full(func(o *recurringCreateOpts) { o.Amount = "" }), "--amount is required"},
+		"no currency":         {full(func(o *recurringCreateOpts) { o.Currency = "" }), "--currency is required"},
+		"no day of month":     {full(func(o *recurringCreateOpts) { o.ExpectedDayOfMonth = "" }), "--expected-day-of-month is required"},
+		"day of month 0":      {full(func(o *recurringCreateOpts) { o.ExpectedDayOfMonth = "0" }), "--expected-day-of-month must be a whole number from 1 to 31"},
+		"day of month 32":     {full(func(o *recurringCreateOpts) { o.ExpectedDayOfMonth = "32" }), "--expected-day-of-month must be a whole number from 1 to 31"},
+		"amount with comma":   {full(func(o *recurringCreateOpts) { o.Amount = "1,234.5" }), "amount must be a decimal number"},
+		"min with 5 decimals": {full(func(o *recurringCreateOpts) { o.ExpectedAmountMin = "1.00001" }), "expected-amount-min has more than 4 decimal places"},
+		"max not a number":    {full(func(o *recurringCreateOpts) { o.ExpectedAmountMax = "lots" }), "expected-amount-max must be a decimal number"},
+		"avg trailing point":  {full(func(o *recurringCreateOpts) { o.ExpectedAmountAvg = "3." }), "expected-amount-avg must be a decimal number"},
+		"US-style last date":  {full(func(o *recurringCreateOpts) { o.LastOccurrenceDate = "04/01/2026" }), "invalid date"},
+		"bad next date":       {full(func(o *recurringCreateOpts) { o.NextExpectedDate = "2026-02-30" }), "invalid date"},
+	} {
+		if _, err := buildRecurringCreatePayload(tc.opts); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want %q", name, err, tc.want)
+		}
+	}
+	if _, err := buildRecurringCreatePayload(full(func(o *recurringCreateOpts) { o.Amount = "-2500" })); err != nil {
+		t.Errorf("income series (negative amount): %v", err)
+	}
+}
+
+func TestBuildRecurringUpdatePayload_ChecksDayAndDate(t *testing.T) {
+	for opts, want := range map[recurringUpdateOpts]string{
+		{ExpectedDayOfMonth: "40"}:       "--expected-day-of-month must be a whole number from 1 to 31",
+		{NextExpectedDate: "05/01/2026"}: "invalid date",
+	} {
+		if _, err := buildRecurringUpdatePayload(opts); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%+v: err = %v, want %q", opts, err, want)
 		}
 	}
 }

@@ -279,6 +279,9 @@ func buildTradeCreatePayload(o tradeCreateOpts) (map[string]any, error) {
 	if o.Date == "" {
 		return nil, fmt.Errorf("date is required")
 	}
+	if _, err := parseISODate("date", o.Date); err != nil {
+		return nil, err
+	}
 	typ := normalizeTradeType(o.Type)
 	rule, ok := tradeCreateRuleFor(typ)
 	if !ok {
@@ -434,13 +437,10 @@ func checkTradeUpdateFields(o tradeUpdateOpts, typ string) error {
 			return err
 		}
 	}
-	if o.Amount != "" {
-		if !models.IsDecimal(o.Amount) {
-			return fmt.Errorf("amount must be a decimal number, got %q", o.Amount)
-		}
-		return moneyColumn.check("amount", o.Amount)
+	if _, err := parseOptionalISODate("date", o.Date); err != nil {
+		return err
 	}
-	return nil
+	return checkOptionalDecimal("amount", o.Amount, moneyColumn)
 }
 
 func addAny(m map[string]any, key, value string) {
