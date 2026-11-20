@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -62,7 +63,11 @@ func Init(cfgFile string) error {
 		}
 		viper.SetConfigFile(path)
 	}
-	return Reload()
+	if err := Reload(); err != nil {
+		return err
+	}
+	removeStaleTemps()
+	return nil
 }
 
 // Reload re-reads the config file into memory, e.g. to pick up tokens another
@@ -88,20 +93,25 @@ func Set(key string, value any) {
 }
 
 // Save merges the keys Set in this process into the config file as it is on
-// disk now and replaces the file atomically with owner-only permissions.
+// disk now and replaces the file atomically. The config's lock file
+// serializes concurrent Saves, so no process merges into a file another is
+// about to replace.
 func Save() error {
 	path, err := configPath()
 	if err != nil {
 		return err
 	}
-	disk, err := readDisk(path)
+	err = withLock(path, func() error {
+		disk, err := readDisk(path)
+		if err != nil {
+			return err
+		}
+		for k, v := range dirty {
+			disk.Set(k, v)
+		}
+		return writeAtomic(path, disk.WriteConfigTo)
+	})
 	if err != nil {
-		return err
-	}
-	for k, v := range dirty {
-		disk.Set(k, v)
-	}
-	if err := writeAtomic(path, disk.WriteConfigTo); err != nil {
 		return err
 	}
 	dirty = map[string]any{}
@@ -116,14 +126,16 @@ func CheckWritable() error {
 	if err != nil {
 		return err
 	}
-	if _, err := readDisk(path); err != nil {
-		return err
-	}
-	return writeAtomic(path, nil)
+	return withLock(path, func() error {
+		if _, err := readDisk(path); err != nil {
+			return err
+		}
+		return writeAtomic(path, nil)
+	})
 }
 
-// configPath is the file Save writes: the one in use, resolved through a
-// symlink so a dotfiles-managed link keeps pointing at its target.
+// configPath is the file Save writes: the one in use, resolved through
+// symlinks so a dotfiles-managed link keeps pointing at its target.
 func configPath() (string, error) {
 	path := viper.ConfigFileUsed()
 	if path == "" {
@@ -134,10 +146,33 @@ func configPath() (string, error) {
 		path = p
 		viper.SetConfigFile(path)
 	}
+	return resolveLinks(path)
+}
+
+// maxLinks bounds symlink chains, as the kernel does (SYMLOOP_MAX).
+const maxLinks = 40
+
+// resolveLinks follows path through symlinks, also when the final target
+// does not exist yet, which filepath.EvalSymlinks refuses.
+func resolveLinks(path string) (string, error) {
 	if real, err := filepath.EvalSymlinks(path); err == nil {
-		path = real
+		return real, nil
 	}
-	return path, nil
+	for range maxLinks {
+		fi, err := os.Lstat(path)
+		if err != nil || fi.Mode()&fs.ModeSymlink == 0 {
+			return path, nil
+		}
+		target, err := os.Readlink(path)
+		if err != nil {
+			return "", err
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(path), target)
+		}
+		path = target
+	}
+	return "", fmt.Errorf("config path %s: too many levels of symbolic links", path)
 }
 
 // readDisk loads the file at path into a fresh Viper without defaults, so
@@ -151,15 +186,68 @@ func readDisk(path string) (*viper.Viper, error) {
 	return disk, nil
 }
 
-// writeAtomic writes path through a 0600 temp file in the same directory,
-// synced and renamed into place, so a crash never leaves a truncated config.
-// A nil write only proves the directory accepts the temp file.
-func writeAtomic(path string, write func(io.Writer) error) error {
+// withLock runs fn holding the exclusive lock on path's lock file, creating
+// path's directory if needed. Every writer holds the lock while its temp
+// file exists, so the temp files found under it were left by a crash.
+func withLock(path string, fn func() error) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	f, err := os.OpenFile(filepath.Join(dir, "."+filepath.Base(path)+".lock"), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close() // closing releases the lock
+	if err := lockFile(f); err != nil {
+		return fmt.Errorf("lock config: %w", err)
+	}
+	for _, stale := range tempFiles(path) {
+		_ = os.Remove(stale)
+	}
+	return fn()
+}
+
+// tempFiles lists the temp files writeAtomic creates for path.
+func tempFiles(path string) []string {
+	dir, prefix := filepath.Dir(path), "."+filepath.Base(path)+".tmp-"
+	entries, _ := os.ReadDir(dir)
+	var found []string
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), prefix) {
+			found = append(found, filepath.Join(dir, e.Name()))
+		}
+	}
+	return found
+}
+
+// removeStaleTemps deletes the temp files, holding a copy of the tokens, that
+// a Save killed before its rename left next to the config. It is best
+// effort: a read-only directory only keeps them.
+func removeStaleTemps() {
+	path, err := configPath()
+	if err != nil || len(tempFiles(path)) == 0 {
+		return
+	}
+	_ = withLock(path, func() error { return nil })
+}
+
+// writeAtomic writes path through a temp file in the same directory, synced
+// and renamed into place, so a crash never leaves a truncated config. The
+// file keeps its mode when that is stricter than owner-only 0600, and is
+// never loosened; a file owned by another user (e.g. under sudo) is refused.
+// A nil write only proves the directory accepts the temp file.
+func writeAtomic(path string, write func(io.Writer) error) error {
+	perm := os.FileMode(0o600)
+	if fi, err := os.Stat(path); err == nil {
+		if err := checkOwner(fi); err != nil {
+			return err
+		}
+		perm = fi.Mode().Perm()&0o600 | 0o400
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return err
 	}
@@ -171,13 +259,16 @@ func writeAtomic(path string, write func(io.Writer) error) error {
 	if err := write(tmp); err != nil {
 		return err
 	}
+	if err := tmp.Chmod(perm); err != nil {
+		return err
+	}
 	if err := tmp.Sync(); err != nil {
 		return err
 	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), path)
+	return replaceFile(tmp.Name(), path)
 }
 
 func APIURL() string { return viper.GetString("api_url") }

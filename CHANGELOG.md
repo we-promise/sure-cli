@@ -79,6 +79,10 @@ The `heuristics.*` config keys are no longer read.
 - `--timeout` (default 30 s) bounds a whole call, retries included; it bounded each attempt.
 - `login` stores a random per-install `auth.device.device_id`, so logging in on another machine no longer logs this one out.
 
+#### Config and tokens
+
+- Saving the config never loosens its mode: 0400 stays 0400, and anything looser than 0600 becomes 0600. It refuses a file owned by another user, and writes through a symlink whose target does not exist yet instead of replacing the link.
+
 ### Added
 
 - `account-statements list`, `show` and `upload`.

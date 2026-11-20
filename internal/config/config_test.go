@@ -1,10 +1,13 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -79,7 +82,7 @@ func TestSave_MergesOnlyKeysSetInThisProcess(t *testing.T) {
 	}
 }
 
-func TestSave_NewFileIsOwnerOnlyAndLeavesNoTempFiles(t *testing.T) {
+func TestSave_NewFileIsOwnerOnlyAndLeavesOnlyItsLockFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX permissions")
 	}
@@ -100,8 +103,13 @@ func TestSave_NewFileIsOwnerOnlyAndLeavesNoTempFiles(t *testing.T) {
 	if st.Mode().Perm() != 0o600 {
 		t.Fatalf("mode = %v, want 0600", st.Mode().Perm())
 	}
-	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
-		t.Fatalf("dir holds %d entries, want only config.yaml", len(entries))
+	var names []string
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if strings.Join(names, " ") != ".config.yaml.lock config.yaml" {
+		t.Fatalf("dir holds %v, want only config.yaml and its lock file", names)
 	}
 }
 
@@ -199,6 +207,153 @@ func TestTimeout(t *testing.T) {
 	viper.Set("timeout", "90s")
 	if got := Timeout(); got != 90*time.Second {
 		t.Fatalf("timeout = %v, want 90s", got)
+	}
+}
+
+// TestHelperSaver is the child process of TestSave_ConcurrentProcessesLoseNoUpdates.
+func TestHelperSaver(t *testing.T) {
+	cfg := os.Getenv("SURE_CLI_TEST_SAVER_CFG")
+	if cfg == "" {
+		t.Skip("helper process")
+	}
+	who := os.Getenv("SURE_CLI_TEST_SAVER_WHO")
+	for i := 0; i < saverKeys; i++ {
+		viper.Reset()
+		if err := Init(cfg); err != nil {
+			t.Fatal(err)
+		}
+		Set(fmt.Sprintf("k.%s%d", who, i), "v")
+		if err := Save(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+const saverKeys = 40
+
+func TestSave_ConcurrentProcessesLoseNoUpdates(t *testing.T) {
+	cfg := filepath.Join(t.TempDir(), "config.yaml")
+	writeFile(t, cfg, "auth:\n  token: t\n")
+	writers := []string{"a", "b", "c"}
+	var wg sync.WaitGroup
+	for _, who := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cmd := exec.Command(os.Args[0], "-test.run=^TestHelperSaver$", "-test.count=1")
+			cmd.Env = append(os.Environ(), "SURE_CLI_TEST_SAVER_CFG="+cfg, "SURE_CLI_TEST_SAVER_WHO="+who)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Errorf("writer %s: %v\n%s", who, err, out)
+			}
+		}()
+	}
+	wg.Wait()
+	viper.Reset()
+	if err := Init(cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, who := range writers {
+		for i := 0; i < saverKeys; i++ {
+			if viper.GetString(fmt.Sprintf("k.%s%d", who, i)) != "v" {
+				t.Fatalf("key k.%s%d lost by a concurrent Save", who, i)
+			}
+		}
+	}
+	if Token() != "t" {
+		t.Fatal("auth.token lost")
+	}
+}
+
+func TestSave_DanglingSymlinkCreatesTheTarget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "dotfiles"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "config.yaml")
+	// Relative, and not created yet: a dotfiles manager links before first use.
+	if err := os.Symlink(filepath.Join("dotfiles", "sure.yaml"), link); err != nil {
+		t.Fatal(err)
+	}
+	viper.Reset()
+	if err := Init(link); err != nil {
+		t.Fatal(err)
+	}
+	Set("api_url", "https://sure.test")
+	if err := Save(); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("symlink replaced by a regular file (%v)", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "dotfiles", "sure.yaml")); !strings.Contains(string(b), "https://sure.test") {
+		t.Fatalf("target not written: %q", b)
+	}
+}
+
+func TestSave_NeverLoosensFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permissions")
+	}
+	for before, want := range map[os.FileMode]os.FileMode{0o644: 0o600, 0o640: 0o600, 0o600: 0o600, 0o400: 0o400} {
+		cfg := filepath.Join(t.TempDir(), "config.yaml")
+		writeFile(t, cfg, "api_url: https://a\n")
+		if err := os.Chmod(cfg, before); err != nil {
+			t.Fatal(err)
+		}
+		viper.Reset()
+		if err := Init(cfg); err != nil {
+			t.Fatal(err)
+		}
+		Set("api_url", "https://b")
+		if err := Save(); err != nil {
+			t.Fatal(err)
+		}
+		if st, _ := os.Stat(cfg); st.Mode().Perm() != want {
+			t.Errorf("mode %v after Save = %v, want %v", before, st.Mode().Perm(), want)
+		}
+	}
+}
+
+func TestCheckOwner_RefusesAFileOfAnotherUser(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a file owned by another POSIX user")
+	}
+	root, err := os.Stat("/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkOwner(root); err == nil {
+		t.Fatal("a root-owned file passed the owner check")
+	}
+	mine, err := os.Stat(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkOwner(mine); err != nil {
+		t.Fatalf("own file refused: %v", err)
+	}
+}
+
+func TestInit_RemovesTempFilesACrashedSaveLeft(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config.yaml")
+	writeFile(t, cfg, "api_url: https://a\n")
+	stale := filepath.Join(dir, ".config.yaml.tmp-123456")
+	writeFile(t, stale, "auth:\n  refresh_token: leaked\n")
+	other := filepath.Join(dir, "notes.txt")
+	writeFile(t, other, "keep")
+	viper.Reset()
+	if err := Init(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale temp file still there (%v)", err)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Fatalf("unrelated file removed: %v", err)
 	}
 }
 
