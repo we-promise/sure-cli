@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -111,7 +112,11 @@ func bufferedCSV(out io.Writer, txs []models.Transaction) error {
 func bufferedJSON(out io.Writer, txs []models.Transaction, exportedAt string) error {
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
-	return enc.Encode(map[string]any{"exported_at": exportedAt, "count": len(txs), "transactions": txs})
+	rows := make([]exportRow, len(txs))
+	for i, tx := range txs {
+		rows[i] = newExportRow(tx)
+	}
+	return enc.Encode(map[string]any{"exported_at": exportedAt, "count": len(txs), "transactions": rows})
 }
 
 func TestExportTransactions_StreamedFilesMatchTheBufferedOnes(t *testing.T) {
@@ -248,8 +253,8 @@ func TestExportTransactions_WritesEachRowOnceToAPrivateFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	var file struct {
-		Count        int                  `json:"count"`
-		Transactions []models.Transaction `json:"transactions"`
+		Count        int         `json:"count"`
+		Transactions []exportRow `json:"transactions"`
 	}
 	if err := json.Unmarshal(b, &file); err != nil {
 		t.Fatal(err)
@@ -303,5 +308,45 @@ func TestExportTransactionsJSON_SpoolsInTheGivenDirectory(t *testing.T) {
 	}
 	if after, _ := os.ReadDir(dir); len(after) != 0 {
 		t.Fatalf("left behind %v", after)
+	}
+}
+
+func TestExportTransactionsJSON_RowsCarryTheCSVColumns(t *testing.T) {
+	// Both formats describe a row the same way: the CSV header names the JSON
+	// keys, amount is the exact signed decimal and date is the entry's date.
+	tx := models.Transaction{ID: "t1", Date: time.Date(2026, 11, 19, 0, 0, 0, 0, time.UTC), Name: "Bakery",
+		Amount: -1.6, AmountDecimal: "-1.6000", AmountText: "€1.60", Currency: "EUR", Classification: "expense",
+		Kind: "standard", CategoryName: "Food", AccountName: "Checking", MerchantName: "Bakery", SplitParent: true}
+	var js, cs bytes.Buffer
+	if err := writeTransactionsJSON(&js, "", rowsOf([]models.Transaction{tx})); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeTransactionsCSV(&cs, "", rowsOf([]models.Transaction{tx})); err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Transactions []map[string]any `json:"transactions"`
+	}
+	if err := json.Unmarshal(js.Bytes(), &doc); err != nil || len(doc.Transactions) != 1 {
+		t.Fatalf("decode %s: %v", js.String(), err)
+	}
+	row := doc.Transactions[0]
+	header := strings.Split(strings.SplitN(cs.String(), "\n", 2)[0], ",")
+	var keys []string
+	for k := range row {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	sort.Strings(header)
+	if fmt.Sprint(keys) != fmt.Sprint(header) {
+		t.Fatalf("JSON keys %v, want the CSV columns %v", keys, header)
+	}
+	want := map[string]any{"id": "t1", "date": "2026-11-19", "name": "Bakery", "amount": "-1.6000", "currency": "EUR",
+		"classification": "expense", "kind": "standard", "category": "Food", "account": "Checking", "merchant": "Bakery",
+		"excluded": false, "split_parent": true}
+	for k, v := range want {
+		if row[k] != v {
+			t.Errorf("%s = %#v, want %#v", k, row[k], v)
+		}
 	}
 }

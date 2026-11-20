@@ -397,7 +397,7 @@ Sure also leaves out rows the API gives a client no way to spot, so the CLI coun
 
 Windows that end today (`status`, `analyze`, `propose`, `export`) end on the family's date, and `transactions create`, `valuations create` and `trades create` without `--date` use that date. The time zone is the one `family-settings show` reports, resolved as Sure does: a Rails name such as `Madrid` or `Eastern Time (US & Canada)` maps to its IANA zone, and no zone or one Sure does not know is UTC. When the settings cannot be read, the local zone stands in and `meta.warnings` holds the failed request's code and message. A `--months` window ending on the last day of a month covers whole calendar months.
 
-`export transactions` writes every row. Its `amount` column is the exact signed decimal; `kind`, `excluded` and `split_parent` columns tell you which rows to leave out of a sum.
+`export transactions` writes every row. CSV columns and JSON row keys are the same: `id, date, name, amount, currency, classification, kind, category, account, merchant, excluded, split_parent`. `amount` is the exact signed decimal as text; `kind`, `excluded` and `split_parent` tell you which rows to leave out of a sum. A JSON file is `{count, exported_at, transactions}`.
 
 ## Heuristics
 

@@ -108,30 +108,52 @@ var transactionWriters = map[string]func(out io.Writer, spoolDir string, each tr
 	"json": writeTransactionsJSON,
 }
 
+// exportRow is one exported transaction: the CSV columns, in order, and the
+// keys of a JSON row. amount is the exact signed decimal (income positive,
+// expense negative); excluded and split_parent rows are exported but do not
+// count in totals.
+type exportRow struct {
+	ID             string `json:"id"`
+	Date           string `json:"date"`
+	Name           string `json:"name"`
+	Amount         string `json:"amount"`
+	Currency       string `json:"currency"`
+	Classification string `json:"classification"`
+	Kind           string `json:"kind"`
+	Category       string `json:"category"`
+	Account        string `json:"account"`
+	Merchant       string `json:"merchant"`
+	Excluded       bool   `json:"excluded"`
+	SplitParent    bool   `json:"split_parent"`
+}
+
+var exportColumns = []string{"id", "date", "name", "amount", "currency", "classification", "kind", "category", "account", "merchant", "excluded", "split_parent"}
+
+func newExportRow(tx models.Transaction) exportRow {
+	return exportRow{
+		ID: tx.ID, Date: tx.Date.Format(time.DateOnly), Name: tx.Name, Amount: tx.AmountDecimal,
+		Currency: tx.Currency, Classification: tx.Classification, Kind: tx.Kind,
+		Category: tx.CategoryName, Account: tx.AccountName, Merchant: tx.MerchantName,
+		Excluded: tx.Excluded, SplitParent: tx.SplitParent,
+	}
+}
+
+// csvRecord is r in exportColumns order, text cells escaped by csvText.
+func (r exportRow) csvRecord() []string {
+	return []string{
+		csvText(r.ID), r.Date, csvText(r.Name), r.Amount, csvText(r.Currency), csvText(r.Classification),
+		csvText(r.Kind), csvText(r.Category), csvText(r.Account), csvText(r.Merchant),
+		strconv.FormatBool(r.Excluded), strconv.FormatBool(r.SplitParent),
+	}
+}
+
 func writeTransactionsCSV(out io.Writer, _ string, each transactionSource) error {
 	w := csv.NewWriter(out)
-
-	// amount is exact and signed (income positive, expense negative).
-	// excluded/split_parent rows are exported but do not count in totals.
-	header := []string{"id", "date", "name", "amount", "currency", "classification", "kind", "category", "account", "merchant", "excluded", "split_parent"}
-	if err := w.Write(header); err != nil {
+	if err := w.Write(exportColumns); err != nil {
 		return err
 	}
 	err := each(func(tx models.Transaction) error {
-		return w.Write([]string{
-			csvText(tx.ID),
-			tx.Date.Format(time.DateOnly),
-			csvText(tx.Name),
-			tx.AmountDecimal,
-			csvText(tx.Currency),
-			csvText(tx.Classification),
-			csvText(tx.Kind),
-			csvText(tx.CategoryName),
-			csvText(tx.AccountName),
-			csvText(tx.MerchantName),
-			strconv.FormatBool(tx.Excluded),
-			strconv.FormatBool(tx.SplitParent),
-		})
+		return w.Write(newExportRow(tx).csvRecord())
 	})
 	if err != nil {
 		return err
@@ -152,7 +174,7 @@ func csvText(s string) string {
 }
 
 // writeTransactionsJSON writes {"count", "exported_at", "transactions"},
-// indented by two spaces. count leads the object but is known only once every
+// each transaction an exportRow, indented by two spaces. count leads the object but is known only once every
 // row is in, so the rows go to a temp file in spoolDir first and are copied
 // out after.
 func writeTransactionsJSON(out io.Writer, spoolDir string, each transactionSource) (err error) {
@@ -170,7 +192,7 @@ func writeTransactionsJSON(out io.Writer, spoolDir string, each transactionSourc
 	rows := bufio.NewWriter(spool)
 	count := 0
 	err = each(func(tx models.Transaction) error {
-		row, err := json.MarshalIndent(tx, "    ", "  ")
+		row, err := json.MarshalIndent(newExportRow(tx), "    ", "  ")
 		if err != nil {
 			return err
 		}
