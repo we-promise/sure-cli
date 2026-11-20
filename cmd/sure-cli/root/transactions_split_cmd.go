@@ -65,18 +65,23 @@ func newTransactionsSplitWriteCmd(use, short, method string) *cobra.Command {
 
 Children are a JSON array and must sum exactly to the transaction:
 
-  [{"amount": "60.00", "name": "Groceries", "category_id": "<uuid>"},
+  [{"amount": "60.00", "name": "Groceries", "category_id": "<uuid>",
+    "merchant_id": "<uuid>", "tag_ids": ["<uuid>"]},
    {"amount": "40.00", "excluded": true}]
 
 Amounts take the sign of amount_decimal in "split show", or of amount in
 "transactions show": expenses are positive. Not signed_amount_cents, which is
 negative for expenses.
 
-Every child is recreated, keeping only amount, name, category and excluded.
+Every child is recreated, keeping amount, name, category, merchant, tags and
+excluded. A child without a merchant takes the parent's.
+
 The output of "split show" can be saved, edited and passed back with
 --splits-file. Edit amount_decimal there: amount is display-formatted, and a
-plain amount that disagrees with amount_decimal is rejected. A child carrying
-tags or notes is rejected too, since they would be lost; remove them first.`,
+plain amount that disagrees with amount_decimal is rejected. category_id,
+merchant_id and tag_ids, when added, win over the category, merchant and tags
+that show prints. A child carrying notes is rejected, since Sure does not keep
+them on a recreated child; remove them first.`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			raw, err := readTransactionSplitInput(o, os.Stdin)

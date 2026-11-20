@@ -220,22 +220,105 @@ func decodeChild(t *testing.T, raw string) map[string]any {
 	return child
 }
 
-func TestBuildTransactionSplitPayload_RejectsChildrenThatWouldLoseData(t *testing.T) {
-	cases := map[string]string{
-		`{"id": "c1", "amount_decimal": "1", "tags": [{"id": "t1"}]}`:                  "has tags, which",
-		`{"id": "c1", "amount_decimal": "1", "notes": "receipt"}`:                      "has notes, which",
-		`{"id": "c1", "amount_decimal": "1", "notes": "receipt", "tags": [{"id": 1}]}`: "has tags and notes",
-	}
-	for child, want := range cases {
-		_, err := buildTransactionSplitPayload([]byte("[" + child + "]"))
-		if err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%s: err = %v, want %q", child, err, want)
-		}
+func TestBuildTransactionSplitPayload_RejectsNotes(t *testing.T) {
+	_, err := buildTransactionSplitPayload([]byte(`[{"id": "c1", "amount_decimal": "1", "notes": "receipt", "tags": [{"id": "t1"}]}]`))
+	if err == nil || !strings.Contains(err.Error(), "has notes, which") {
+		t.Errorf("err = %v, want it to refuse notes", err)
 	}
 
 	// Empty tags and notes, as show prints them for most children, are fine.
 	if _, err := buildTransactionSplitPayload([]byte(`[{"id": "c1", "amount_decimal": "1", "tags": [], "notes": null}]`)); err != nil {
 		t.Errorf("empty tags/notes: unexpected error: %v", err)
+	}
+}
+
+func TestBuildTransactionSplitPayload_ForwardsTagsAndMerchant(t *testing.T) {
+	cases := []struct {
+		name, child string
+		want        map[string]any
+	}{
+		{"hand-written ids", `{"amount": "1", "merchant_id": "m1", "tag_ids": ["t1", "t2"]}`,
+			map[string]any{"amount": "1", "merchant_id": "m1", "tag_ids": []string{"t1", "t2"}}},
+		{"copied from show", `{"id": "c1", "amount_decimal": "1", "merchant": {"id": "m1", "name": "Shop"}, "tags": [{"id": "t1", "name": "Trip", "color": "#fff"}]}`,
+			map[string]any{"amount": "1", "merchant_id": "m1", "tag_ids": []string{"t1"}}},
+		{"explicit ids win over copied", `{"id": "c1", "amount_decimal": "1", "merchant": {"id": "m1"}, "merchant_id": "m2", "tags": [{"id": "t1"}], "tag_ids": ["t2"]}`,
+			map[string]any{"amount": "1", "merchant_id": "m2", "tag_ids": []string{"t2"}}},
+		{"empty tag_ids clears copied tags", `{"id": "c1", "amount_decimal": "1", "tags": [{"id": "t1"}], "tag_ids": []}`,
+			map[string]any{"amount": "1"}},
+		{"null tag_ids clears copied tags", `{"id": "c1", "amount_decimal": "1", "tags": [{"id": "t1"}], "tag_ids": null}`,
+			map[string]any{"amount": "1"}},
+		{"show with neither", `{"id": "c1", "amount_decimal": "1", "merchant": null, "tags": []}`,
+			map[string]any{"amount": "1"}},
+	}
+	for _, c := range cases {
+		body, err := buildTransactionSplitPayload([]byte("[" + c.child + "]"))
+		if err != nil {
+			t.Errorf("%s: unexpected error: %v", c.name, err)
+			continue
+		}
+		if got := splitsOf(t, body)[0]; !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: split = %#v, want %#v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestBuildTransactionSplitPayload_RejectsBadTagsAndMerchant(t *testing.T) {
+	cases := []struct {
+		name, child, want string
+	}{
+		{"merchant_id not a string", `{"amount": "1", "merchant_id": 5}`, "merchant_id must be a string"},
+		{"null merchant_id", `{"amount": "1", "merchant_id": null}`, "merchant_id cannot be null"},
+		{"tag_ids not an array", `{"amount": "1", "tag_ids": "t1"}`, "tag_ids must be an array of tag ids"},
+		{"tag_ids with a non-string", `{"amount": "1", "tag_ids": ["t1", 2]}`, "tag_ids must be an array of tag ids"},
+		{"tags as plain ids", `{"amount": "1", "tags": ["t1"]}`, "use tag_ids"},
+		{"tag without an id", `{"id": "c1", "amount_decimal": "1", "tags": [{"name": "Trip"}]}`, "use tag_ids"},
+	}
+	for _, c := range cases {
+		_, err := buildTransactionSplitPayload([]byte("[" + c.child + "]"))
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want it to contain %q", c.name, err, c.want)
+		}
+	}
+}
+
+// Every field the transaction partial prints, so the round trip keeps working
+// while a typo on a copied child is still caught.
+const transactionSplitFullShowChild = `{
+  "id": "c1", "entry_id": "e1", "date": "2026-02-04", "amount": "$60.00",
+  "amount_cents": 6000, "signed_amount_cents": -6000, "amount_decimal": "60.0",
+  "currency": "USD", "name": "Groceries", "notes": null, "external_id": null,
+  "source": null, "user_modified": true, "classification": "expense",
+  "kind": "standard", "excluded": false, "split_parent": false,
+  "account": {"id": "a1", "name": "Checking", "account_type": "depository"},
+  "category": {"id": "cat-1", "name": "Food", "color": "#fff", "icon": "utensils"},
+  "merchant": {"id": "m1", "name": "Shop"},
+  "tags": [{"id": "t1", "name": "Trip", "color": "#fff"}],
+  "transfer": null,
+  "created_at": "2026-02-04T00:00:00Z", "updated_at": "2026-02-04T00:00:00Z"
+}`
+
+func TestBuildTransactionSplitPayload_ChecksKeysOnShowChildren(t *testing.T) {
+	body, err := buildTransactionSplitPayload([]byte("[" + transactionSplitFullShowChild + "]"))
+	if err != nil {
+		t.Fatalf("full show child: unexpected error: %v", err)
+	}
+	want := map[string]any{
+		"amount": "60.0", "name": "Groceries", "category_id": "cat-1",
+		"merchant_id": "m1", "tag_ids": []string{"t1"}, "excluded": false,
+	}
+	if got := splitsOf(t, body)[0]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("full show child: split = %#v, want %#v", got, want)
+	}
+
+	_, err = buildTransactionSplitPayload([]byte(`[{"id": "c1", "amount_decimal": "1", "merchnt_id": "m1"}]`))
+	if err == nil || !strings.Contains(err.Error(), `unknown field "merchnt_id"`) {
+		t.Errorf("typo on a show child: err = %v", err)
+	}
+
+	// The fields show adds stay off hand-written children.
+	_, err = buildTransactionSplitPayload([]byte(`[{"amount": "1", "date": "2026-02-04"}]`))
+	if err == nil || !strings.Contains(err.Error(), `unknown field "date"`) {
+		t.Errorf("show-only field on a hand-written child: err = %v", err)
 	}
 }
 

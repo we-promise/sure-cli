@@ -9,7 +9,6 @@ import (
 	"math/big"
 	"os"
 	"regexp"
-	"strings"
 )
 
 func readTransactionSplitInput(o transactionSplitOpts, stdin io.Reader) ([]byte, error) {
@@ -33,7 +32,19 @@ var transactionSplitAmountRe = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
 
 var transactionSplitInputKeys = map[string]bool{
 	"amount": true, "amount_decimal": true, "name": true,
-	"category_id": true, "category": true, "excluded": true,
+	"category_id": true, "category": true,
+	"merchant_id": true, "merchant": true,
+	"tag_ids": true, "tags": true, "excluded": true,
+}
+
+// What Sure's transaction partial prints besides the input keys. A child
+// copied from "split show" (it has an id) may carry these; they are ignored.
+var transactionSplitShowKeys = map[string]bool{
+	"id": true, "entry_id": true, "date": true, "amount_cents": true,
+	"signed_amount_cents": true, "currency": true, "notes": true,
+	"external_id": true, "source": true, "user_modified": true,
+	"classification": true, "kind": true, "split_parent": true,
+	"account": true, "transfer": true, "created_at": true, "updated_at": true,
 }
 
 // buildTransactionSplitPayload accepts a bare array of children, or the object that
@@ -74,18 +85,15 @@ func buildTransactionSplitPayload(raw []byte) (map[string]any, error) {
 }
 
 func buildTransactionSplitChild(child map[string]any) (map[string]any, error) {
-	// A child copied from "split show" is a whole transaction; its extra
-	// fields are ignored. Anything else is checked so a typo is not dropped.
-	if _, fromShow := child["id"]; !fromShow {
-		for key := range child {
-			if !transactionSplitInputKeys[key] {
-				return nil, fmt.Errorf("unknown field %q", key)
-			}
+	_, fromShow := child["id"]
+	for key := range child {
+		if !transactionSplitInputKeys[key] && !(fromShow && transactionSplitShowKeys[key]) {
+			return nil, fmt.Errorf("unknown field %q", key)
 		}
 	}
 
-	if lost := transactionSplitLostFields(child); len(lost) > 0 {
-		return nil, fmt.Errorf("has %s, which the split API does not keep on a child and would be lost; remove them from the input to proceed", strings.Join(lost, " and "))
+	if notes, ok := child["notes"].(string); ok && notes != "" {
+		return nil, errors.New("has notes, which the split API does not keep on a child and would be lost; remove them from the input to proceed")
 	}
 
 	amount, err := transactionSplitChildAmount(child)
@@ -110,6 +118,22 @@ func buildTransactionSplitChild(child map[string]any) (map[string]any, error) {
 	}
 	if categoryID != "" {
 		split["category_id"] = categoryID
+	}
+
+	merchantID, err := transactionSplitChildMerchantID(child)
+	if err != nil {
+		return nil, err
+	}
+	if merchantID != "" {
+		split["merchant_id"] = merchantID
+	}
+
+	tagIDs, err := transactionSplitChildTagIDs(child)
+	if err != nil {
+		return nil, err
+	}
+	if len(tagIDs) > 0 {
+		split["tag_ids"] = tagIDs
 	}
 
 	if v, ok := child["excluded"]; ok && v != nil {
@@ -153,18 +177,77 @@ func transactionSplitChildAmount(child map[string]any) (string, error) {
 // An explicit category_id wins, null included: that clears the category.
 // Otherwise a child copied from "split show" keeps its category.id.
 func transactionSplitChildCategoryID(child map[string]any) (string, error) {
-	value, hasCategoryID := child["category_id"]
-	if category, ok := child["category"].(map[string]any); ok && !hasCategoryID {
-		value = category["id"]
+	id, _, err := transactionSplitChildRefID(child, "category")
+	return id, err
+}
+
+// Sure gives a child without a merchant the parent's, so null cannot clear it.
+func transactionSplitChildMerchantID(child map[string]any) (string, error) {
+	id, explicitNull, err := transactionSplitChildRefID(child, "merchant")
+	if explicitNull {
+		return "", errors.New("merchant_id cannot be null: Sure gives a child without a merchant the parent's merchant; remove the field to accept that")
+	}
+	return id, err
+}
+
+// An explicit <name>_id wins over the <name>.id that "split show" prints.
+func transactionSplitChildRefID(child map[string]any, name string) (id string, explicitNull bool, err error) {
+	key := name + "_id"
+	value, explicit := child[key]
+	if nested, ok := child[name].(map[string]any); ok && !explicit {
+		value = nested["id"]
 	}
 	if value == nil {
-		return "", nil
+		return "", explicit, nil
 	}
 	id, ok := value.(string)
 	if !ok {
-		return "", errors.New("category_id must be a string")
+		return "", false, fmt.Errorf("%s must be a string", key)
 	}
-	return id, nil
+	return id, false, nil
+}
+
+// An explicit tag_ids wins, empty or null included: that clears the tags.
+// Otherwise a child copied from "split show" keeps its tags[].id.
+func transactionSplitChildTagIDs(child map[string]any) ([]string, error) {
+	if value, explicit := child["tag_ids"]; explicit {
+		if value == nil {
+			return nil, nil
+		}
+		items, ok := value.([]any)
+		if !ok {
+			return nil, errors.New("tag_ids must be an array of tag ids")
+		}
+		ids := make([]string, 0, len(items))
+		for _, item := range items {
+			id, ok := item.(string)
+			if !ok {
+				return nil, errors.New("tag_ids must be an array of tag ids")
+			}
+			ids = append(ids, id)
+		}
+		return ids, nil
+	}
+
+	value, ok := child["tags"]
+	if !ok || value == nil {
+		return nil, nil
+	}
+	errShape := errors.New("tags must be objects with an id, as \"split show\" prints them; use tag_ids for plain ids")
+	tags, ok := value.([]any)
+	if !ok {
+		return nil, errShape
+	}
+	ids := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		obj, _ := tag.(map[string]any)
+		id, ok := obj["id"].(string)
+		if !ok {
+			return nil, errShape
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 func transactionSplitAmountText(v any) string {
@@ -181,15 +264,4 @@ func transactionSplitSameDecimal(a, b string) bool {
 	x, okX := new(big.Rat).SetString(a)
 	y, okY := new(big.Rat).SetString(b)
 	return okX && okY && x.Cmp(y) == 0
-}
-
-func transactionSplitLostFields(child map[string]any) []string {
-	var lost []string
-	if tags, ok := child["tags"].([]any); ok && len(tags) > 0 {
-		lost = append(lost, "tags")
-	}
-	if notes, ok := child["notes"].(string); ok && notes != "" {
-		lost = append(lost, "notes")
-	}
-	return lost
 }
