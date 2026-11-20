@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -33,7 +34,7 @@ func FetchTransactionsWindow(client *Client, start, end time.Time) ([]models.Tra
 // of GET /api/v1/accounts without include_disabled.
 func FetchReportableTransactionsWindow(client *Client, start, end time.Time, reportableAccounts map[string]bool) ([]models.Transaction, error) {
 	var reportable []models.Transaction
-	err := EachTransactionInWindow(client, start, end, MaxPages, func(tx models.Transaction) error {
+	err := EachTransactionInWindow(context.Background(), client, start, end, MaxPages, func(tx models.Transaction) error {
 		if tx.Reportable() && reportableAccounts[tx.AccountID] {
 			reportable = append(reportable, tx)
 		}
@@ -58,7 +59,7 @@ func ReportableAccountIDs(accounts []map[string]any) map[string]bool {
 	return ids
 }
 
-// EachTransactionInWindow hands visit every transaction within [start,end],
+// EachTransactionInWindow, cancelled with ctx, hands visit every transaction within [start,end],
 // split parents and excluded rows included (flagged), page by page at
 // MaxPerPage, so a caller that writes rows out need not hold them all. Each
 // id is visited once: offset paging over a list that gains rows mid-walk
@@ -66,13 +67,13 @@ func ReportableAccountIDs(accounts []map[string]any) map[string]bool {
 // *errs.CLIError: a visit should return one, which comes back unchanged.
 // maxPages bounds the walk (too_many_pages past it); a caller that holds
 // every row passes MaxPages, one that streams them may allow more.
-func EachTransactionInWindow(client *Client, start, end time.Time, maxPages int, visit func(models.Transaction) error) error {
+func EachTransactionInWindow(ctx context.Context, client *Client, start, end time.Time, maxPages int, visit func(models.Transaction) error) error {
 	q := url.Values{}
 	q.Set("start_date", start.Format(time.DateOnly))
 	q.Set("end_date", end.Format(time.DateOnly))
 
 	seen := map[string]bool{}
-	r, err := walkPages(client, "/api/v1/transactions", q, MaxPerPage, maxPages, func(body []byte) error {
+	r, err := walkPages(ctx, client, "/api/v1/transactions", q, MaxPerPage, maxPages, func(body []byte) error {
 		var res transactionsPage
 		if err := json.Unmarshal(body, &res); err != nil {
 			return errs.Wrap(errs.CodeInvalidResponse, "unreadable transactions page", err)

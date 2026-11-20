@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -22,7 +23,7 @@ const MaxPages = 1000
 // instead of held in memory (1M rows at MaxPerPage).
 const StreamMaxPages = 10000
 
-// walkPages GETs path one page at a time with q plus page/per_page, handing
+// walkPages GETs path, cancelled with ctx, one page at a time with q plus page/per_page, handing
 // each response body to visit, for at most maxPages pages. It walks up to
 // the total_pages the latest page reports, so rows pushed onto a new page by
 // an insert mid-walk are still read, and stops at a page with no rows. It
@@ -36,7 +37,7 @@ const StreamMaxPages = 10000
 // serves its last page again for a page past the end (Pagy overflow
 // :last_page), fewer rows read, each id once, than the first total_count.
 // A row inserted mid-walk only makes a row repeat, which is dropped.
-func walkPages(c *Client, path string, q url.Values, perPage, maxPages int, visit func(body []byte) error) (*resty.Response, error) {
+func walkPages(ctx context.Context, c *Client, path string, q url.Values, perPage, maxPages int, visit func(body []byte) error) (*resty.Response, error) {
 	query := url.Values{}
 	for k, v := range q {
 		query[k] = v
@@ -47,7 +48,7 @@ func walkPages(c *Client, path string, q url.Values, perPage, maxPages int, visi
 	read, firstTotal, lastTotal := 0, -1, -1
 	for page := 1; ; page++ {
 		query.Set("page", strconv.Itoa(page))
-		r, err := c.Get(path+"?"+query.Encode(), nil)
+		r, err := c.GetContext(ctx, path+"?"+query.Encode(), nil)
 		if err != nil || r.StatusCode() >= 400 {
 			return r, err
 		}
@@ -178,7 +179,7 @@ func uniqueByID[T any](items []T, id func(T) string) []T {
 // CLIError, for bodies that cannot be decoded.
 func FetchAllPages(c *Client, path string, q url.Values, key string) ([]map[string]any, *resty.Response, error) {
 	all := []map[string]any{}
-	r, err := walkPages(c, path, q, MaxPerPage, MaxPages, func(body []byte) error {
+	r, err := walkPages(context.Background(), c, path, q, MaxPerPage, MaxPages, func(body []byte) error {
 		var page map[string]json.RawMessage
 		if err := json.Unmarshal(body, &page); err != nil {
 			return errs.Wrap(errs.CodeInvalidResponse, "unreadable response from "+path, err)

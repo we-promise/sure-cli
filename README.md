@@ -190,9 +190,11 @@ sure-cli export transactions --months 12 --out-format csv --out transactions.csv
 # mode tightened to the owner's bits (0644 becomes 0600, 0400 stays 0400), the
 # rule family-exports download and the config file follow too. --out
 # /dev/stdout, a named pipe or another device is written directly, so a
-# failure there can leave part of the output. Rows go to disk page by page
-# instead of being held in memory. CSV text cells starting with = + - @ get a
-# leading ' so spreadsheets do not run them as formulas.
+# failure there can leave part of the output. Ctrl-C or SIGTERM fails it as
+# canceled and removes the partial file; a second Ctrl-C kills the process.
+# Rows go to disk page by page instead of being held in memory. CSV text cells
+# starting with = + - @ get a leading ' so spreadsheets do not run them as
+# formulas.
 
 # Financial history
 sure-cli balance-sheet show

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -48,11 +49,20 @@ func newExportTransactionsCmd() *cobra.Command {
 				outFile = fmt.Sprintf("transactions_%s.%s", end.Format(time.DateOnly), exportFormat)
 			}
 
+			// The JSON spool goes next to the file, on its disk and under its
+			// permissions; a pipe or device has no directory to share.
+			spoolDir := filepath.Dir(outFile)
+			if fsutil.IsStream(outFile) {
+				spoolDir = ""
+			}
+			ctx, stop := interruptContext()
+			defer stop()
+
 			// Every row, flagged: an export is a dump, not a total. Rows go
 			// to the file page by page; a failed fetch leaves no file.
 			exported := 0
 			source := func(visit func(models.Transaction) error) error {
-				return api.EachTransactionInWindow(client, start, end, api.StreamMaxPages, func(tx models.Transaction) error {
+				return api.EachTransactionInWindow(ctx, client, start, end, api.StreamMaxPages, func(tx models.Transaction) error {
 					if err := visit(tx); err != nil {
 						return exportFailed(err)
 					}
@@ -60,7 +70,7 @@ func newExportTransactionsCmd() *cobra.Command {
 					return nil
 				})
 			}
-			if err := fsutil.WriteFileAtomic(outFile, func(w io.Writer) error { return write(w, source) }); err != nil {
+			if err := fsutil.WriteFileAtomic(outFile, func(w io.Writer) error { return write(w, spoolDir, source) }); err != nil {
 				var ce *errs.CLIError
 				if !errors.As(err, &ce) {
 					ce = exportFailed(err)
@@ -90,13 +100,15 @@ func exportFailed(err error) *errs.CLIError {
 // and stops at the first error.
 type transactionSource func(visit func(models.Transaction) error) error
 
-// transactionWriters maps each --out-format to the writer of its file.
-var transactionWriters = map[string]func(io.Writer, transactionSource) error{
+// transactionWriters maps each --out-format to the writer of its file. A
+// writer that needs scratch space puts it in spoolDir ("" for the system's
+// temp directory).
+var transactionWriters = map[string]func(out io.Writer, spoolDir string, each transactionSource) error{
 	"csv":  writeTransactionsCSV,
 	"json": writeTransactionsJSON,
 }
 
-func writeTransactionsCSV(out io.Writer, each transactionSource) error {
+func writeTransactionsCSV(out io.Writer, _ string, each transactionSource) error {
 	w := csv.NewWriter(out)
 
 	// amount is exact and signed (income positive, expense negative).
@@ -141,9 +153,10 @@ func csvText(s string) string {
 
 // writeTransactionsJSON writes {"count", "exported_at", "transactions"},
 // indented by two spaces. count leads the object but is known only once every
-// row is in, so the rows go to a temp file first and are copied out after.
-func writeTransactionsJSON(out io.Writer, each transactionSource) (err error) {
-	spool, err := os.CreateTemp("", "sure-cli-export-*.json")
+// row is in, so the rows go to a temp file in spoolDir first and are copied
+// out after.
+func writeTransactionsJSON(out io.Writer, spoolDir string, each transactionSource) (err error) {
+	spool, err := os.CreateTemp(spoolDir, ".sure-cli-export-*.spool")
 	if err != nil {
 		return err
 	}

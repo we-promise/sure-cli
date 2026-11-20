@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"math"
 	"net/http"
@@ -108,7 +109,7 @@ func window() (time.Time, time.Time) {
 // allInWindow collects every row EachTransactionInWindow visits.
 func allInWindow(start, end time.Time) ([]models.Transaction, error) {
 	var all []models.Transaction
-	err := EachTransactionInWindow(New(), start, end, MaxPages, func(tx models.Transaction) error {
+	err := EachTransactionInWindow(context.Background(), New(), start, end, MaxPages, func(tx models.Transaction) error {
 		all = append(all, tx)
 		return nil
 	})
@@ -281,7 +282,7 @@ func TestEachTransactionInWindow_StopsAtTheVisitError(t *testing.T) {
 	start, end := window()
 	diskFull := errs.New(errs.CodeExportFailed, "disk full")
 	visited := 0
-	err := EachTransactionInWindow(New(), start, end, MaxPages, func(models.Transaction) error {
+	err := EachTransactionInWindow(context.Background(), New(), start, end, MaxPages, func(models.Transaction) error {
 		visited++
 		return diskFull
 	})
@@ -302,14 +303,14 @@ func TestEachTransactionInWindow_HonoursThePageCap(t *testing.T) {
 	}
 	start, end := window()
 	newWindowServer(t, []string{page(1, "t1"), page(2, "t2"), page(3, "t3")})
-	err := EachTransactionInWindow(New(), start, end, 2, func(models.Transaction) error { return nil })
+	err := EachTransactionInWindow(context.Background(), New(), start, end, 2, func(models.Transaction) error { return nil })
 	var ce *errs.CLIError
 	if !errors.As(err, &ce) || ce.Code != errs.CodeTooManyPages {
 		t.Fatalf("err = %v, want %s past a 2-page cap", err, errs.CodeTooManyPages)
 	}
 	newWindowServer(t, []string{page(1, "t1"), page(2, "t2"), page(3, "t3")})
 	n := 0
-	if err := EachTransactionInWindow(New(), start, end, 3, func(models.Transaction) error { n++; return nil }); err != nil || n != 3 {
+	if err := EachTransactionInWindow(context.Background(), New(), start, end, 3, func(models.Transaction) error { n++; return nil }); err != nil || n != 3 {
 		t.Fatalf("n=%d err=%v, want all 3 rows within a 3-page cap", n, err)
 	}
 }

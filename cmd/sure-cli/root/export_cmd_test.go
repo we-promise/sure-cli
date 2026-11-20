@@ -41,7 +41,7 @@ func TestExportTransactionsCSV_ExactAmountsAndReportingFlags(t *testing.T) {
 			Currency: "EUR", Classification: "expense", Kind: "standard", AccountName: "Main", Excluded: true, SplitParent: true},
 	}
 	var buf bytes.Buffer
-	if err := transactionWriters["csv"](&buf, rowsOf(txs)); err != nil {
+	if err := transactionWriters["csv"](&buf, "", rowsOf(txs)); err != nil {
 		t.Fatalf("export: %v", err)
 	}
 	rows, err := csv.NewReader(&buf).ReadAll()
@@ -69,7 +69,7 @@ func TestExportTransactionsCSV_TextCannotBeAFormula(t *testing.T) {
 		AccountName: "-2+3", Currency: "\t=1", Classification: "\r=1", Kind: "standard",
 	}}
 	var buf bytes.Buffer
-	if err := writeTransactionsCSV(&buf, rowsOf(txs)); err != nil {
+	if err := writeTransactionsCSV(&buf, "", rowsOf(txs)); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := csv.NewReader(&buf).ReadAll()
@@ -123,7 +123,7 @@ func TestExportTransactions_StreamedFilesMatchTheBufferedOnes(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			var got, want bytes.Buffer
-			if err := writeTransactionsCSV(&got, rowsOf(txs)); err != nil {
+			if err := writeTransactionsCSV(&got, "", rowsOf(txs)); err != nil {
 				t.Fatal(err)
 			}
 			_ = bufferedCSV(&want, txs)
@@ -133,7 +133,7 @@ func TestExportTransactions_StreamedFilesMatchTheBufferedOnes(t *testing.T) {
 
 			got.Reset()
 			want.Reset()
-			if err := writeTransactionsJSON(&got, rowsOf(txs)); err != nil {
+			if err := writeTransactionsJSON(&got, "", rowsOf(txs)); err != nil {
 				t.Fatal(err)
 			}
 			var head struct {
@@ -152,7 +152,7 @@ func TestExportTransactions_StreamedFilesMatchTheBufferedOnes(t *testing.T) {
 
 func TestExportTransactionsJSON_EmptyIsAnEmptyList(t *testing.T) {
 	var got bytes.Buffer
-	if err := writeTransactionsJSON(&got, rowsOf(nil)); err != nil {
+	if err := writeTransactionsJSON(&got, "", rowsOf(nil)); err != nil {
 		t.Fatal(err)
 	}
 	var doc struct {
@@ -175,10 +175,10 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("no space
 func TestExportTransactions_ReportsWriteFailures(t *testing.T) {
 	// The CSV writer buffers: a failed write only surfaces on Flush.
 	txs := rowsOf([]models.Transaction{{ID: "t1", AmountDecimal: "-1"}})
-	if err := writeTransactionsCSV(failingWriter{}, txs); err == nil {
+	if err := writeTransactionsCSV(failingWriter{}, "", txs); err == nil {
 		t.Error("CSV export to a failing writer reported success")
 	}
-	if err := writeTransactionsJSON(failingWriter{}, txs); err == nil {
+	if err := writeTransactionsJSON(failingWriter{}, "", txs); err == nil {
 		t.Error("JSON export to a failing writer reported success")
 	}
 }
@@ -190,7 +190,7 @@ func TestExportTransactions_ReportsSourceFailures(t *testing.T) {
 		return cut
 	}
 	for name, write := range transactionWriters {
-		if err := write(io.Discard, source); !errors.Is(err, cut) {
+		if err := write(io.Discard, "", source); !errors.Is(err, cut) {
 			t.Errorf("%s: err = %v, want the source's error", name, err)
 		}
 	}
@@ -282,5 +282,26 @@ func TestExportTransactions_AFailedFetchLeavesThePreviousFile(t *testing.T) {
 	entries, _ := os.ReadDir(dir)
 	if len(entries) != 2 {
 		t.Fatalf("dir holds %d entries, want tx.csv and config.yaml only", len(entries))
+	}
+}
+
+func TestExportTransactionsJSON_SpoolsInTheGivenDirectory(t *testing.T) {
+	dir := t.TempDir()
+	var during []string
+	source := func(visit func(models.Transaction) error) error {
+		if err := visit(models.Transaction{ID: "t1"}); err != nil {
+			return err
+		}
+		during, _ = filepath.Glob(filepath.Join(dir, ".sure-cli-export-*.spool"))
+		return nil
+	}
+	if err := writeTransactionsJSON(io.Discard, dir, source); err != nil {
+		t.Fatal(err)
+	}
+	if len(during) != 1 {
+		t.Fatalf("spool files in %s while writing = %v, want one", dir, during)
+	}
+	if after, _ := os.ReadDir(dir); len(after) != 0 {
+		t.Fatalf("left behind %v", after)
 	}
 }

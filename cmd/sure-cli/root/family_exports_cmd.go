@@ -1,13 +1,9 @@
 package root
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -60,12 +56,8 @@ func newFamilyExportsCmd() *cobra.Command {
 			if outFile == "" {
 				failValidation(errors.New("--out is required"))
 			}
-			// Ctrl-C cancels the transfer instead of killing the process, so
-			// the partial temp file next to --out is removed. A second Ctrl-C
-			// kills the process as usual.
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			ctx, stop := interruptContext()
 			defer stop()
-			context.AfterFunc(ctx, stop)
 
 			client := api.New()
 			exportPath := fmt.Sprintf("/api/v1/family_exports/%s", url.PathEscape(args[0]))

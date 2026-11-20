@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -307,7 +308,7 @@ func TestWalkPages_StopsAtTheCapWhenTotalPagesKeepsGrowing(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(w, `{"accounts":[{"id":"a%d"}],"pagination":{"total_pages":%d}}`, calls, calls+1)
 	})
-	_, err := walkPages(c, "/api/v1/accounts", nil, MaxPerPage, 5, func([]byte) error { return nil })
+	_, err := walkPages(context.Background(), c, "/api/v1/accounts", nil, MaxPerPage, 5, func([]byte) error { return nil })
 	assertCode(t, err, errs.CodeTooManyPages)
 	if calls != 5 {
 		t.Fatalf("calls = %d, want 5 (the cap)", calls)
