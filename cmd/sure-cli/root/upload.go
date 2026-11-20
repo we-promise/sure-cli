@@ -77,11 +77,12 @@ func regularFile(path string) (os.FileInfo, error) {
 }
 
 // uploadContentTypes maps file extensions to the parameter-free Content-Type
-// sent on multipart file parts. Sure's upload endpoints do exact-match
-// `include?` checks against their allow-lists (Import::ALLOWED_CSV_MIME_TYPES,
-// SureImport::ALLOWED_NDJSON_CONTENT_TYPES,
-// AccountStatement::ALLOWED_EXTENSION_CONTENT_TYPES), so the charset-suffixed
-// value resty would auto-detect ("text/plain; charset=utf-8") is rejected.
+// sent on multipart file parts. The import endpoints check the declared type
+// with exact-match `include?` against Import::ALLOWED_CSV_MIME_TYPES and
+// SureImport::ALLOWED_NDJSON_CONTENT_TYPES, so the charset-suffixed value
+// resty would auto-detect ("text/plain; charset=utf-8") is rejected there.
+// AccountStatement re-detects the type from the content (Marcel, with the
+// declared type only as a hint) and then checks its per-extension list.
 var uploadContentTypes = map[string]string{
 	".csv":    "text/csv",
 	".ndjson": "application/x-ndjson",

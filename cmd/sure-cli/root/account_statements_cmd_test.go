@@ -243,9 +243,9 @@ func TestAccountStatementsUpload_DryRunByDefault(t *testing.T) {
 }
 
 // TestPostAccountStatement_SendsMultipartWithExplicitContentType drives the
-// apply path's HTTP call against a test server: the file part must carry the
-// parameter-free per-extension type that AccountStatement's
-// ALLOWED_EXTENSION_CONTENT_TYPES allow-list matches exactly.
+// apply path's HTTP call against a test server: the file part carries the
+// parameter-free per-extension type, a hint AccountStatement's Marcel
+// detection starts from before it checks ALLOWED_EXTENSION_CONTENT_TYPES.
 func TestPostAccountStatement_SendsMultipartWithExplicitContentType(t *testing.T) {
 	var gotPath, gotCT, gotFilename, gotAccount, gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
