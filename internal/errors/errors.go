@@ -54,6 +54,9 @@ const (
 	// CodeRedirectRefused means Sure (or a proxy in front of it) answered
 	// with a redirect, which the CLI never follows.
 	CodeRedirectRefused = "redirect_refused"
+	// CodeOutcomeUnknown means a POST, PATCH or DELETE reached Sure but its
+	// answer was lost, so the change may or may not have been applied.
+	CodeOutcomeUnknown = "outcome_unknown"
 )
 
 // CLIError is a structured error with code and details for agent consumption.
