@@ -47,5 +47,6 @@ Future features and ideas for `sure-cli`.
 - Provider connection inspection via `provider-connections list`.
 - AI chats CRUD + message send/retry via `chats` subtree.
 - Account-level AI enable via `auth enable-ai`.
+- Transaction splits via `transactions split show/create/update/delete`.
 
 See [CHANGELOG](../CHANGELOG.md) or GitHub releases for shipped features.

@@ -139,6 +139,7 @@ func newTransactionsCmd() *cobra.Command {
 	cmd.AddCommand(newTransactionsCreateCmd())
 	cmd.AddCommand(newTransactionsUpdateCmd())
 	cmd.AddCommand(newTransactionsDeleteCmd())
+	cmd.AddCommand(newTransactionsSplitCmd())
 
 	return cmd
 }
