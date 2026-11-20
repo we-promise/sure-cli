@@ -100,14 +100,17 @@ func TestBuildAccountStatementListQuery_OmitsEmptyFilters(t *testing.T) {
 }
 
 func TestBuildAccountStatementListQuery_Rejections(t *testing.T) {
-	cases := map[string]accountStatementListOpts{
-		"bad review status": {ReviewStatus: "pending"},
-		"bad start date":    {StartDate: "2026-13-01"},
-		"bad end date":      {EndDate: "31/03/2026"},
+	cases := map[string]struct {
+		opts accountStatementListOpts
+		want string
+	}{
+		"bad review status": {accountStatementListOpts{ReviewStatus: "pending"}, "--review-status must be one of"},
+		"bad start date":    {accountStatementListOpts{StartDate: "2026-13-01"}, "--start-date: invalid date"},
+		"bad end date":      {accountStatementListOpts{EndDate: "31/03/2026"}, "--end-date: invalid date"},
 	}
-	for name, o := range cases {
-		if _, err := buildAccountStatementListQuery(o); err == nil {
-			t.Fatalf("%s: expected error", name)
+	for name, c := range cases {
+		if _, err := buildAccountStatementListQuery(c.opts); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want %q", name, err, c.want)
 		}
 	}
 }
