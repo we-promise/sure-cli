@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/viper"
 	errs "github.com/we-promise/sure-cli/internal/errors"
+	"github.com/we-promise/sure-cli/internal/fsutil"
 )
 
 const (
@@ -248,7 +249,7 @@ func writeAtomic(path string, write func(io.Writer) error) error {
 		if err := checkOwner(fi); err != nil {
 			return err
 		}
-		perm = fi.Mode().Perm()&0o600 | 0o400
+		perm = fsutil.PrivatePerm(fi.Mode())
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}

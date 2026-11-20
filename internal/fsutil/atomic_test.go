@@ -100,3 +100,47 @@ func TestWriteFileAtomic_MissingDirectory(t *testing.T) {
 		t.Fatal("expected an error creating a file in a missing directory")
 	}
 }
+
+func TestWriteFileAtomic_WritesToADeviceDirectly(t *testing.T) {
+	// A temp file cannot be created next to /dev/null (NUL on Windows), nor
+	// renamed over it.
+	if err := WriteFileAtomic(os.DevNull, writeString("data")); err != nil {
+		t.Fatal(err)
+	}
+	if !IsStream(os.DevNull) {
+		t.Fatalf("IsStream(%s) = false", os.DevNull)
+	}
+	if IsStream(filepath.Join(t.TempDir(), "missing")) {
+		t.Fatal("IsStream(missing file) = true")
+	}
+}
+
+func TestWriteFileAtomic_ReplacingAFileKeepsItsModeButNeverLooserThanOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes")
+	}
+	for before, want := range map[os.FileMode]os.FileMode{0o644: 0o600, 0o666: 0o600, 0o600: 0o600, 0o400: 0o400, 0o440: 0o400} {
+		path := filepath.Join(t.TempDir(), "out.csv")
+		if err := os.WriteFile(path, []byte("previous"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, before); err != nil {
+			t.Fatal(err)
+		}
+		if err := WriteFileAtomic(path, writeString("data")); err != nil {
+			t.Fatal(err)
+		}
+		fi, _ := os.Stat(path)
+		if got := fi.Mode().Perm(); got != want {
+			t.Errorf("replacing a %v file: mode = %v, want %v", before, got, want)
+		}
+	}
+}
+
+func TestPrivatePerm(t *testing.T) {
+	for in, want := range map[os.FileMode]os.FileMode{0o777: 0o600, 0o644: 0o600, 0o600: 0o600, 0o400: 0o400, 0o200: 0o600, 0: 0o400} {
+		if got := PrivatePerm(in); got != want {
+			t.Errorf("PrivatePerm(%v) = %v, want %v", in, got, want)
+		}
+	}
+}

@@ -186,7 +186,11 @@ sure-cli propose rules --months 3 --apply --min-confidence 0.8
 # Export
 sure-cli export transactions --months 12 --out-format csv --out transactions.csv
 # The file is readable only by you (0600) and appears only once complete; a
-# failed export leaves an earlier file as it was. Rows go to disk page by page
+# failed export leaves an earlier file as it was. A file it replaces keeps its
+# mode tightened to the owner's bits (0644 becomes 0600, 0400 stays 0400), the
+# rule family-exports download and the config file follow too. --out
+# /dev/stdout, a named pipe or another device is written directly, so a
+# failure there can leave part of the output. Rows go to disk page by page
 # instead of being held in memory. CSV text cells starting with = + - @ get a
 # leading ' so spreadsheets do not run them as formulas.
 
