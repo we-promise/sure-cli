@@ -115,8 +115,8 @@ func TestBuildImportCreatePayload_ValidFile(t *testing.T) {
 	}
 
 	opts := importCreateOpts{
-		File:      tmpFile,
-		AccountID: "acc-123",
+		File:         tmpFile,
+		importConfig: importConfig{AccountID: "acc-123"},
 	}
 
 	payload, err := buildImportCreatePayload(opts)
@@ -126,9 +126,6 @@ func TestBuildImportCreatePayload_ValidFile(t *testing.T) {
 
 	if payload.FilePath != tmpFile {
 		t.Errorf("expected FilePath %q, got %q", tmpFile, payload.FilePath)
-	}
-	if payload.FileField != "file" {
-		t.Errorf("expected FileField 'file', got %q", payload.FileField)
 	}
 	for _, key := range []string{"format", "source", "type"} {
 		if _, has := payload.Fields[key]; has {
@@ -174,7 +171,7 @@ func TestBuildImportCreatePayload_InfersSureImportFromExtension(t *testing.T) {
 }
 
 func TestBuildImportCreatePayload_RowsToSkip(t *testing.T) {
-	payload, err := buildImportCreatePayload(importCreateOpts{RawFileContent: "a,b", RowsToSkip: "2"})
+	payload, err := buildImportCreatePayload(importCreateOpts{RawFileContent: "a,b", importConfig: importConfig{RowsToSkip: "2"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +179,7 @@ func TestBuildImportCreatePayload_RowsToSkip(t *testing.T) {
 		t.Fatalf("rows_to_skip = %q, want \"2\"", payload.Fields["rows_to_skip"])
 	}
 	for _, bad := range []string{"-1", "x", "1.5"} {
-		if _, err := buildImportCreatePayload(importCreateOpts{RawFileContent: "a,b", RowsToSkip: bad}); err == nil {
+		if _, err := buildImportCreatePayload(importCreateOpts{RawFileContent: "a,b", importConfig: importConfig{RowsToSkip: bad}}); err == nil {
 			t.Fatalf("expected err for rows-to-skip %q", bad)
 		}
 	}
@@ -210,7 +207,7 @@ func TestBuildImportCreatePayload_SureImportRawContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildImportCreatePayload: %v", err)
 	}
-	if payload.RawFileContent == "" {
+	if payload.Raw != `{"type":"sure_export"}` || payload.FilePath != "" {
 		t.Fatal("expected raw content to be preserved")
 	}
 	if payload.Fields["type"] != "SureImport" {

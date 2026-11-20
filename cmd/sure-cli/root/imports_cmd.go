@@ -1,25 +1,29 @@
 package root
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 )
 
 type importCreateOpts struct {
-	File                      string
-	RawFileContent            string
-	Type                      string
+	File           string
+	RawFileContent string
+	Type           string
+	Publish        bool
+	Apply          bool
+	importConfig
+}
+
+// importConfig is the account, column mapping and parsing options that
+// imports create and imports preflight both send.
+type importConfig struct {
 	AccountID                 string
-	Publish                   bool
 	DateColLabel              string
 	AmountColLabel            string
 	NameColLabel              string
@@ -40,7 +44,6 @@ type importCreateOpts struct {
 	AmountTypeStrategy        string
 	AmountTypeInflowValue     string
 	RowsToSkip                string
-	Apply                     bool
 }
 
 func newImportsCmd() *cobra.Command {
@@ -113,18 +116,12 @@ func newImportsCreateCmd() *cobra.Command {
 			payload, err := buildImportCreatePayload(o)
 			failValidation(err)
 			if !o.Apply {
-				printDryRun("POST", "/api/v1/imports", payload)
+				printDryRun("POST", "/api/v1/imports", payload.dryRunBody())
 				return
 			}
 
-			client := api.New()
 			var res any
-			var r *resty.Response
-			if payload.RawFileContent != "" {
-				r, err = client.Post("/api/v1/imports", payload.Fields, &res)
-			} else {
-				r, err = client.PostMultipart("/api/v1/imports", payload.Fields, payload.FileField, payload.FilePath, mimeForUploadFile(payload.FilePath), &res)
-			}
+			r, err := payload.send(api.New(), "/api/v1/imports", &res)
 			respond(r, err, res)
 		},
 	}
@@ -132,60 +129,14 @@ func newImportsCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.File, "file", "", "path to import file")
 	cmd.Flags().StringVar(&o.RawFileContent, "raw-file-content", "", "raw import file content")
 	cmd.Flags().StringVar(&o.Type, "type", "", "import type (TransactionImport|SureImport; a .ndjson/.json --file defaults to SureImport)")
-	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "account id (optional)")
 	cmd.Flags().BoolVar(&o.Publish, "publish", false, "queue processing when the import is configured")
-	cmd.Flags().StringVar(&o.DateColLabel, "date-col-label", "", "CSV date column label")
-	cmd.Flags().StringVar(&o.AmountColLabel, "amount-col-label", "", "CSV amount column label")
-	cmd.Flags().StringVar(&o.NameColLabel, "name-col-label", "", "CSV name column label")
-	cmd.Flags().StringVar(&o.CategoryColLabel, "category-col-label", "", "CSV category column label")
-	cmd.Flags().StringVar(&o.TagsColLabel, "tags-col-label", "", "CSV tags column label")
-	cmd.Flags().StringVar(&o.NotesColLabel, "notes-col-label", "", "CSV notes column label")
-	cmd.Flags().StringVar(&o.AccountColLabel, "account-col-label", "", "CSV account column label")
-	cmd.Flags().StringVar(&o.QtyColLabel, "qty-col-label", "", "CSV quantity column label")
-	cmd.Flags().StringVar(&o.TickerColLabel, "ticker-col-label", "", "CSV ticker column label")
-	cmd.Flags().StringVar(&o.PriceColLabel, "price-col-label", "", "CSV price column label")
-	cmd.Flags().StringVar(&o.EntityTypeColLabel, "entity-type-col-label", "", "CSV entity type column label")
-	cmd.Flags().StringVar(&o.CurrencyColLabel, "currency-col-label", "", "CSV currency column label")
-	cmd.Flags().StringVar(&o.ExchangeOperatingMICLabel, "exchange-operating-mic-col-label", "", "CSV exchange operating MIC column label")
-	cmd.Flags().StringVar(&o.DateFormat, "date-format", "", "CSV date format")
-	cmd.Flags().StringVar(&o.NumberFormat, "number-format", "", "CSV number format")
-	cmd.Flags().StringVar(&o.SignageConvention, "signage-convention", "", "CSV signage convention")
-	cmd.Flags().StringVar(&o.ColSep, "col-sep", "", "CSV column separator")
-	cmd.Flags().StringVar(&o.AmountTypeStrategy, "amount-type-strategy", "", "CSV amount type strategy")
-	cmd.Flags().StringVar(&o.AmountTypeInflowValue, "amount-type-inflow-value", "", "CSV amount type inflow value")
-	cmd.Flags().StringVar(&o.RowsToSkip, "rows-to-skip", "", "number of leading CSV lines to drop before the header")
+	addImportConfigFlags(cmd, &o.importConfig)
 	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the create (otherwise dry-run)")
 
 	return cmd
 }
 
-type importCreatePayload struct {
-	FileField      string
-	FilePath       string
-	RawFileContent string
-	Fields         map[string]string
-}
-
-func buildImportCreatePayload(o importCreateOpts) (importCreatePayload, error) {
-	if o.File == "" && o.RawFileContent == "" {
-		return importCreatePayload{}, errors.New("file or raw-file-content is required")
-	}
-	if o.File != "" && o.RawFileContent != "" {
-		return importCreatePayload{}, errors.New("provide only one of file or raw-file-content")
-	}
-
-	if o.File != "" {
-		if err := requireRegularFile(o.File); err != nil {
-			return importCreatePayload{}, err
-		}
-	}
-	if o.RowsToSkip != "" {
-		if n, err := strconv.Atoi(o.RowsToSkip); err != nil || n < 0 {
-			return importCreatePayload{}, fmt.Errorf("rows-to-skip must be a non-negative integer (got %q)", o.RowsToSkip)
-		}
-	}
-
-	fields := map[string]string{}
+func buildImportCreatePayload(o importCreateOpts) (upload, error) {
 	importType := o.Type
 	if importType == "" && o.File != "" {
 		switch strings.ToLower(filepath.Ext(o.File)) {
@@ -193,57 +144,79 @@ func buildImportCreatePayload(o importCreateOpts) (importCreatePayload, error) {
 			importType = "SureImport"
 		}
 	}
-	if importType != "" {
-		fields["type"] = importType
-	}
-	if o.RawFileContent != "" {
-		fields["raw_file_content"] = o.RawFileContent
-	}
-	if o.AccountID != "" {
-		fields["account_id"] = o.AccountID
+	u, err := o.importConfig.upload(o.File, o.RawFileContent, importType)
+	if err != nil {
+		return upload{}, err
 	}
 	if o.Publish {
-		fields["publish"] = "true"
+		u.Fields["publish"] = "true"
 	}
-	addImportField(fields, "date_col_label", o.DateColLabel)
-	addImportField(fields, "amount_col_label", o.AmountColLabel)
-	addImportField(fields, "name_col_label", o.NameColLabel)
-	addImportField(fields, "category_col_label", o.CategoryColLabel)
-	addImportField(fields, "tags_col_label", o.TagsColLabel)
-	addImportField(fields, "notes_col_label", o.NotesColLabel)
-	addImportField(fields, "account_col_label", o.AccountColLabel)
-	addImportField(fields, "qty_col_label", o.QtyColLabel)
-	addImportField(fields, "ticker_col_label", o.TickerColLabel)
-	addImportField(fields, "price_col_label", o.PriceColLabel)
-	addImportField(fields, "entity_type_col_label", o.EntityTypeColLabel)
-	addImportField(fields, "currency_col_label", o.CurrencyColLabel)
-	addImportField(fields, "exchange_operating_mic_col_label", o.ExchangeOperatingMICLabel)
-	addImportField(fields, "date_format", o.DateFormat)
-	addImportField(fields, "number_format", o.NumberFormat)
-	addImportField(fields, "signage_convention", o.SignageConvention)
-	addImportField(fields, "col_sep", o.ColSep)
-	addImportField(fields, "amount_type_strategy", o.AmountTypeStrategy)
-	addImportField(fields, "amount_type_inflow_value", o.AmountTypeInflowValue)
-	addImportField(fields, "rows_to_skip", o.RowsToSkip)
-
-	return importCreatePayload{
-		FileField:      "file",
-		FilePath:       o.File,
-		RawFileContent: o.RawFileContent,
-		Fields:         fields,
-	}, nil
+	return u, nil
 }
 
-// requireRegularFile fails unless path names an accessible regular file.
-func requireRegularFile(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return fmt.Errorf("file not accessible: %w", err)
+// upload validates the content source and rows-to-skip and builds the
+// request fields.
+func (c importConfig) upload(file, raw, importType string) (upload, error) {
+	if err := checkUploadContent(file, raw, "raw-file-content"); err != nil {
+		return upload{}, err
 	}
-	if info.IsDir() {
-		return errors.New("file must be a regular file")
+	if c.RowsToSkip != "" {
+		if n, err := strconv.Atoi(c.RowsToSkip); err != nil || n < 0 {
+			return upload{}, fmt.Errorf("rows-to-skip must be a non-negative integer (got %q)", c.RowsToSkip)
+		}
 	}
-	return nil
+	fields := map[string]string{}
+	for name, value := range map[string]string{
+		"type":                             importType,
+		"account_id":                       c.AccountID,
+		"date_col_label":                   c.DateColLabel,
+		"amount_col_label":                 c.AmountColLabel,
+		"name_col_label":                   c.NameColLabel,
+		"category_col_label":               c.CategoryColLabel,
+		"tags_col_label":                   c.TagsColLabel,
+		"notes_col_label":                  c.NotesColLabel,
+		"account_col_label":                c.AccountColLabel,
+		"qty_col_label":                    c.QtyColLabel,
+		"ticker_col_label":                 c.TickerColLabel,
+		"price_col_label":                  c.PriceColLabel,
+		"entity_type_col_label":            c.EntityTypeColLabel,
+		"currency_col_label":               c.CurrencyColLabel,
+		"exchange_operating_mic_col_label": c.ExchangeOperatingMICLabel,
+		"date_format":                      c.DateFormat,
+		"number_format":                    c.NumberFormat,
+		"signage_convention":               c.SignageConvention,
+		"col_sep":                          c.ColSep,
+		"amount_type_strategy":             c.AmountTypeStrategy,
+		"amount_type_inflow_value":         c.AmountTypeInflowValue,
+		"rows_to_skip":                     c.RowsToSkip,
+	} {
+		addImportField(fields, name, value)
+	}
+	return upload{Fields: fields, FilePath: file, Raw: raw}, nil
+}
+
+func addImportConfigFlags(cmd *cobra.Command, c *importConfig) {
+	cmd.Flags().StringVar(&c.AccountID, "account-id", "", "account id (optional)")
+	cmd.Flags().StringVar(&c.DateColLabel, "date-col-label", "", "CSV date column label")
+	cmd.Flags().StringVar(&c.AmountColLabel, "amount-col-label", "", "CSV amount column label")
+	cmd.Flags().StringVar(&c.NameColLabel, "name-col-label", "", "CSV name column label")
+	cmd.Flags().StringVar(&c.CategoryColLabel, "category-col-label", "", "CSV category column label")
+	cmd.Flags().StringVar(&c.TagsColLabel, "tags-col-label", "", "CSV tags column label")
+	cmd.Flags().StringVar(&c.NotesColLabel, "notes-col-label", "", "CSV notes column label")
+	cmd.Flags().StringVar(&c.AccountColLabel, "account-col-label", "", "CSV account column label")
+	cmd.Flags().StringVar(&c.QtyColLabel, "qty-col-label", "", "CSV quantity column label")
+	cmd.Flags().StringVar(&c.TickerColLabel, "ticker-col-label", "", "CSV ticker column label")
+	cmd.Flags().StringVar(&c.PriceColLabel, "price-col-label", "", "CSV price column label")
+	cmd.Flags().StringVar(&c.EntityTypeColLabel, "entity-type-col-label", "", "CSV entity type column label")
+	cmd.Flags().StringVar(&c.CurrencyColLabel, "currency-col-label", "", "CSV currency column label")
+	cmd.Flags().StringVar(&c.ExchangeOperatingMICLabel, "exchange-operating-mic-col-label", "", "CSV exchange operating MIC column label")
+	cmd.Flags().StringVar(&c.DateFormat, "date-format", "", "CSV date format")
+	cmd.Flags().StringVar(&c.NumberFormat, "number-format", "", "CSV number format")
+	cmd.Flags().StringVar(&c.SignageConvention, "signage-convention", "", "CSV signage convention")
+	cmd.Flags().StringVar(&c.ColSep, "col-sep", "", "CSV column separator")
+	cmd.Flags().StringVar(&c.AmountTypeStrategy, "amount-type-strategy", "", "CSV amount type strategy")
+	cmd.Flags().StringVar(&c.AmountTypeInflowValue, "amount-type-inflow-value", "", "CSV amount type inflow value")
+	cmd.Flags().StringVar(&c.RowsToSkip, "rows-to-skip", "", "number of leading CSV lines to drop before the header")
 }
 
 func addImportField(fields map[string]string, name, value string) {

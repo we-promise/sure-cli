@@ -49,6 +49,9 @@ func TestValidateMerchantsImportFile(t *testing.T) {
 	if err := validateMerchantsImportFile(filepath.Join(t.TempDir(), "missing.csv")); err == nil {
 		t.Fatal("expected err for a missing file")
 	}
+	if err := validateMerchantsImportFile(writeTempFile(t, "merchants.txt", []byte("name\nRoaster\n"))); err == nil {
+		t.Fatal("expected err for a file that is not .csv")
+	}
 	if err := validateMerchantsImportFile(writeMerchantsCSV(t)); err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -111,7 +114,7 @@ func TestPostMerchantsImport_SendsCSVMultipart(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	var res map[string]any
-	r, err := postMerchantsImport(apiClientFor(t, srv.URL), path, &res)
+	r, err := upload{FilePath: path}.send(apiClientFor(t, srv.URL), merchantsPath, &res)
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}

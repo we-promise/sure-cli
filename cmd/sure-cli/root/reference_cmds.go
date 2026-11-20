@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 
-	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 )
@@ -151,12 +151,13 @@ func newMerchantsImportCmd() *cobra.Command {
 			"Names that already exist are skipped. The response reports {imported, skipped, merchants}.",
 		Run: func(cmd *cobra.Command, args []string) {
 			failValidation(validateMerchantsImportFile(file))
+			u := upload{FilePath: file}
 			if !apply {
-				printDryRun("POST", merchantsPath, map[string]any{"file": file})
+				printDryRun("POST", merchantsPath, u.dryRunBody())
 				return
 			}
 			var res any
-			r, err := postMerchantsImport(api.New(), file, &res)
+			r, err := u.send(api.New(), merchantsPath, &res)
 			respond(r, err, res)
 		},
 	}
@@ -165,18 +166,18 @@ func newMerchantsImportCmd() *cobra.Command {
 	return cmd
 }
 
+// validateMerchantsImportFile requires a .csv file: Sure checks the part's
+// content type against Import::ALLOWED_CSV_MIME_TYPES by exact match, and
+// the CLI derives it from the extension.
 func validateMerchantsImportFile(file string) error {
 	if file == "" {
 		return errors.New("file is required")
 	}
-	return requireRegularFile(file)
-}
-
-// postMerchantsImport sends the CSV as the multipart `file` part with an
-// explicit text/csv type: Sure checks it against Import::ALLOWED_CSV_MIME_TYPES
-// by exact match.
-func postMerchantsImport(client *api.Client, file string, out any) (*resty.Response, error) {
-	return client.PostMultipart(merchantsPath, nil, "file", file, "text/csv", out)
+	if !strings.EqualFold(filepath.Ext(file), ".csv") {
+		return fmt.Errorf("file must be a .csv file, got %q", filepath.Base(file))
+	}
+	_, err := regularFile(file)
+	return err
 }
 
 type tagWriteOpts struct {

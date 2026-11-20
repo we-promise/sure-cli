@@ -132,7 +132,7 @@ func TestBuildAccountStatementUpload_Valid(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: unexpected error: %v", ext, err)
 		}
-		if u.FilePath != path || u.ContentType != ct || u.ByteSize != int64(len("content")) {
+		if u.FilePath != path || mimeForUploadFile(u.FilePath) != ct || u.ByteSize != int64(len("content")) {
 			t.Fatalf("%s: upload = %#v", ext, u)
 		}
 		if u.Fields["account_id"] != "acc-1" {
