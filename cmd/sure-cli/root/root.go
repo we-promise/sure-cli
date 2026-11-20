@@ -2,7 +2,6 @@ package root
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -164,9 +163,14 @@ func unknownCommandError(c *cobra.Command, args []string) *errs.CLIError {
 	return errs.New(errs.CodeUnknownCommand, msg).WithDetails(details)
 }
 
-func Execute() {
-	if err := New().Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+func Execute() { run(New()) }
+
+// run executes cli. An error cobra returns is a usage error caught before
+// any command ran (an unknown flag, a wrong number of arguments): it fails
+// with a validation_failed envelope like every input the CLI rejects.
+func run(cli *cobra.Command) {
+	cli.SilenceErrors = true // failValidation prints the message once
+	if err := cli.Execute(); err != nil {
+		failValidation(err)
 	}
 }

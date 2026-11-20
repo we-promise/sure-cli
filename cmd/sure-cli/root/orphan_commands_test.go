@@ -116,6 +116,10 @@ func TestUnknownFlagOnACommandFailsValidation(t *testing.T) {
 		{"transactions show abc --bogus", "--bogus"},
 		{"insights ack 8c1d0b2e-1f1a-4c55-9a51-3d2f5e7b9a10 --bogus", "--bogus"},
 		{"accounts list --bogus", "--bogus"},
+		// Flags and argument counts cobra rejects before any command runs.
+		{"--bogus accounts list", "--bogus"},
+		{"accounts --bogus list", "--bogus"},
+		{"transactions show", "accepts 1 arg"},
 	} {
 		t.Run(c.args, func(t *testing.T) {
 			out, code := runCLI(t, c.args)
