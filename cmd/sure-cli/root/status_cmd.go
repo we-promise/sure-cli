@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,11 +37,21 @@ func newStatusCmd() *cobra.Command {
 			checkResponse(r, err)
 			totals, accountSummaries := summarizeAccounts(accounts)
 
-			// Runway can only count cash held in the family currency.
+			// Runway can only count cash held in the family currency: the API
+			// has no rate to convert the rest, while Sure's spending covers
+			// every currency. Cash left out makes the runway partial.
 			var cashBalance float64
 			if t := totals[primaryCurrency]; t != nil {
 				cashBalance = t.Cash
 			}
+			cashLeftOut := []string{}
+			for cur, t := range totals {
+				if cur != primaryCurrency && t.Cash > 0 {
+					cashLeftOut = append(cashLeftOut, cur)
+				}
+			}
+			slices.Sort(cashLeftOut)
+			partialRunway := len(cashLeftOut) > 0
 			byCurrency := make(map[string]any, len(totals))
 			for cur, t := range totals {
 				byCurrency[cur] = map[string]any{
@@ -74,8 +85,8 @@ func newStatusCmd() *cobra.Command {
 				})
 			}
 
-			// Check for low runway
-			if runwayMonths > 0 && runwayMonths < 3 {
+			// Check for low runway (a partial runway understates it)
+			if runwayMonths > 0 && runwayMonths < 3 && !partialRunway {
 				alerts = append(alerts, map[string]any{
 					"type":    "low_runway",
 					"message": fmt.Sprintf("Only %.1f months of runway remaining", runwayMonths),
@@ -123,9 +134,11 @@ func newStatusCmd() *cobra.Command {
 					"subscriptions_by_currency": subscriptionsByCurrency,
 				},
 				"runway": map[string]any{
-					"months":       runwayMonths,
-					"cash_balance": formatMoneyValue(cashBalance, primaryCurrency),
-					"burn_rate":    fmt.Sprintf("%s/month", formatMoneyValue(monthlySpend, primaryCurrency)),
+					"months":                   runwayMonths,
+					"partial":                  partialRunway,
+					"cash_currencies_left_out": cashLeftOut,
+					"cash_balance":             formatMoneyValue(cashBalance, primaryCurrency),
+					"burn_rate":                fmt.Sprintf("%s/month", formatMoneyValue(monthlySpend, primaryCurrency)),
 				},
 				"budget_pacing": pacing,
 				"alerts":        alerts,

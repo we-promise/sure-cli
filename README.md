@@ -215,7 +215,9 @@ sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026
 # liabilities, net worth and cash per native currency with the same exclusions;
 # unlike Sure it cannot leave out accounts a user has taken out of their
 # finances (include_in_finances is not in the API).
-# Runway uses depository cash in the family currency only.
+# Runway uses depository cash in the family currency only: the API has no rate
+# to convert the rest. With cash in other currencies, runway.partial is true,
+# runway.cash_currencies_left_out lists them, and no low_runway alert is raised.
 # monthly is Sure's own income and spending for the last month, each day once
 # (run on 2026-11-20: 2026-10-21..2026-11-20, echoed in monthly.period), from
 # GET /api/v1/cash_flow?view=sankey: FX-converted to the family currency and

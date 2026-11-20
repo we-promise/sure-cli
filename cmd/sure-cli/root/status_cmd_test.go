@@ -318,7 +318,20 @@ func TestBudgetPacing_UninitializedHasNoBudgetedFigures(t *testing.T) {
 // GET /api/v1/cash_flow answers with cashFlowStatus and cashFlowBody, and
 // its query lands in seen. It returns the server URL and how many requests
 // each path got.
+// statusAccounts are a EUR checking account and a EUR account excluded from
+// reports, as GET /api/v1/accounts renders them.
+const statusAccounts = `[
+  {"id":"a1","name":"Checking","account_type":"depository","currency":"EUR","balance_cents":1000000,"cash_balance_cents":1000000,"classification":"asset","status":"active","exclude_from_reports":false},
+  {"id":"a2","name":"Hidden","account_type":"depository","currency":"EUR","balance_cents":0,"cash_balance_cents":0,"classification":"asset","status":"active","exclude_from_reports":true}
+]`
+
 func statusServer(t *testing.T, cashFlowStatus int, cashFlowBody string, seen *url.Values) (string, func(path string) int) {
+	t.Helper()
+	return statusServerWithAccounts(t, statusAccounts, cashFlowStatus, cashFlowBody, seen)
+}
+
+// statusServerWithAccounts is statusServer with the given accounts list.
+func statusServerWithAccounts(t *testing.T, accounts string, cashFlowStatus int, cashFlowBody string, seen *url.Values) (string, func(path string) int) {
 	t.Helper()
 	var mu sync.Mutex
 	hits := map[string]int{}
@@ -333,10 +346,7 @@ func statusServer(t *testing.T, cashFlowStatus int, cashFlowBody string, seen *u
 		case "/api/v1/balance_sheet":
 			fmt.Fprint(w, `{"currency":"EUR","net_worth":{"amount":"10000.0","currency":"EUR"},"assets":{"amount":"10000.0","currency":"EUR"},"liabilities":{"amount":"0.0","currency":"EUR"}}`)
 		case "/api/v1/accounts":
-			fmt.Fprint(w, `{"accounts":[
-			  {"id":"a1","name":"Checking","account_type":"depository","currency":"EUR","balance_cents":1000000,"cash_balance_cents":1000000,"classification":"asset","status":"active","exclude_from_reports":false},
-			  {"id":"a2","name":"Hidden","account_type":"depository","currency":"EUR","balance_cents":0,"cash_balance_cents":0,"classification":"asset","status":"active","exclude_from_reports":true}
-			],"pagination":{"page":1,"total_pages":1}}`)
+			fmt.Fprintf(w, `{"accounts":%s,"pagination":{"page":1,"total_pages":1}}`, accounts)
 		case "/api/v1/cash_flow":
 			mu.Lock()
 			*seen = r.URL.Query()
@@ -462,4 +472,47 @@ func TestStatus_CashFlowFailures(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStatus_RunwayIsPartialWithCashInOtherCurrencies(t *testing.T) {
+	// Sure converts spending in every currency to the family's; the API gives
+	// no rate to convert the USD cash, so runway counts EUR cash only and must
+	// not raise low_runway on that understated figure.
+	accounts := `[
+	  {"id":"a1","name":"Checking","account_type":"depository","currency":"EUR","balance_cents":250000,"cash_balance_cents":250000,"classification":"asset","status":"active","exclude_from_reports":false},
+	  {"id":"a3","name":"US checking","account_type":"depository","currency":"USD","balance_cents":1000000,"cash_balance_cents":1000000,"classification":"asset","status":"active","exclude_from_reports":false}
+	]`
+	var seen url.Values
+	statusServerWithAccounts(t, accounts, http.StatusOK, sankeyCashFlow("2026-10-21", "2026-11-20", "5000", "1000"), &seen)
+	data := runStatus(t)
+	runway, _ := data["runway"].(map[string]any)
+	if runway["months"] != 2.5 || runway["partial"] != true || fmt.Sprint(runway["cash_currencies_left_out"]) != "[USD]" {
+		t.Errorf("runway = %v, want 2.5 months from EUR cash, partial, USD left out", runway)
+	}
+	if a := fmt.Sprint(data["alerts"]); strings.Contains(a, "low_runway") {
+		t.Errorf("alerts = %v, want no low_runway on a partial runway", a)
+	}
+}
+
+func TestStatus_RunwayIsWholeWithCashOnlyInTheFamilyCurrency(t *testing.T) {
+	var seen url.Values
+	statusServer(t, http.StatusOK, sankeyCashFlow("2026-10-21", "2026-11-20", "5000", "1000"), &seen)
+	runway, _ := runStatus(t)["runway"].(map[string]any)
+	if runway["partial"] != false || fmt.Sprint(runway["cash_currencies_left_out"]) != "[]" {
+		t.Errorf("runway = %v, want whole with nothing left out", runway)
+	}
+}
+
+func runStatus(t *testing.T) map[string]any {
+	t.Helper()
+	cmd := newStatusCmd()
+	cmd.SetArgs([]string{})
+	out := captureStdout(t, func() { _ = cmd.Execute() })
+	var env struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("decode %s: %v", out, err)
+	}
+	return env.Data
 }
