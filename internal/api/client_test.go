@@ -1,15 +1,21 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
+
 	"github.com/we-promise/sure-cli/internal/config"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 )
 
 func TestClient_BearerAuthHeader(t *testing.T) {
@@ -309,5 +315,216 @@ func TestClient_Patch(t *testing.T) {
 	}
 	if out["ok"] != true {
 		t.Fatalf("expected ok response, got %#v", out)
+	}
+}
+
+func TestClient_Unusable2xxBodyIsInvalidResponse(t *testing.T) {
+	// A captive portal or SSO proxy answering 200 with HTML, a proxy cutting
+	// the JSON short, a 201 with no body: none of these is a success, and
+	// the status tells an agent whether a write was committed.
+	cases := []struct {
+		name, method, contentType, body string
+		status                          int
+	}{
+		{"html GET", http.MethodGet, "text/html; charset=utf-8", "<html>Please log in to the proxy</html>", http.StatusOK},
+		{"html POST", http.MethodPost, "text/html", "<html>Please log in</html>", http.StatusOK},
+		{"truncated JSON GET", http.MethodGet, "application/json", `{"accounts":[{"id":"1"`, http.StatusOK},
+		{"empty created POST", http.MethodPost, "application/json", "", http.StatusCreated},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hits := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits++
+				w.Header().Set("Content-Type", tc.contentType)
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+			c := testClient(t, srv.URL)
+
+			var out any
+			var r *resty.Response
+			var err error
+			if tc.method == http.MethodGet {
+				r, err = c.Get("/x", &out)
+			} else {
+				r, err = c.Post("/x", map[string]any{}, &out)
+			}
+			ce := CheckResponse(r, err)
+			if ce == nil || ce.Code != errs.CodeInvalidResponse {
+				t.Fatalf("got %v, want invalid_response", ce)
+			}
+			if ce.Details["status"] != tc.status {
+				t.Fatalf("details.status = %v, want %d", ce.Details["status"], tc.status)
+			}
+			if hits != 1 {
+				t.Fatalf("hits = %d, want 1 (a decode failure is never retried)", hits)
+			}
+		})
+	}
+}
+
+func TestClient_NoContentLeavesResultUntouched(t *testing.T) {
+	srv, _ := countingServer(t, http.StatusNoContent, nil, "")
+	c := testClient(t, srv.URL)
+	var out any
+	if ce := CheckResponse(c.Delete("/api/v1/tags/1", &out)); ce != nil || out != nil {
+		t.Fatalf("ce=%v out=%v", ce, out)
+	}
+}
+
+func TestClient_OversizedBodyIsInvalidResponseNotRetried(t *testing.T) {
+	srv, hits := countingServer(t, http.StatusOK, nil, `{"data":"`+strings.Repeat("x", 64)+`"}`)
+	c := testClient(t, srv.URL)
+	c.http.SetResponseBodyLimit(16)
+	var out any
+	ce := CheckResponse(c.Get("/x", &out))
+	if ce == nil || ce.Code != errs.CodeInvalidResponse {
+		t.Fatalf("got %v, want invalid_response", ce)
+	}
+	if hits[http.MethodGet] != 1 {
+		t.Fatalf("GET hits = %d, want 1", hits[http.MethodGet])
+	}
+}
+
+func TestClient_TimeoutBoundsTheCall(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(2 * time.Second):
+		}
+	}))
+	defer srv.Close()
+	viper.Reset()
+	_ = config.Init(filepath.Join(t.TempDir(), "none.yaml"))
+	viper.Set("api_url", srv.URL)
+	viper.Set("auth.mode", "api_key")
+	viper.Set("timeout", "100ms")
+	c := New()
+
+	start := time.Now()
+	var out any
+	ce := CheckResponse(c.Get("/x", &out))
+	if ce == nil || ce.Code != errs.CodeTimeout {
+		t.Fatalf("got %v, want timeout", ce)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("call took %v; the timeout must bound retries too", elapsed)
+	}
+}
+
+// expiredBearerConfig writes a bearer config whose access token needs a
+// refresh and points the client at srvURL.
+func expiredBearerConfig(t *testing.T, dir, srvURL string) string {
+	t.Helper()
+	cfg := filepath.Join(dir, "config.yaml")
+	body := fmt.Sprintf("api_url: %s\nauth:\n  mode: bearer\n  token: at-old\n  refresh_token: rt-old\n  token_expires_at: %q\n",
+		srvURL, time.Now().Add(-time.Minute).UTC().Format(time.RFC3339))
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	viper.Reset()
+	if err := config.Init(cfg); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func TestClient_RefreshNotAttemptedWhenConfigIsNotWritable(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs POSIX permissions enforced")
+	}
+	refreshed := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/auth/refresh" {
+			refreshed++
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"at-new","refresh_token":"rt-new","expires_in":3600}`))
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	expiredBearerConfig(t, dir, srv.URL)
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	var out any
+	ce := CheckResponse(New().Get("/api/v1/accounts", &out))
+	if ce == nil || ce.Code != errs.CodeConfigSaveFailed {
+		t.Fatalf("got %v, want config_save_failed", ce)
+	}
+	if refreshed != 0 {
+		t.Fatal("refresh sent although the rotated tokens could not be saved")
+	}
+}
+
+func TestClient_RefreshSaveFailureReturnsTheRotatedRefreshToken(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs POSIX permissions enforced")
+	}
+	dir := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The directory turns read-only between the writability check and
+		// the save: Sure has already revoked rt-old.
+		_ = os.Chmod(dir, 0o500)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"at-new","refresh_token":"rt-new","expires_in":3600}`))
+	}))
+	defer srv.Close()
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	expiredBearerConfig(t, dir, srv.URL)
+
+	var out any
+	ce := CheckResponse(New().Get("/api/v1/accounts", &out))
+	if ce == nil || ce.Code != errs.CodeConfigSaveFailed {
+		t.Fatalf("got %v, want config_save_failed", ce)
+	}
+	if ce.Details["refresh_token"] != "rt-new" {
+		t.Fatalf("details = %v, want the rotated refresh_token so the session can be recovered", ce.Details)
+	}
+	if config.RefreshToken() != "rt-new" || config.Token() != "at-new" {
+		t.Fatal("rotated tokens dropped from memory")
+	}
+}
+
+func TestClient_AdoptsTokensAnotherProcessRotated(t *testing.T) {
+	// Two commands refresh at once; Sure rotates for the first and answers
+	// the second 401 because rt-old is already revoked. The loser must use
+	// the pair the winner saved instead of reporting auth_required.
+	var cfg, srvURL string
+	refreshes := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/auth/refresh":
+			refreshes++
+			winner := fmt.Sprintf("api_url: %s\nauth:\n  mode: bearer\n  token: at-winner\n  refresh_token: rt-winner\n  token_expires_at: \"2099-01-01T00:00:00Z\"\n", srvURL)
+			if err := os.WriteFile(cfg, []byte(winner), 0o600); err != nil {
+				t.Error(err)
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"Invalid refresh token"}`))
+		default:
+			if got := r.Header.Get("Authorization"); got != "Bearer at-winner" {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}
+	}))
+	defer srv.Close()
+	srvURL = srv.URL
+	cfg = expiredBearerConfig(t, t.TempDir(), srv.URL)
+
+	var out map[string]any
+	if ce := CheckResponse(New().Get("/api/v1/usage", &out)); ce != nil {
+		t.Fatalf("got %v, want the request to succeed with the winner's token", ce)
+	}
+	if refreshes != 1 || out["ok"] != true {
+		t.Fatalf("refreshes=%d out=%v", refreshes, out)
 	}
 }

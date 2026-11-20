@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -9,28 +11,30 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
-// idempotentMethods are the only methods the client retries. Sure can fail
+// retriedMethods are the only methods the client retries. Sure can fail
 // with 5xx after persisting a write (e.g. imports#create answers 500
 // publish_failed with the created import_id), so retrying a POST/PATCH would
-// duplicate data.
-var idempotentMethods = map[string]bool{
+// duplicate data. DELETE is left out too: when a proxy loses the answer to a
+// committed delete, the retry reports not_found for a delete that succeeded.
+var retriedMethods = map[string]bool{
 	http.MethodGet:     true,
 	http.MethodHead:    true,
 	http.MethodPut:     true,
-	http.MethodDelete:  true,
 	http.MethodOptions: true,
 }
 
-// shouldRetry retries idempotent requests on network errors and 5xx, and on
+// shouldRetry retries retriedMethods on network errors and 5xx, and on
 // 429 only when Retry-After asks for a wait no longer than maxWait: Sure sets
 // it to the seconds left in the rate-limit window, and retrying sooner would
 // just spend the remaining attempts on guaranteed 429s.
 func shouldRetry(r *resty.Response, err error, maxWait time.Duration) bool {
-	if r == nil || r.Request == nil || !idempotentMethods[r.Request.Method] {
+	if r == nil || r.Request == nil || !retriedMethods[r.Request.Method] {
 		return false
 	}
 	if err != nil {
-		return true
+		// An oversized body or an expired/cancelled call fails the same way
+		// on every attempt.
+		return !errors.Is(err, resty.ErrResponseBodyTooLarge) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
 	}
 	if r.StatusCode() == http.StatusTooManyRequests {
 		d, ok := retryAfter(r.Header())

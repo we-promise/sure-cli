@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/we-promise/sure-cli/internal/config"
 )
 
@@ -36,6 +37,8 @@ func New() *cobra.Command {
 
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.config/sure-cli/config.yaml)")
 	cmd.PersistentFlags().StringVar(&format, "format", "json", "output format: json|table")
+	cmd.PersistentFlags().Duration("timeout", config.DefaultTimeout, "limit for one API call, retries included; for downloads, for each pause in the transfer (0 disables)")
+	_ = viper.BindPFlag("timeout", cmd.PersistentFlags().Lookup("timeout"))
 
 	cmd.AddCommand(newConfigCmd())
 	cmd.AddCommand(newLoginCmd())

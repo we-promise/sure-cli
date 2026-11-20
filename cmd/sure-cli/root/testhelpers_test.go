@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -12,6 +14,37 @@ import (
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/config"
 )
+
+// cliArgsEnv makes the test binary run as sure-cli with these
+// newline-separated args (see startCLI).
+const cliArgsEnv = "SURE_CLI_TEST_ARGS"
+
+func TestMain(m *testing.M) {
+	if args := os.Getenv(cliArgsEnv); args != "" {
+		cli := New()
+		cli.SetArgs(strings.Split(args, "\n"))
+		if err := cli.Execute(); err != nil {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+// startCLI starts sure-cli with args in a child process, for paths that end
+// in os.Exit or need a real signal. Its stdout lands in the returned buffer
+// once Wait returns.
+func startCLI(t *testing.T, args ...string) (*exec.Cmd, *bytes.Buffer) {
+	t.Helper()
+	child := exec.Command(os.Args[0], "-test.run=^$")
+	child.Env = append(os.Environ(), cliArgsEnv+"="+strings.Join(args, "\n"))
+	var stdout bytes.Buffer
+	child.Stdout = &stdout
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	return child, &stdout
+}
 
 // apiClientFor returns a fresh api.Client targeting the given test server URL
 // by wiring viper directly (mirrors internal/api's test client).
