@@ -27,13 +27,9 @@ func newProposeRulesCmd() *cobra.Command {
 		Use:   "rules",
 		Short: "Propose categorization rules based on transaction patterns",
 		Run: func(cmd *cobra.Command, args []string) {
+			start, end, err := lookbackWindow("months", months, lookbackStart, time.Now())
+			failValidation(err)
 			client := api.New()
-
-			if months <= 0 {
-				months = 3
-			}
-			end := time.Now().UTC()
-			start := lookbackStart(end, months)
 			txs, err := api.FetchTransactionsWindow(client, start, end)
 			checkResponse(nil, err)
 

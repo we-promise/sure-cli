@@ -57,6 +57,28 @@ func parsePairedDateRange(start, end string) (bool, error) {
 	return true, nil
 }
 
+// today is now's calendar date in UTC, the day Sure's date filters use.
+func today(now time.Time) time.Time {
+	now = now.UTC()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// lookbackWindow is the window of n units up to today, today included;
+// back gives its first day (lookbackStart for months, daysBack for days).
+// n is the value of --flag and must be positive.
+func lookbackWindow(flag string, n int, back func(end time.Time, n int) time.Time, now time.Time) (time.Time, time.Time, error) {
+	if n <= 0 {
+		return time.Time{}, time.Time{}, fmt.Errorf("--%s must be positive", flag)
+	}
+	end := today(now)
+	return back(end, n), end, nil
+}
+
+// daysBack is the first day of the window of days days that ends on end's date.
+func daysBack(end time.Time, days int) time.Time {
+	return end.AddDate(0, 0, 1-days)
+}
+
 // lookbackStart is the first day of the window that ends on end's date and
 // spans months calendar months: the day after the same date months earlier,
 // clamped to the end of a shorter month. Each day of the month falls in the

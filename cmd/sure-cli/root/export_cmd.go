@@ -39,13 +39,9 @@ func newExportTransactionsCmd() *cobra.Command {
 			if !ok {
 				failValidation(errors.New("--out-format must be csv or json"))
 			}
+			start, end, err := lookbackWindow("months", months, lookbackStart, time.Now())
+			failValidation(err)
 			client := api.New()
-
-			if months <= 0 {
-				months = 12
-			}
-			end := time.Now().UTC()
-			start := lookbackStart(end, months)
 			// Every row, flagged: an export is a dump, not a total.
 			txs, err := api.FetchAllTransactionsWindow(client, start, end)
 			checkResponse(nil, err)

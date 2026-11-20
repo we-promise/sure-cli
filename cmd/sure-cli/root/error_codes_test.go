@@ -54,6 +54,9 @@ func TestInputErrorsAreValidationFailed(t *testing.T) {
 		"export transactions --out-format xml", // rejected before any request
 		"analyze runway",
 		"analyze leaks --months 0",
+		"analyze runway --account-id a1 --days 0",
+		"propose rules --months 0",
+		"export transactions --months -1",
 	} {
 		out, code := runCLI(t, args)
 		var env struct {

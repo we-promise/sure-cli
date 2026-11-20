@@ -100,12 +100,6 @@ func leakParams(changed func(flag string) bool, minCount int, minTotal, maxAvg f
 	return p, p.Validate()
 }
 
-// today is now's calendar date in UTC, the day Sure's date filters use.
-func today(now time.Time) time.Time {
-	now = now.UTC()
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-}
-
 // leaksWindow resolves the analysis window in whole days: --start-date and
 // --end-date together, else the last `months` months up to today.
 func leaksWindow(months int, startDate, endDate string, now time.Time) (time.Time, time.Time, error) {
@@ -116,20 +110,7 @@ func leaksWindow(months int, startDate, endDate string, now time.Time) (time.Tim
 	if explicit {
 		return parseOptionalDateRange(startDate, endDate)
 	}
-	if months <= 0 {
-		return time.Time{}, time.Time{}, errors.New("months must be positive")
-	}
-	end := today(now)
-	return lookbackStart(end, months), end, nil
-}
-
-// runwayWindow is the last `days` calendar days up to today, inclusive.
-func runwayWindow(days int, now time.Time) (time.Time, time.Time, error) {
-	if days <= 0 {
-		return time.Time{}, time.Time{}, errors.New("days must be positive")
-	}
-	end := today(now)
-	return end.AddDate(0, 0, 1-days), end, nil
+	return lookbackWindow("months", months, lookbackStart, now)
 }
 
 func newAnalyzeRunwayCmd() *cobra.Command {
@@ -146,7 +127,7 @@ func newAnalyzeRunwayCmd() *cobra.Command {
 			if accountID == "" {
 				failValidation(errors.New("--account-id is required"))
 			}
-			start, end, err := runwayWindow(windowDays, time.Now())
+			start, end, err := lookbackWindow("days", windowDays, daysBack, time.Now())
 			failValidation(err)
 			client := api.New()
 

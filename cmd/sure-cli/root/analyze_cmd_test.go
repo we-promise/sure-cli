@@ -143,10 +143,10 @@ func TestLeaksWindow(t *testing.T) {
 	}
 }
 
-func TestRunwayWindow(t *testing.T) {
+func TestLookbackWindow_Days(t *testing.T) {
 	// Late in the day, and in a zone whose date is already tomorrow in UTC.
 	now := time.Date(2026, 5, 20, 23, 30, 0, 0, time.FixedZone("UTC-2", -2*3600))
-	start, end, err := runwayWindow(30, now)
+	start, end, err := lookbackWindow("days", 30, daysBack, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestRunwayWindow(t *testing.T) {
 		t.Fatalf("window has %d days, want 30", got)
 	}
 	for _, days := range []int{0, -5} {
-		if _, _, err := runwayWindow(days, now); err == nil {
+		if _, _, err := lookbackWindow("days", days, daysBack, now); err == nil {
 			t.Fatalf("--days %d must be rejected", days)
 		}
 	}
