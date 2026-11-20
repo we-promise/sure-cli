@@ -264,6 +264,9 @@ func securityPriceDateError(date string) string {
 	return ""
 }
 
+// securityPriceError checks a row's price against moneyColumn, answering with
+// Security::ManualPriceImport's own messages word for word, so a row the CLI
+// rejects reads the same as one Sure rejects.
 func securityPriceError(price string) string {
 	switch {
 	case !models.IsDecimal(price):
