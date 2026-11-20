@@ -43,7 +43,7 @@ The `heuristics.*` config keys are no longer read.
 - `account_not_found` is gone: `analyze runway` reads the account by id and reports `not_found`.
 - `missing_account`, `invalid_format` and `account_balance_missing` are now `validation_failed`, as is every input the CLI rejects before sending a request.
 - `compute_failed`, `invalid_month`, `auth_expired` and `config_invalid` are gone.
-- New codes: `invalid_response` (a 2xx body the CLI cannot read, too large or cut short), `timeout`, `canceled` (Ctrl-C or SIGTERM), `config_save_failed`, `unknown_command`.
+- New codes: `invalid_response` (a 2xx body the CLI cannot read, too large or cut short), `timeout`, `canceled` (Ctrl-C or SIGTERM), `config_save_failed`, `unknown_command`, `outcome_unknown` (a write that reached Sure but whose answer was lost), `redirect_refused`, `too_many_pages` (a list past 1000 pages), `list_changed` (a list that changed while its pages were read).
 
 `internal/errors/errors.go` lists every code the CLI emits.
 
@@ -76,7 +76,11 @@ The `heuristics.*` config keys are no longer read.
 #### Requests
 
 - POST, PATCH and DELETE are no longer retried. GET, HEAD, PUT and OPTIONS retry on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s.
-- `--timeout` (default 30 s) bounds a whole call, retries included; it bounded each attempt.
+- `--timeout` (default 30 s) bounds a whole call, retries included; it bounded each attempt. A retry whose wait would outlast it is skipped and Sure's last answer is reported. Uploads are bounded by pauses in sending the file instead, then by the wait for the answer.
+- A POST, PATCH or DELETE that times out or loses its connection after reaching Sure is `outcome_unknown` with `details.may_have_applied`; it was `timeout` or `network_error`.
+- Redirects are no longer followed: they fail with `redirect_refused`, so credentials never go to the redirect target.
+- Paged reads follow the page count each page reports, so rows pushed onto a new page mid-read are no longer dropped. A list that changes mid-read is `list_changed`; one past 1000 pages is `too_many_pages` (was `invalid_response`). When `X-RateLimit-Remaining` cannot cover the pages left, the command fails early with `rate_limited`.
+- `family-exports download` honors Ctrl-C while it looks the export up, and a second Ctrl-C kills it.
 - `login` stores a random per-install `auth.device.device_id`, so logging in on another machine no longer logs this one out.
 
 ### Added
