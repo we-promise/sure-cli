@@ -92,8 +92,10 @@ sure-cli transactions list --start-date 2026-01-01 --end-date 2026-02-01 --per-p
 sure-cli transactions show <transaction_id>
 
 # Safe writes (default is --dry-run)
-# --amount is a positive decimal sent exactly as typed (Sure stores 4 decimals);
-# --nature (expense|income|outflow|inflow) gives the sign.
+# --amount is a positive decimal (digits, optional point and fraction) sent as
+# typed. Sure reads it as a float into 4 decimals, so at most 4 decimals and 15
+# digits are accepted. --nature (expense|income|outflow|inflow) gives the sign;
+# on update it needs --amount.
 sure-cli transactions create --amount 12.34 --nature expense --date 2026-02-04 --name "Coffee" --account-id <id>
 sure-cli transactions create --amount 12.34 --date 2026-02-04 --name "Coffee" --account-id <id> \
   --category-id <category_id> --merchant-id <merchant_id> --tag-id <tag_id> --tag-id <tag_id> --apply
@@ -221,6 +223,11 @@ sure-cli security-prices create --security-id <security_id> --file - --apply < c
 #   transaction, or a transfer when --transfer-account-id is set.
 # update --type: buy|sell|sweep_in|sweep_out|reinvestment; --investment-activity-label must then
 #   be that type's label ("Buy", "Sell", "Sweep In", "Sweep Out", "Reinvestment").
+# update --type or --nature (inflow = sell, outflow = buy) only signs a --qty/--price change and
+#   needs one of them; Sure would ignore it otherwise. --amount is the signed entry amount and
+#   cannot be combined with --qty/--price, from which Sure recomputes it. --fee is 0 or more.
+# qty, price, fee and amount are plain decimals within Sure's columns: qty up to 18 decimals,
+#   price up to 10 decimals and 9 integer digits, fee and amount up to 4 decimals.
 sure-cli trades list
 sure-cli trades show <trade_id>
 sure-cli trades create --account-id <account_id> --date 2026-05-01 --type buy --qty 1 --price 100 --security-id <security_id>

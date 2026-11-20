@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/we-promise/sure-cli/internal/models"
 	"github.com/we-promise/sure-cli/internal/output"
 )
 
@@ -273,13 +274,13 @@ func securityPriceDateError(date string) string {
 
 func securityPriceError(price string) string {
 	switch {
-	case !isDecimalText(price):
+	case !models.IsDecimal(price):
 		return "price must be a number written as plain decimal text"
-	case !isPositiveDecimalText(price):
+	case !models.IsPositiveDecimal(price):
 		return "price must be greater than 0"
-	case decimalScale(price) > 4:
+	case models.DecimalScale(price) > moneyColumn.Scale:
 		return "price must have at most 4 decimal places"
-	case decimalIntegerDigits(price) > 15:
+	case models.DecimalIntegerDigits(price) > moneyColumn.IntegerDigits:
 		return "price is too large"
 	}
 	return ""

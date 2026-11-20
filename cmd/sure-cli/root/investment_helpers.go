@@ -1,9 +1,10 @@
 package root
 
 import (
+	"fmt"
 	"net/url"
-	"regexp"
-	"strings"
+
+	"github.com/we-promise/sure-cli/internal/models"
 )
 
 // addRepeatedQuery appends q[key][]=v for each non-empty v. Used by trades
@@ -17,31 +18,39 @@ func addRepeatedQuery(q url.Values, key string, values []string) {
 	}
 }
 
-// decimalTextRE accepts plain decimal text ("12", "-0.5", ".25", "3.").
-// Amounts travel to Sure as this exact text, never through a float.
-var decimalTextRE = regexp.MustCompile(`^-?(\d+(\.\d*)?|\.\d+)$`)
+// decimalColumn is the Sure numeric column a decimal flag lands in: the
+// decimals it keeps (Postgres rounds the rest away silently) and the integer
+// digits it holds (more is an error).
+type decimalColumn struct{ Scale, IntegerDigits int }
 
-func isDecimalText(s string) bool {
-	return decimalTextRE.MatchString(s)
-}
+var (
+	// decimal(19,4): entries.amount, trades.fee, security_prices.price.
+	moneyColumn = decimalColumn{Scale: 4, IntegerDigits: 15}
+	// trades.qty is decimal(34,18).
+	tradeQtyColumn = decimalColumn{Scale: 18, IntegerDigits: 16}
+	// trades.price is decimal(19,10).
+	tradePriceColumn = decimalColumn{Scale: 10, IntegerDigits: 9}
+)
 
-func isPositiveDecimalText(s string) bool {
-	return isDecimalText(s) && !strings.HasPrefix(s, "-") && strings.ContainsAny(s, "123456789")
-}
-
-// decimalScale is the number of significant decimal places in decimal text:
-// "12.3400" has 2, as BigDecimal("12.3400") does.
-func decimalScale(s string) int {
-	_, frac, ok := strings.Cut(s, ".")
-	if !ok {
-		return 0
+// check reports why the decimal s, the value of flag name, does not fit.
+func (c decimalColumn) check(name, s string) error {
+	if models.DecimalScale(s) > c.Scale {
+		return fmt.Errorf("%s has more than %d decimal places, got %q", name, c.Scale, s)
 	}
-	return len(strings.TrimRight(frac, "0"))
+	if models.DecimalIntegerDigits(s) > c.IntegerDigits {
+		return fmt.Errorf("%s has more than %d digits before the decimal point, got %q", name, c.IntegerDigits, s)
+	}
+	return nil
 }
 
-// decimalIntegerDigits counts the integer digits of decimal text, ignoring
-// sign and leading zeros: "-0012.5" has 2.
-func decimalIntegerDigits(s string) int {
-	whole, _, _ := strings.Cut(strings.TrimPrefix(s, "-"), ".")
-	return len(strings.TrimLeft(whole, "0"))
+// requirePositiveDecimal checks a required positive decimal flag that lands
+// in column.
+func requirePositiveDecimal(name, value string, column decimalColumn) error {
+	if value == "" {
+		return fmt.Errorf("%s is required", name)
+	}
+	if !models.IsPositiveDecimal(value) {
+		return fmt.Errorf("%s must be a positive decimal number, got %q", name, value)
+	}
+	return column.check(name, value)
 }

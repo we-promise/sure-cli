@@ -49,8 +49,28 @@ func TestBuildTxCreatePayload_SendsAmountTextVerbatim(t *testing.T) {
 	}
 }
 
+// Sure reads the amount with String#to_f into decimal(19,4): more than 4
+// decimals would be rounded and more than 15 digits would not survive the
+// float, so neither is accepted.
+func TestBuildTxCreatePayload_AmountFitsSure(t *testing.T) {
+	for _, amount := range []string{"12345678901.2345", "123456789012345", "0.0001", "1.23450"} {
+		o := validTxCreateOpts()
+		o.Amount = amount
+		if _, err := buildTxCreatePayload(o); err != nil {
+			t.Errorf("%q: unexpected err: %v", amount, err)
+		}
+	}
+	for _, amount := range []string{"1.23456", "1234567890123456", "123456789012.3456"} {
+		o := validTxCreateOpts()
+		o.Amount = amount
+		if _, err := buildTxCreatePayload(o); err == nil {
+			t.Errorf("%q: expected err", amount)
+		}
+	}
+}
+
 func TestBuildTxCreatePayload_RejectsNonDecimalAmount(t *testing.T) {
-	for _, amount := range []string{"", "0", "0.00", "-12.34", "+1", "1e3", "1,50", "abc", ".5", "NaN"} {
+	for _, amount := range []string{"", "0", "0.00", "-12.34", "+1", "1e3", "1,50", "abc", ".5", "5.", "NaN"} {
 		o := validTxCreateOpts()
 		o.Amount = amount
 		if _, err := buildTxCreatePayload(o); err == nil {
