@@ -182,6 +182,9 @@ func TestCreateDateDefaultsToTheFamilysToday(t *testing.T) {
 		{newValuationsCmd, []string{"create", "--account-id", "a1", "--amount", "1"}, func(d map[string]any) any {
 			return d["request"].(map[string]any)["body"].(map[string]any)["valuation"].(map[string]any)["date"]
 		}},
+		{newTradesCmd, []string{"create", "--account-id", "a1", "--type", "deposit", "--amount", "1"}, func(d map[string]any) any {
+			return d["request"].(map[string]any)["body"].(map[string]any)["trade"].(map[string]any)["date"]
+		}},
 	} {
 		t.Run(c.cmd().Name(), func(t *testing.T) {
 			familySettingsServer(t, http.StatusOK, `{"timezone":"Pacific/Kiritimati"}`)

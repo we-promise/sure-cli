@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/models"
 )
 
@@ -211,13 +212,16 @@ Sure stores the activity label from the type. The response shape depends on the
 type: share types, dividend, interest and fee return a trade; deposit and
 withdrawal return a transaction, or a transfer when --transfer-account-id is set.`,
 		Run: func(cmd *cobra.Command, args []string) {
+			if o.Date == "" {
+				o.Date = familyToday(api.New())
+			}
 			payload, err := buildTradeCreatePayload(o)
 			failValidation(err)
 			dispatchWrite(o.Apply, "POST", "/api/v1/trades", payload)
 		},
 	}
 	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "investment or crypto exchange account id (required)")
-	cmd.Flags().StringVar(&o.Date, "date", "", "date YYYY-MM-DD (required)")
+	cmd.Flags().StringVar(&o.Date, "date", "", familyDateUsage)
 	cmd.Flags().StringVar(&o.Type, "type", "", "type (required): "+tradeCreateTypeNames())
 	cmd.Flags().StringVar(&o.Qty, "qty", "", "quantity, positive (share types)")
 	cmd.Flags().StringVar(&o.Price, "price", "", "price per share, positive (share types)")
