@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
-
 )
 
 // pagesClient serves h and returns a client pointed at it.
