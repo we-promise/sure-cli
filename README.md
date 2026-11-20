@@ -155,10 +155,13 @@ sure-cli budget-categories show <budget_category_id>
 # Needs Preview features on (Sure: Settings > Preferences); otherwise 403
 # forbidden with details.api_error feature_disabled. No filters or paging.
 sure-cli insights list
-sure-cli insights ack <insight_id>            # dry-run
+# JSON only: --format table prints the same JSON.
+sure-cli insights ack <insight_id>            # dry-run; the id must be a UUID
 sure-cli insights ack <insight_id> --apply    # read_write scope; guests refused; idempotent
 
-# Analyze: client-side heuristics Sure does not compute
+# Sure answers 204 also when the insight was already acknowledged or expired,
+# so ack reports {"id": ..., "in_feed": false}, not that this call acknowledged it.
+# Analyze: client-side heuristics Sure does not compute (JSON only)
 sure-cli analyze leaks --months 3            # or --start-date/--end-date; --currency to keep one
 sure-cli analyze runway --account-id <id> --days 90
 # runway: balance from balance_cents; burn is the whole family's reportable
