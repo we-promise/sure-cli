@@ -50,7 +50,7 @@ func newAnalyzeLeaksCmd() *cobra.Command {
 			failValidation(err)
 			params, err := leakParams(cmd.Flags().Changed, minCount, minTotal, maxAvg, currency)
 			failValidation(err)
-			txs, err := api.FetchTransactionsWindow(api.New(), start, end, api.MaxPerPage)
+			txs, err := api.FetchTransactionsWindow(api.New(), start, end)
 			checkResponse(nil, err)
 			cands := analyze.DetectLeaks(txs, start, end, params)
 			if cands == nil {
@@ -161,7 +161,7 @@ func newAnalyzeRunwayCmd() *cobra.Command {
 				output.Fail(errs.CodeValidation, "account has no usable balance", map[string]any{"account_id": accountID})
 			}
 
-			txs, err := api.FetchTransactionsWindow(client, start, end, api.MaxPerPage)
+			txs, err := api.FetchTransactionsWindow(client, start, end)
 			checkResponse(nil, err)
 
 			out := analyze.ComputeRunway(bal, fmt.Sprint(acc["currency"]), txs, start, end)

@@ -52,7 +52,7 @@ func newStatusCmd() *cobra.Command {
 			// 3. Reportable transactions of the last month, each day once.
 			end := time.Now().UTC()
 			start := lookbackStart(end, 1)
-			txs, err := api.FetchTransactionsWindow(client, start, end, 500)
+			txs, err := api.FetchTransactionsWindow(client, start, end)
 			checkResponse(nil, err)
 
 			monthlySpend, monthlyIncome := monthlyTotals(txs, primaryCurrency)

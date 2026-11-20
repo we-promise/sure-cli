@@ -47,7 +47,7 @@ func newExportTransactionsCmd() *cobra.Command {
 			end := time.Now().UTC()
 			start := lookbackStart(end, months)
 			// Every row, flagged: an export is a dump, not a total.
-			txs, err := api.FetchAllTransactionsWindow(client, start, end, 1000)
+			txs, err := api.FetchAllTransactionsWindow(client, start, end)
 			checkResponse(nil, err)
 
 			if outFile == "" {

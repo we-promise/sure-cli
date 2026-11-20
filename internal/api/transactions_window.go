@@ -20,14 +20,14 @@ import (
 // not expose the per-user include_in_finances scoping or which accounts are
 // tax-advantaged (401k, IRA, ISA, ...), both of which Sure leaves out, nor
 // the row-level gaps listed on models.Transaction.Reportable.
-func FetchTransactionsWindow(client *Client, start, end time.Time, perPage int) ([]models.Transaction, error) {
+func FetchTransactionsWindow(client *Client, start, end time.Time) ([]models.Transaction, error) {
 	accounts, r, err := FetchAllAccounts(client, false)
 	if ce := CheckResponse(r, err); ce != nil {
 		return nil, ce
 	}
 	reportableAccounts := ReportableAccountIDs(accounts)
 
-	all, err := FetchAllTransactionsWindow(client, start, end, perPage)
+	all, err := FetchAllTransactionsWindow(client, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -54,18 +54,15 @@ func ReportableAccountIDs(accounts []map[string]any) map[string]bool {
 }
 
 // FetchAllTransactionsWindow pulls every transaction within [start,end] by
-// paging the Sure API, split parents and excluded rows included (flagged).
+// paging the Sure API at MaxPerPage, split parents and excluded rows included (flagged).
 // Every failure is a *errs.CLIError, so callers can report it as is.
-func FetchAllTransactionsWindow(client *Client, start, end time.Time, perPage int) ([]models.Transaction, error) {
-	if perPage <= 0 || perPage > MaxPerPage {
-		perPage = MaxPerPage
-	}
+func FetchAllTransactionsWindow(client *Client, start, end time.Time) ([]models.Transaction, error) {
 	q := url.Values{}
 	q.Set("start_date", start.Format(time.DateOnly))
 	q.Set("end_date", end.Format(time.DateOnly))
 
 	var all []models.Transaction
-	r, err := walkPages(client, "/api/v1/transactions", q, perPage, func(body []byte) error {
+	r, err := walkPages(client, "/api/v1/transactions", q, MaxPerPage, func(body []byte) error {
 		var res transactionsPage
 		if err := json.Unmarshal(body, &res); err != nil {
 			return errs.Wrap(errs.CodeInvalidResponse, "unreadable transactions page", err)

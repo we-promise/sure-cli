@@ -103,7 +103,7 @@ func ids(txs []models.Transaction) []string {
 func TestFetchAllTransactionsWindow_DecodesEveryRow(t *testing.T) {
 	newWindowServer(t, windowPages)
 	start, end := window()
-	txs, err := FetchAllTransactionsWindow(New(), start, end, 3)
+	txs, err := FetchAllTransactionsWindow(New(), start, end)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestFetchAllTransactionsWindow_DecodesEveryRow(t *testing.T) {
 func TestFetchTransactionsWindow_OnlyReportableRows(t *testing.T) {
 	newWindowServer(t, windowPages)
 	start, end := window()
-	txs, err := FetchTransactionsWindow(New(), start, end, 3)
+	txs, err := FetchTransactionsWindow(New(), start, end)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestFetchTransactionsWindow_OnlyReportableRows(t *testing.T) {
 func TestFetchTransactionsWindow_RejectsUnreadableAmount(t *testing.T) {
 	newWindowServer(t, []string{`{"transactions":[{"id":"bad","date":"2026-02-01","amount":"","classification":"expense"}],"pagination":{"page":1,"total_pages":1}}`})
 	start, end := window()
-	if _, err := FetchTransactionsWindow(New(), start, end, 10); err == nil {
+	if _, err := FetchTransactionsWindow(New(), start, end); err == nil {
 		t.Fatal("expected an error for a transaction whose amount cannot be read")
 	}
 }
@@ -202,7 +202,7 @@ func TestFetchTransactionsWindow_ReturnsTypedErrors(t *testing.T) {
 			c := New()
 			c.http.SetRetryCount(0)
 
-			_, err := FetchTransactionsWindow(c, start, end, 10)
+			_, err := FetchTransactionsWindow(c, start, end)
 			var ce *errs.CLIError
 			if !errors.As(err, &ce) {
 				t.Fatalf("err = %v (%T), want *errs.CLIError", err, err)
@@ -228,7 +228,7 @@ func TestFetchAllTransactionsWindow_DropsRowsRepeatedByOffsetPaging(t *testing.T
 		`{"transactions":[` + row("t4") + `,` + row("t3") + `],"pagination":{"page":2,"per_page":2,"total_pages":2}}`,
 	})
 	start, end := window()
-	txs, err := FetchAllTransactionsWindow(New(), start, end, 2)
+	txs, err := FetchAllTransactionsWindow(New(), start, end)
 	if err != nil {
 		t.Fatal(err)
 	}
