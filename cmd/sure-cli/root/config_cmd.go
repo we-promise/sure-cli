@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/we-promise/sure-cli/internal/config"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/output"
 )
 
@@ -23,9 +24,9 @@ func newConfigCmd() *cobra.Command {
 		Short: "Set a config value",
 		Args:  cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			viper.Set(args[0], args[1])
+			config.Set(args[0], args[1])
 			if err := config.Save(); err != nil {
-				output.Fail("config_save_failed", err.Error(), nil)
+				output.Fail(errs.CodeConfigSaveFailed, err.Error(), nil)
 			}
 			_ = output.Print(format, output.Envelope{Data: map[string]any{"ok": true}})
 		},

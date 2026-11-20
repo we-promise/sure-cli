@@ -1,12 +1,14 @@
 package errors
 
 import (
+	"context"
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestClassifyHTTPError_MapsStatusToCode(t *testing.T) {
@@ -154,5 +156,44 @@ func TestClassifyHTTPError_OmitsEmptyBody(t *testing.T) {
 	}
 	if ce.Details["status"] != http.StatusNotFound {
 		t.Fatalf("details.status = %v", ce.Details["status"])
+	}
+}
+
+func TestClassifyHTTPError_CapKeepsUTF8Valid(t *testing.T) {
+	// The cap falls inside the two-byte "é": cutting there would emit an
+	// invalid rune into the JSON envelope.
+	body := strings.Repeat("a", MaxBodyBytes-1) + "é rest"
+	got, _ := ClassifyHTTPError(http.StatusBadGateway, []byte(body), nil).Details["body"].(string)
+	if !utf8.ValidString(got) {
+		t.Fatalf("capped body is not valid UTF-8: %q", got[len(got)-8:])
+	}
+	if want := strings.Repeat("a", MaxBodyBytes-1) + "..."; got != want {
+		t.Fatalf("capped body should end before the split rune, got tail %q", got[len(got)-8:])
+	}
+}
+
+func TestClassifyNetworkError_Canceled(t *testing.T) {
+	ce := ClassifyNetworkError(fmt.Errorf("get /x: %w", context.Canceled))
+	if ce.Code != CodeCanceled {
+		t.Fatalf("code = %q, want %q", ce.Code, CodeCanceled)
+	}
+	if ce := ClassifyNetworkError(fmt.Errorf("get /x: %w", context.DeadlineExceeded)); ce.Code != CodeTimeout {
+		t.Fatalf("deadline code = %q, want %q", ce.Code, CodeTimeout)
+	}
+}
+
+func TestInvalidResponse_CarriesStatusContentTypeAndCappedBody(t *testing.T) {
+	h := http.Header{}
+	h.Set("Content-Type", "text/html")
+	cause := stderrors.New("invalid character '<'")
+	ce := InvalidResponse(http.StatusCreated, []byte("<html>"+strings.Repeat("x", MaxBodyBytes)+"</html>"), h, cause)
+	if ce.Code != CodeInvalidResponse || ce.Cause != cause {
+		t.Fatalf("got %+v", ce)
+	}
+	if ce.Details["status"] != http.StatusCreated || ce.Details["content_type"] != "text/html" {
+		t.Fatalf("details = %v", ce.Details)
+	}
+	if b, _ := ce.Details["body"].(string); len(b) != MaxBodyBytes+len("...") {
+		t.Fatalf("body not capped: %d bytes", len(b))
 	}
 }

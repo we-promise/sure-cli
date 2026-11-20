@@ -3,7 +3,6 @@ package root
 import (
 	"encoding/json"
 	"errors"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -54,32 +53,19 @@ func TestOrphanCommandsRegistered(t *testing.T) {
 }
 
 // TestMain lets a test re-run this binary as the CLI, to observe exit codes.
-func TestMain(m *testing.M) {
-	if args, ok := os.LookupEnv("SURE_CLI_TEST_ARGS"); ok {
-		cmd := New()
-		cmd.SetArgs(strings.Fields(args))
-		if err := cmd.Execute(); err != nil {
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}
-	os.Exit(m.Run())
-}
-
 // runCLI runs the CLI in a child process and returns stdout and exit code.
 func runCLI(t *testing.T, args string) (string, int) {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], "-test.run=^$")
-	cmd.Env = append(os.Environ(), "SURE_CLI_TEST_ARGS=--config "+filepath.Join(t.TempDir(), "none.yaml")+" "+args)
-	out, err := cmd.Output()
+	child, stdout := startCLI(t, append([]string{"--config", filepath.Join(t.TempDir(), "none.yaml")}, strings.Fields(args)...)...)
+	err := child.Wait()
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
-		return string(out), exit.ExitCode()
+		return stdout.String(), exit.ExitCode()
 	}
 	if err != nil {
 		t.Fatalf("run %q: %v", args, err)
 	}
-	return string(out), 0
+	return stdout.String(), 0
 }
 
 func TestUnknownSubcommandsFailWithEnvelope(t *testing.T) {

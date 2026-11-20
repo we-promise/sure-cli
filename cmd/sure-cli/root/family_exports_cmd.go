@@ -1,8 +1,12 @@
 package root
 
 import (
+	"context"
 	"fmt"
 	"net/url"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -64,12 +68,27 @@ func newFamilyExportsCmd() *cobra.Command {
 				output.Fail("validation_failed", "out is required", nil)
 				return
 			}
+			// Ctrl-C cancels the transfer instead of killing the process, so
+			// the partial temp file next to --out is removed.
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+
 			client := api.New()
-			path := fmt.Sprintf("/api/v1/family_exports/%s/download", url.PathEscape(args[0]))
-			r, err := client.GetToFile(path, outFile)
+			exportPath := fmt.Sprintf("/api/v1/family_exports/%s", url.PathEscape(args[0]))
+			// Sure streams the file without Content-Length; its byte_size is
+			// what tells a complete download from a cut-short one.
+			var export struct {
+				Data struct {
+					File struct {
+						ByteSize int64 `json:"byte_size"`
+					} `json:"file"`
+				} `json:"data"`
+			}
+			checkResponse(client.Get(exportPath, &export))
+			r, err := client.GetToFile(ctx, exportPath+"/download", outFile, export.Data.File.ByteSize)
 			// Download returns the file path as the data payload on success.
-			// On a non-2xx (e.g. 409 export_not_ready) GetToFile leaves --out
-			// untouched and returns the classified Sure error for respond.
+			// On a non-2xx (e.g. 409 export_not_ready) or an incomplete body
+			// GetToFile leaves --out untouched and returns a typed error.
 			respond(r, err, map[string]any{"file": outFile})
 		},
 	}

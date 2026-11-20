@@ -216,3 +216,23 @@ func TestFetchTransactionsWindow_ReturnsTypedErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestFetchAllTransactionsWindow_DropsRowsRepeatedByOffsetPaging(t *testing.T) {
+	// A sync inserts a newer row between the two page requests, so t4 slides
+	// from page 1 onto page 2.
+	row := func(id string) string {
+		return `{"id":"` + id + `","date":"2026-02-01","amount":"€1.00","amount_decimal":"1.0","currency":"EUR","name":"x","classification":"expense","kind":"standard","account":{"id":"a1","name":"Main"}}`
+	}
+	newWindowServer(t, []string{
+		`{"transactions":[` + row("t5") + `,` + row("t4") + `],"pagination":{"page":1,"per_page":2,"total_pages":2}}`,
+		`{"transactions":[` + row("t4") + `,` + row("t3") + `],"pagination":{"page":2,"per_page":2,"total_pages":2}}`,
+	})
+	start, end := window()
+	txs, err := FetchAllTransactionsWindow(New(), start, end, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(txs); !reflect.DeepEqual(got, []string{"t5", "t4", "t3"}) {
+		t.Fatalf("ids = %v, want each transaction once", got)
+	}
+}

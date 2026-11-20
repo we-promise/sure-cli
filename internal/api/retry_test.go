@@ -62,10 +62,15 @@ func TestClient_Retries5xxOnlyForIdempotentMethods(t *testing.T) {
 	_, _ = c.PostMultipart("/x", nil, "file", tmp, "text/csv", &out)
 
 	// 1 attempt + 2 retries for idempotent methods.
-	for _, m := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+	for _, m := range []string{http.MethodGet, http.MethodPut} {
 		if hits[m] != 3 {
 			t.Errorf("%s hits = %d, want 3 (retried)", m, hits[m])
 		}
+	}
+	// A proxy can lose the answer to a DELETE Sure already committed; the
+	// retry would then report not_found for a delete that succeeded.
+	if hits[http.MethodDelete] != 1 {
+		t.Errorf("DELETE hits = %d, want 1 (never retried)", hits[http.MethodDelete])
 	}
 	// Sure may persist before answering 5xx (e.g. imports publish_failed
 	// returns 500 with the import_id); a retry would duplicate the write.
@@ -156,6 +161,19 @@ func TestRetryAfter(t *testing.T) {
 		got, ok := retryAfter(h)
 		if got != c.want || ok != c.ok {
 			t.Errorf("retryAfter(%q) = %v,%v want %v,%v", c.header, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestShouldRetry_RateLimitAtMaxWaitBoundary(t *testing.T) {
+	maxWait := 5 * time.Second
+	for header, want := range map[string]bool{"4": true, "5": true, "6": false} {
+		r := &resty.Response{
+			Request:     &resty.Request{Method: http.MethodGet},
+			RawResponse: &http.Response{StatusCode: http.StatusTooManyRequests, Header: http.Header{"Retry-After": {header}}},
+		}
+		if got := shouldRetry(r, nil, maxWait); got != want {
+			t.Errorf("Retry-After %s with max wait %v: retry = %v, want %v", header, maxWait, got, want)
 		}
 	}
 }

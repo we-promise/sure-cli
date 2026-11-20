@@ -47,7 +47,7 @@ func newRefreshCmd() *cobra.Command {
 				config.SetTokenExpiresAt(time.Now().Add(time.Duration(res.ExpiresIn) * time.Second))
 			}
 			if err := config.Save(); err != nil {
-				output.Fail("config_save_failed", err.Error(), nil)
+				output.Fail(errs.CodeConfigSaveFailed, err.Error(), nil)
 				return
 			}
 

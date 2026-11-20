@@ -13,9 +13,11 @@ Agent-first CLI for **Sure** (we-promise/sure) — self-hosted personal finance 
 ## Agent-first contract
 
 - **Default output is JSON** (`--format=json`) wrapped in a stable **Envelope**: `{data, meta, error}`
-- **API errors** set `error.code` from a stable CLI set (`bad_request`, `auth_required`, `mfa_required`, `auth_invalid` for a missing scope, `forbidden`, `not_found`, `conflict`, `validation_failed`, `rate_limited`, `server_error`, `network_error`, ...) and `error.message` to Sure's own message. `error.details` holds `status`, the capped `body`, Sure's machine code as `api_error` (e.g. `insufficient_scope`, `feature_disabled`, `export_not_ready`), and on 429 `retry_after` and `rate_limit`
+- **API errors** set `error.code` from a stable CLI set (`bad_request`, `auth_required`, `mfa_required`, `auth_invalid` for a missing scope, `forbidden`, `not_found`, `conflict`, `validation_failed`, `rate_limited`, `server_error`, `network_error`, `timeout`, `canceled`, `invalid_response`, `config_save_failed`, ...) and `error.message` to Sure's own message. `error.details` holds `status`, the capped `body`, Sure's machine code as `api_error` (e.g. `insufficient_scope`, `feature_disabled`, `export_not_ready`), and on 429 `retry_after` and `rate_limit`
 - **Unknown subcommands** exit 1 with `error.code` `unknown_command` and cobra's `suggestions`. For commands earlier versions had, `error.details.hint` names the replacement: `insights subscriptions` and `insights fees` (now `status` and Sure's `insights list`), `insights leaks` (`analyze leaks`), `plan runway`, `plan budget` and `plan forecast` (`analyze runway`, `budgets list`, `insights list`); `config heuristics` and `config fee-keywords` are gone
-- **Retries**: only idempotent requests (GET/HEAD/PUT/DELETE/OPTIONS) are retried, on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s. POST/PATCH are never retried, since Sure may have persisted the write before failing
+- **`invalid_response`** means Sure (or something in front of it, such as a captive portal or an SSO proxy answering with HTML) returned a 2xx the CLI cannot read, a body over 64 MiB, a pagination block past 1000 pages, or a download shorter than the export's `byte_size`. `details.status` tells whether a write was accepted (e.g. `201`), so do not blindly repeat a POST that failed this way
+- **Retries**: only GET/HEAD/PUT/OPTIONS are retried, on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s. POST/PATCH/DELETE are never retried, since Sure may have committed the change before the answer was lost. A 2xx body that cannot be decoded is never retried
+- **Timeouts**: `--timeout` (default `30s`, or the `timeout` config key) bounds each API call, retries included. For `family-exports download` it bounds the wait for the response and any pause in the transfer, so a large export that keeps flowing is not cut off; Ctrl-C cancels it and removes the partial file
 - **Write operations are safe by default**: `--dry-run` is the default; use `--apply` to execute
 - **Schemas are versioned** under `docs/schemas/v1/` and should remain backward compatible
 
@@ -333,6 +335,8 @@ sure-cli refresh
 If the account has two-factor authentication, login fails with `error.code=mfa_required` until you pass `--otp`.
 
 Required device payload fields are stored under `auth.device.*` in config (defaults are provided; `device_type` accepts `ios`, `android` or `web`). Sure revokes a device's previous tokens on every login, so the first login stores a random per-install `auth.device.device_id`; logging in on another machine no longer logs this one out. A custom `device_id` you set is kept.
+
+The config file is written atomically with owner-only permissions (0600), and only the keys the command changed are merged into the file as it is on disk, so concurrent commands do not undo each other's token rotation. Before an automatic token refresh the CLI checks that the config file is writable and fails with `config_save_failed` otherwise, since Sure revokes the old refresh token on rotation; if saving still fails after Sure rotated, `details.refresh_token` carries the new token to put back with `sure-cli config set auth.refresh_token <token>`. When two commands refresh at once, the one Sure rejects picks up the tokens the other saved.
 
 ## Docs
 

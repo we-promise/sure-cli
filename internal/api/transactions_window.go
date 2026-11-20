@@ -82,7 +82,7 @@ func FetchAllTransactionsWindow(client *Client, start, end time.Time, perPage in
 	if ce := CheckResponse(r, err); ce != nil {
 		return nil, ce
 	}
-	return all, nil
+	return uniqueByID(all, func(tx models.Transaction) string { return tx.ID }), nil
 }
 
 // transactionsPage is the subset of GET /api/v1/transactions the CLI reads,
