@@ -3,9 +3,9 @@ package root
 import (
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/models"
 )
 
@@ -33,6 +33,9 @@ func newTransactionsCreateCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Create a transaction (default dry-run; use --apply to execute)",
 		Run: func(cmd *cobra.Command, args []string) {
+			if o.Date == "" {
+				o.Date = familyToday(api.New())
+			}
 			payload, err := buildTxCreatePayload(o)
 			failValidation(err)
 			dispatchWrite(o.Apply, "POST", "/api/v1/transactions", payload)
@@ -40,7 +43,7 @@ func newTransactionsCreateCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "account id (required)")
-	cmd.Flags().StringVar(&o.Date, "date", time.Now().Format(time.DateOnly), "date YYYY-MM-DD")
+	cmd.Flags().StringVar(&o.Date, "date", "", familyDateUsage)
 	addTxAmountFlags(cmd, &o.Amount, &o.Nature, "expense")
 	cmd.Flags().StringVar(&o.Name, "name", "", "name/description (required)")
 	cmd.Flags().StringVar(&o.Notes, "notes", "", "notes")

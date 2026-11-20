@@ -8,6 +8,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/we-promise/sure-cli/internal/api"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 )
 
 // parseISODate parses a required YYYY-MM-DD date given as flag.
@@ -72,31 +73,56 @@ func today(now time.Time) time.Time {
 // and resolves "today" in that zone (Localize#switch_timezone), so a window
 // that ends today must end on the family's date, not the UTC one. Each call
 // reads the zone with one request, so a command calls it once and only when
-// it needs today.
+// it needs today. When the zone cannot be read, the local zone stands in and
+// the envelope says so under meta.warnings.
 func familyClock(client *api.Client) func() time.Time {
-	return func() time.Time { return time.Now().In(familyLocation(client)) }
+	return func() time.Time {
+		loc, ce := familyLocation(client)
+		if ce != nil {
+			details := map[string]any{"time_zone": loc.String()}
+			for k, v := range ce.Details {
+				details[k] = v
+			}
+			warn(errs.New(ce.Code, fmt.Sprintf("cannot read the family's time zone (%s); dates use this machine's zone, %s", ce.Message, loc)).WithDetails(details))
+		}
+		return time.Now().In(loc)
+	}
 }
 
-// familyLocation is the zone GET /api/v1/family_settings reports. Sure falls
-// back to its default zone, UTC, when the family has none (Family#
-// resolved_time_zone), and so does this. When the settings cannot be read
-// (a server without the endpoint, a failed request) or name a zone Go does
-// not know, the local zone is the best guess left.
-func familyLocation(client *api.Client) *time.Location {
+// familyDateUsage describes a --date flag that defaults to familyToday.
+const familyDateUsage = "date YYYY-MM-DD (default: today in the family's time zone, read from Sure)"
+
+// familyToday is the family's date today as YYYY-MM-DD: the default of a
+// --date flag left out.
+func familyToday(client *api.Client) string {
+	return today(familyClock(client)()).Format(time.DateOnly)
+}
+
+// familyLocation resolves the zone GET /api/v1/family_settings reports as
+// Sure's Family#resolved_time_zone does: a Rails name through
+// railsTimeZones, and UTC, Sure's default zone, for a family without one or
+// with a name ActiveSupport::TimeZone does not know. A failed request (e.g.
+// a server without the endpoint) returns the local zone with its error.
+func familyLocation(client *api.Client) (*time.Location, *errs.CLIError) {
 	var settings struct {
-		Timezone *string `json:"timezone"`
+		Timezone string `json:"timezone"`
 	}
-	if r, err := client.Get("/api/v1/family_settings", &settings); err != nil || r.StatusCode() >= 400 {
-		return time.Local
+	if ce := api.CheckResponse(client.Get("/api/v1/family_settings", &settings)); ce != nil {
+		return time.Local, ce
 	}
-	if settings.Timezone == nil || *settings.Timezone == "" {
-		return time.UTC
+	name := settings.Timezone
+	if iana, ok := railsTimeZones[name]; ok {
+		name = iana
 	}
-	loc, err := time.LoadLocation(*settings.Timezone)
+	// "" and "Local" load in Go but are no zone name to TZInfo.
+	if name == "" || name == "Local" {
+		return time.UTC, nil
+	}
+	loc, err := time.LoadLocation(name)
 	if err != nil {
-		return time.Local
+		return time.UTC, nil
 	}
-	return loc
+	return loc, nil
 }
 
 // lookbackWindow is the window of n units up to today, today included;

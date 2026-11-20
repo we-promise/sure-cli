@@ -44,3 +44,17 @@ func TestValidateExamples_RejectsDataThatBreaksItsSchema(t *testing.T) {
 		}
 	}
 }
+
+func TestEnvelopeSchema_MetaWarnings(t *testing.T) {
+	envelope := "../../" + SchemaDir + "/envelope.schema.json"
+	warned := map[string]any{"data": map[string]any{}, "meta": map[string]any{"warnings": []any{
+		map[string]any{"code": "not_found", "message": "cannot read the family's time zone", "details": map[string]any{"time_zone": "Local"}},
+	}}}
+	if err := ValidateValue(envelope, warned); err != nil {
+		t.Fatal(err)
+	}
+	broken := map[string]any{"data": map[string]any{}, "meta": map[string]any{"warnings": []any{map[string]any{"message": "no code"}}}}
+	if ValidateValue(envelope, broken) == nil {
+		t.Fatal("a warning without a code passed")
+	}
+}
