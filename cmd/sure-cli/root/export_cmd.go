@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -106,16 +107,16 @@ func writeTransactionsCSV(out io.Writer, each transactionSource) error {
 	}
 	err := each(func(tx models.Transaction) error {
 		return w.Write([]string{
-			tx.ID,
+			csvText(tx.ID),
 			tx.Date.Format(time.DateOnly),
-			tx.Name,
+			csvText(tx.Name),
 			tx.AmountDecimal,
-			tx.Currency,
-			tx.Classification,
-			tx.Kind,
-			tx.CategoryName,
-			tx.AccountName,
-			tx.MerchantName,
+			csvText(tx.Currency),
+			csvText(tx.Classification),
+			csvText(tx.Kind),
+			csvText(tx.CategoryName),
+			csvText(tx.AccountName),
+			csvText(tx.MerchantName),
 			strconv.FormatBool(tx.Excluded),
 			strconv.FormatBool(tx.SplitParent),
 		})
@@ -126,6 +127,16 @@ func writeTransactionsCSV(out io.Writer, each transactionSource) error {
 	// csv.Writer buffers: a failed write only surfaces here.
 	w.Flush()
 	return w.Error()
+}
+
+// csvText keeps a text cell from running as a spreadsheet formula (CSV
+// injection): a cell that starts with = + - @, a tab or a carriage return
+// gets a leading apostrophe, which spreadsheets read as "this is text".
+func csvText(s string) string {
+	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
+		return "'" + s
+	}
+	return s
 }
 
 // writeTransactionsJSON writes {"count", "exported_at", "transactions"},

