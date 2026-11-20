@@ -367,6 +367,10 @@ func checkTradeCreateFields(o tradeCreateOpts, typ string, rule tradeCreateRule)
 	if !rule.Transfer {
 		return notApplicable(tradeFlag{"transfer-account-id", o.TransferAccountID})
 	}
+	// Transfer::Creator books each side in its own account's currency.
+	if o.TransferAccountID != "" && o.Currency != "" {
+		return fmt.Errorf("currency does not apply to a %s with transfer-account-id; each account keeps its own currency", typ)
+	}
 	return nil
 }
 

@@ -206,6 +206,8 @@ func TestBuildTradeCreatePayload_Rejects(t *testing.T) {
 		{"withdrawal negative amount", with(base("withdrawal"), func(o *tradeCreateOpts) { o.Amount = "-5" }), "amount must be a positive decimal"},
 		{"deposit with security", with(base("deposit"), func(o *tradeCreateOpts) { o.Amount, o.Ticker = "1", "AAPL" }), "ticker does not apply to deposit"},
 		{"deposit with qty", with(base("deposit"), func(o *tradeCreateOpts) { o.Amount, o.Qty = "1", "1" }), "qty does not apply to deposit"},
+		{"transfer deposit with currency", with(base("deposit"), func(o *tradeCreateOpts) { o.Amount, o.TransferAccountID, o.Currency = "1", "acc2", "USD" }), "currency does not apply to a deposit with transfer-account-id"},
+		{"transfer withdrawal with currency", with(base("withdrawal"), func(o *tradeCreateOpts) { o.Amount, o.TransferAccountID, o.Currency = "1", "acc2", "USD" }), "currency does not apply to a withdrawal with transfer-account-id"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
