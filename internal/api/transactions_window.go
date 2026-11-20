@@ -27,15 +27,15 @@ func FetchTransactionsWindow(client *Client, start, end time.Time) ([]models.Tra
 	}
 	reportableAccounts := ReportableAccountIDs(accounts)
 
-	all, err := FetchAllTransactionsWindow(client, start, end)
-	if err != nil {
-		return nil, err
-	}
-	reportable := all[:0]
-	for _, tx := range all {
+	var reportable []models.Transaction
+	err = EachTransactionInWindow(client, start, end, func(tx models.Transaction) error {
 		if tx.Reportable() && reportableAccounts[tx.AccountID] {
 			reportable = append(reportable, tx)
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return reportable, nil
 }
@@ -53,15 +53,18 @@ func ReportableAccountIDs(accounts []map[string]any) map[string]bool {
 	return ids
 }
 
-// FetchAllTransactionsWindow pulls every transaction within [start,end] by
-// paging the Sure API at MaxPerPage, split parents and excluded rows included (flagged).
-// Every failure is a *errs.CLIError, so callers can report it as is.
-func FetchAllTransactionsWindow(client *Client, start, end time.Time) ([]models.Transaction, error) {
+// EachTransactionInWindow hands visit every transaction within [start,end],
+// split parents and excluded rows included (flagged), page by page at
+// MaxPerPage, so a caller that writes rows out need not hold them all. Each
+// id is visited once: offset paging over a list that gains rows mid-walk
+// serves a row twice. It stops at the first error. Every failure is a
+// *errs.CLIError: a visit should return one, which comes back unchanged.
+func EachTransactionInWindow(client *Client, start, end time.Time, visit func(models.Transaction) error) error {
 	q := url.Values{}
 	q.Set("start_date", start.Format(time.DateOnly))
 	q.Set("end_date", end.Format(time.DateOnly))
 
-	var all []models.Transaction
+	seen := map[string]bool{}
 	r, err := walkPages(client, "/api/v1/transactions", q, MaxPerPage, func(body []byte) error {
 		var res transactionsPage
 		if err := json.Unmarshal(body, &res); err != nil {
@@ -72,14 +75,22 @@ func FetchAllTransactionsWindow(client *Client, start, end time.Time) ([]models.
 			if err != nil {
 				return errs.Wrap(errs.CodeInvalidResponse, fmt.Sprintf("transaction %s has an unreadable amount", item.ID), err)
 			}
-			all = append(all, tx)
+			if tx.ID != "" {
+				if seen[tx.ID] {
+					continue
+				}
+				seen[tx.ID] = true
+			}
+			if err := visit(tx); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
 	if ce := CheckResponse(r, err); ce != nil {
-		return nil, ce
+		return ce
 	}
-	return uniqueByID(all, func(tx models.Transaction) string { return tx.ID }), nil
+	return nil
 }
 
 // transactionsPage is the subset of GET /api/v1/transactions the CLI reads,
