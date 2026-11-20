@@ -153,7 +153,7 @@ func TestAmountFromAPIOK_BothMissing(t *testing.T) {
 	}
 }
 
-func TestMonthlyTotals_UsesSignedAmounts(t *testing.T) {
+func TestMonthlyTotals_UsesSignedAmountsAndNormalizesCurrency(t *testing.T) {
 	txs := []models.Transaction{
 		{Classification: "expense", Amount: -12.25, Currency: "EUR"},
 		{Classification: "expense", Amount: -0.75},
