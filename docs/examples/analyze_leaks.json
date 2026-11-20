@@ -7,8 +7,8 @@
     },
     "params": {
       "min_count": 3,
-      "min_total": 15,
-      "max_avg": 10
+      "min_total_minor": 1500,
+      "max_avg_minor": 1000
     },
     "candidates": [
       {

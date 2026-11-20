@@ -160,7 +160,10 @@ sure-cli insights ack <insight_id> --apply    # read_write scope; guests refused
 
 # Analyze: client-side heuristics Sure does not compute
 sure-cli analyze leaks --months 3            # or --start-date/--end-date; --currency to keep one
-sure-cli analyze runway --account-id <id> --days 90   # balance from balance_cents; burn counts only expenses in the account currency
+sure-cli analyze runway --account-id <id> --days 90
+# runway: balance from balance_cents; burn is the whole family's reportable
+# expenses in the account currency, from every account, over the last --days
+# days (today included), extrapolated to 30-day months.
 
 # Propose automations
 sure-cli propose rules --months 3
@@ -338,13 +341,16 @@ Totals count what Sure's own income statement counts. These rows are skipped:
 
 ## Heuristics
 
-`analyze leaks` groups the window's expenses by the merchant Sure matched (by id, else by name), falling back to the transaction name, and keeps one group per currency: amounts in different currencies are never added. Thresholds are flags, in major units of each group's currency:
+`analyze leaks` groups the window's expenses by the merchant Sure matched (by id, else by name), falling back to the transaction name, and keeps one group per currency: amounts in different currencies are never added.
+
+A group is a leak with at least `--min-count` expenses (default 3), a total of at least 1500 and an average of at most 1000 minor units of its currency: 15.00 and 10.00 in EUR or USD, ¥1500 and ¥1000 in yen. Minor units follow Sure's currency table, so for currencies with a tiny minor unit (BTC, ETH) the defaults are close to zero; pass your own thresholds there. `--min-total` and `--max-avg` are major units of one currency and need `--currency`; `--min-total 0` keeps groups of any total:
 
 ```bash
-sure-cli analyze leaks --months 3 --min-count 3 --min-total 15 --max-avg 10
-sure-cli analyze leaks --start-date 2026-01-01 --end-date 2026-03-31 --currency EUR
+sure-cli analyze leaks --months 3 --min-count 5
+sure-cli analyze leaks --start-date 2026-01-01 --end-date 2026-03-31 --currency EUR --min-total 20 --max-avg 5
+sure-cli analyze leaks --currency JPY --min-total 3000 --max-avg 800
 ```
 
-The output echoes the window (`start`, `end`, inclusive, and `days`) and the thresholds used.
+The output echoes the window (`start`, `end`, inclusive, and `days`) and the thresholds applied (`min_count`, `min_total_minor`, `max_avg_minor`, `currency`). Candidate amounts are major units rounded to the currency's minor unit.
 
 See `docs/ROADMAP.md` for planned features.
