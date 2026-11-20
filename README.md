@@ -121,6 +121,13 @@ sure-cli import-sessions show <session_id>
 sure-cli import-sessions publish <session_id> --apply
 sure-cli family-exports create
 sure-cli family-exports create --apply
+
+# Statement Vault (archives PDF/CSV/XLSX statements, max 25 MB; never imports transactions)
+sure-cli account-statements list --review-status unmatched --start-date 2026-01-01
+sure-cli account-statements list --content-sha256 "$(shasum -a 256 march.pdf | cut -d' ' -f1)"
+sure-cli account-statements show <statement_id>
+sure-cli account-statements upload --file march.pdf --account-id <account_id>          # dry-run
+sure-cli account-statements upload --file march.pdf --account-id <account_id> --apply  # 200 + meta.duplicate if already stored
 sure-cli family-exports download <export_id> --out sure-export.zip
 
 # Reference data and rules
@@ -162,6 +169,11 @@ sure-cli export transactions --months 12 --out-format csv --out transactions.csv
 
 # Financial history
 sure-cli balance-sheet show
+sure-cli cash-flow show                                   # current month
+sure-cli cash-flow show --month 2026-03 --include sankey  # summary + Sankey graph
+sure-cli cash-flow show --view sankey --group-by account --start-date 2026-01-01 --end-date 2026-03-31
+sure-cli spending-vs-normal show                          # current month
+sure-cli spending-vs-normal show --start-date 2026-01-01 --end-date 2026-03-31
 sure-cli balances list --account-id <account_id> --start-date 2026-01-01
 sure-cli family-settings show
 sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026-05-01
@@ -241,6 +253,12 @@ sure-cli syncs show <sync_id>
 
 # API usage + rate-limit info (singleton)
 sure-cli usage show
+
+# Version: local build info (plain text, offline); --server adds the Sure
+# server's {version, commit_sha} as a JSON envelope. An unreachable server is
+# reported under data.server_error and does not fail the command.
+sure-cli version
+sure-cli version --server
 
 # Import preflight (validate config + content before creating)
 sure-cli imports preflight --type TransactionImport --file data.csv \
