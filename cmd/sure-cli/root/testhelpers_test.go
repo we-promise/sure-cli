@@ -23,9 +23,7 @@ func TestMain(m *testing.M) {
 	if args := os.Getenv(cliArgsEnv); args != "" {
 		cli := New()
 		cli.SetArgs(strings.Split(args, "\n"))
-		if err := cli.Execute(); err != nil {
-			os.Exit(1)
-		}
+		run(cli)
 		os.Exit(0)
 	}
 	os.Exit(m.Run())

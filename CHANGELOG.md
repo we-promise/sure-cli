@@ -41,7 +41,7 @@ The `heuristics.*` config keys are no longer read.
 - A 401 asking for a second factor is `mfa_required`, also from `login`.
 - `request_failed` is gone: `status`, `export`, `propose` and `analyze` report the classified code (`forbidden`, `not_found`, `server_error`, ...) with Sure's message and details.
 - `account_not_found` is gone: `analyze runway` reads the account by id and reports `not_found`.
-- `missing_account` and `invalid_format` are now `validation_failed`, as is every input the CLI rejects before sending a request, an unknown flag included.
+- `missing_account` and `invalid_format` are now `validation_failed`, as is every input the CLI rejects before sending a request, unknown flags and wrong argument counts included.
 - `compute_failed`, `invalid_month`, `auth_expired`, `config_invalid` and `internal_error` are gone.
 - New codes: `invalid_response` (a 2xx body the CLI cannot read, too large or cut short), `canceled` (Ctrl-C or SIGTERM), `unknown_command`.
 
@@ -50,7 +50,7 @@ The `heuristics.*` config keys are no longer read.
 #### Output
 
 - `status`: `data.accounts.total_balance` is replaced by `data.net_worth` (`currency`, `net_worth`, `assets`, `liabilities`, from Sure's balance sheet) and `data.accounts.by_currency`. Entries of `data.accounts.list` add `classification` and `exclude_from_reports`. `data.budget_pacing` is now a list with one entry per current budget, in that budget's currency (`id`, `name`, `currency`, `start_date`, `end_date`, `initialized`, `budgeted_spending`, `actual_spending`, `available_to_spend`, `percent_spent`, `percent_elapsed`); it was one object with `month`, `days_elapsed`, `spent`, `projected` and `avg_per_day`. `data.monthly.subscriptions` comes from Sure's active recurring transactions, and `data.monthly.subscriptions_by_currency` is new. `data.alerts` is `[]` when empty. Amounts use each currency's own decimals.
-- `meta.status` appears only when `data` is a single Sure response. `status`, `analyze runway`, `export transactions`, `propose rules` and `accounts list --all` no longer report `meta.status: 200`. `analyze runway` reports an account body without a readable balance as `invalid_response`.
+- `meta.status` appears only when `data` is a single Sure response. `status`, `analyze runway`, `export transactions` and `propose rules` no longer report `meta.status: 200`. `analyze runway` reports an account body without a readable balance as `invalid_response`.
 - `analyze leaks` (was `insights leaks`): `data.params` echoes the thresholds applied as `min_count`, `min_total_minor`, `max_avg_minor` and, with `--currency`, `currency`, in place of `min_total` and `max_avg`. `data.window` adds `days`. Candidates add `merchant_id`, `grouped_by` and `currency`; amounts round to the currency's minor unit.
 - `analyze runway`: `currency` is the account's own, not always `EUR`.
 - `export transactions` CSV: `amount` is the exact signed decimal, income positive and expense negative, where it was Sure's localized display string (`"-€2,000.00"`). The columns are now `id, date, name, amount, currency, classification, kind, category, account, merchant, excluded, split_parent`. Every row is exported, split parents and excluded rows included; the new columns mark the rows to leave out of a sum.
@@ -84,7 +84,7 @@ The `heuristics.*` config keys are no longer read.
 
 - `account-statements list`, `show` and `upload`.
 - `analyze leaks --currency`, `--start-date` and `--end-date`.
-- `accounts list --all` and `--include-disabled`.
+- `accounts list --all` (every page, without `meta.status`) and `--include-disabled`.
 - `cash-flow show` and `spending-vs-normal show`.
 - `insights list` and `insights ack` for Sure's insights feed. Sure answers 204 also for an insight already acknowledged or expired, so `ack --apply` reports `{"id": ..., "in_feed": false}`.
 - `merchants import`.
