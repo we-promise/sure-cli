@@ -1,0 +1,24 @@
+{
+  "data": {
+    "proposals": [
+      {
+        "type": "category",
+        "pattern": "Mercadona",
+        "action": "set_category",
+        "value": "Groceries",
+        "value_id": "6a1f3c2e-0b4d-4e8f-9a7c-1d2e3f4a5b6c",
+        "confidence": 0.97,
+        "reason": "consistent_categorization",
+        "affected_count": 1,
+        "affected_tx_ids": ["t-204"],
+        "sample_tx_ids": ["t-204"],
+        "suggested_action": "Review and apply: would categorize 1 transactions as Groceries"
+      }
+    ],
+    "total_transactions": 214,
+    "uncategorized_count": 12
+  },
+  "meta": {
+    "schema": "docs/schemas/v1/propose_rules.schema.json"
+  }
+}

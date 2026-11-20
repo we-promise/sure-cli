@@ -1,9 +1,9 @@
 {
   "data": {
     "window": {
-      "start": "2026-08-20",
+      "start": "2026-08-21",
       "end": "2026-11-20",
-      "days": 93
+      "days": 92
     },
     "params": {
       "min_count": 3,
