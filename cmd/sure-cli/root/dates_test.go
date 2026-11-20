@@ -36,3 +36,17 @@ func TestLookbackStart(t *testing.T) {
 		}
 	}
 }
+
+func TestParseISODate(t *testing.T) {
+	for _, s := range []string{"", "2026-3-2", "2026-02-30", " 2026-02-03", "2026-02-03T00:00:00Z"} {
+		if _, err := parseISODate("date", s); err == nil {
+			t.Errorf("parseISODate(%q) accepted an invalid date", s)
+		}
+	}
+	if d, err := parseISODate("date", "2024-02-29"); err != nil || d.Day() != 29 {
+		t.Errorf("parseISODate(2024-02-29) = %v, %v", d, err)
+	}
+	if d, err := parseOptionalISODate("date", ""); err != nil || !d.IsZero() {
+		t.Errorf("parseOptionalISODate(\"\") = %v, %v; want zero, nil", d, err)
+	}
+}

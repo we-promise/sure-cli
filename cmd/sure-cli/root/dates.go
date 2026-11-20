@@ -6,18 +6,21 @@ import (
 	"time"
 )
 
-const isoDateLayout = "2006-01-02"
+// parseISODate parses a required YYYY-MM-DD date given as flag.
+func parseISODate(flag, s string) (time.Time, error) {
+	t, err := time.Parse(time.DateOnly, s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%s: invalid date %q (expected YYYY-MM-DD)", flag, s)
+	}
+	return t, nil
+}
 
 // parseOptionalISODate accepts "" (flag unset, zero time) or a YYYY-MM-DD date.
 func parseOptionalISODate(flag, s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, nil
 	}
-	t, err := time.Parse(isoDateLayout, s)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("%s: invalid date %q (expected YYYY-MM-DD)", flag, s)
-	}
-	return t, nil
+	return parseISODate(flag, s)
 }
 
 // parseOptionalDateRange validates the conventional --start-date/--end-date

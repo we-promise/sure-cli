@@ -107,7 +107,7 @@ func TestLeakParams(t *testing.T) {
 
 func TestLeaksWindow(t *testing.T) {
 	now := time.Date(2026, 5, 20, 18, 30, 0, 0, time.UTC)
-	date := func(s string) time.Time { d, _ := time.Parse(isoDateLayout, s); return d }
+	date := func(s string) time.Time { d, _ := time.Parse(time.DateOnly, s); return d }
 
 	cases := []struct {
 		name               string
@@ -137,7 +137,7 @@ func TestLeaksWindow(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if !start.Equal(date(c.wantStart)) || !end.Equal(date(c.wantEnd)) {
-				t.Fatalf("window = %s..%s, want %s..%s", start.Format(isoDateLayout), end.Format(isoDateLayout), c.wantStart, c.wantEnd)
+				t.Fatalf("window = %s..%s, want %s..%s", start.Format(time.DateOnly), end.Format(time.DateOnly), c.wantStart, c.wantEnd)
 			}
 		})
 	}
@@ -150,8 +150,8 @@ func TestRunwayWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if start.Format(isoDateLayout) != "2026-04-22" || end.Format(isoDateLayout) != "2026-05-21" {
-		t.Fatalf("window = %s..%s, want the 30 UTC days 2026-04-22..2026-05-21", start.Format(isoDateLayout), end.Format(isoDateLayout))
+	if start.Format(time.DateOnly) != "2026-04-22" || end.Format(time.DateOnly) != "2026-05-21" {
+		t.Fatalf("window = %s..%s, want the 30 UTC days 2026-04-22..2026-05-21", start.Format(time.DateOnly), end.Format(time.DateOnly))
 	}
 	if got := analyze.InclusiveDays(start, end); got != 30 {
 		t.Fatalf("window has %d days, want 30", got)
@@ -248,7 +248,7 @@ func TestAnalyzeLeaks_EchoesAppliedParamsAndSkipsUnreportableRows(t *testing.T) 
 }
 
 func TestAnalyzeRunway_BurnSkipsUnreportableRows(t *testing.T) {
-	today := time.Now().UTC().Format(isoDateLayout)
+	today := time.Now().UTC().Format(time.DateOnly)
 	analyzeServer(t, `{"id":"a1","balance":"€300.00","balance_cents":30000,"currency":"EUR"}`,
 		txJSON("rent", today, "Rent", "standard", "EUR", "30.0", false),
 		txJSON("split", today, "Groceries", "standard", "EUR", "1000.0", true),

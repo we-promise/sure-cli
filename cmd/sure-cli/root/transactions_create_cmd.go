@@ -40,7 +40,7 @@ func newTransactionsCreateCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "account id (required)")
-	cmd.Flags().StringVar(&o.Date, "date", time.Now().Format("2006-01-02"), "date YYYY-MM-DD")
+	cmd.Flags().StringVar(&o.Date, "date", time.Now().Format(time.DateOnly), "date YYYY-MM-DD")
 	addTxAmountFlags(cmd, &o.Amount, &o.Nature, "expense")
 	cmd.Flags().StringVar(&o.Name, "name", "", "name/description (required)")
 	cmd.Flags().StringVar(&o.Notes, "notes", "", "notes")
@@ -66,7 +66,7 @@ func buildTxCreatePayload(o txCreateOpts) (map[string]any, error) {
 	if err := validateTxAmount(o.Amount); err != nil {
 		return nil, err
 	}
-	if err := validateTxDate(o.Date); err != nil {
+	if _, err := parseISODate("date", o.Date); err != nil {
 		return nil, err
 	}
 	if err := validateTxNature(o.Nature); err != nil {
@@ -136,13 +136,6 @@ func validateTxAmount(amount string) error {
 	}
 	if models.DecimalIntegerDigits(amount)+models.DecimalScale(amount) > maxTxAmountDigits {
 		return fmt.Errorf("amount has more than %d digits, which Sure cannot store exactly, got %q", maxTxAmountDigits, amount)
-	}
-	return nil
-}
-
-func validateTxDate(date string) error {
-	if _, err := time.Parse("2006-01-02", date); err != nil {
-		return fmt.Errorf("invalid date (expected YYYY-MM-DD): %w", err)
 	}
 	return nil
 }

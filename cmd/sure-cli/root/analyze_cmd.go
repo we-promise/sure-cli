@@ -57,8 +57,8 @@ func newAnalyzeLeaksCmd() *cobra.Command {
 			}
 			if err := output.Print(format, output.Envelope{Data: map[string]any{
 				"window": map[string]any{
-					"start": start.Format(isoDateLayout),
-					"end":   end.Format(isoDateLayout),
+					"start": start.Format(time.DateOnly),
+					"end":   end.Format(time.DateOnly),
 					"days":  analyze.InclusiveDays(start, end),
 				},
 				"params":     params,

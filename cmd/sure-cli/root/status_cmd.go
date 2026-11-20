@@ -328,8 +328,8 @@ func budgetPacing(b map[string]any, today time.Time) map[string]any {
 		p["percent_spent"] = roundTo1(actual / budgeted * 100)
 	}
 	p["percent_elapsed"] = nil
-	start, errStart := time.Parse(isoDateLayout, fmt.Sprint(b["start_date"]))
-	end, errEnd := time.Parse(isoDateLayout, fmt.Sprint(b["end_date"]))
+	start, errStart := time.Parse(time.DateOnly, fmt.Sprint(b["start_date"]))
+	end, errEnd := time.Parse(time.DateOnly, fmt.Sprint(b["end_date"]))
 	if errStart == nil && errEnd == nil && !end.Before(start) {
 		day := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
 		days := end.Sub(start).Hours()/24 + 1

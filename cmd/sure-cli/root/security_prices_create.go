@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/models"
@@ -214,8 +212,6 @@ func jsonScalarText(raw json.RawMessage) (string, error) {
 	}
 }
 
-var isoCalendarDateRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
-
 // validateSecurityPriceRows applies the row rules of
 // Security::ManualPriceImport that need no server state. Not checked here:
 // future dates (Sure's "today" is its own time zone), ISO 4217 membership,
@@ -263,10 +259,7 @@ func validateSecurityPriceRows(rows []securityPriceRow) error {
 }
 
 func securityPriceDateError(date string) string {
-	if !isoCalendarDateRE.MatchString(date) {
-		return "date must be an ISO 8601 date"
-	}
-	if _, err := time.Parse(time.DateOnly, date); err != nil {
+	if _, err := parseISODate("date", date); err != nil {
 		return "date must be an ISO 8601 date"
 	}
 	return ""

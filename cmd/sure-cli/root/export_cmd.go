@@ -46,7 +46,7 @@ func newExportTransactionsCmd() *cobra.Command {
 			checkResponse(nil, err)
 
 			if outFile == "" {
-				outFile = fmt.Sprintf("transactions_%s.%s", time.Now().Format("2006-01-02"), exportFormat)
+				outFile = fmt.Sprintf("transactions_%s.%s", time.Now().Format(time.DateOnly), exportFormat)
 			}
 
 			switch exportFormat {
@@ -69,7 +69,7 @@ func newExportTransactionsCmd() *cobra.Command {
 				"exported":   len(txs),
 				"file":       outFile,
 				"out_format": exportFormat,
-				"date_range": map[string]string{"start": start.Format("2006-01-02"), "end": end.Format("2006-01-02")},
+				"date_range": map[string]string{"start": start.Format(time.DateOnly), "end": end.Format(time.DateOnly)},
 			}, Meta: &output.Meta{Status: 200}})
 		},
 	}
@@ -114,7 +114,7 @@ func writeTransactionsCSV(out io.Writer, txs []models.Transaction) error {
 	for _, tx := range txs {
 		row := []string{
 			tx.ID,
-			tx.Date.Format("2006-01-02"),
+			tx.Date.Format(time.DateOnly),
 			tx.Name,
 			tx.AmountDecimal,
 			tx.Currency,

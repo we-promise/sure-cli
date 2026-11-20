@@ -153,7 +153,7 @@ func newValuationsCreateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "account id (required)")
 	cmd.Flags().StringVar(&o.Amount, "amount", "", "valuation amount (required)")
-	cmd.Flags().StringVar(&o.Date, "date", time.Now().Format("2006-01-02"), "date YYYY-MM-DD")
+	cmd.Flags().StringVar(&o.Date, "date", time.Now().Format(time.DateOnly), "date YYYY-MM-DD")
 	cmd.Flags().StringVar(&o.Notes, "notes", "", "notes")
 	cmd.Flags().BoolVar(&o.Upsert, "upsert", false, "request upsert response semantics")
 	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the create (otherwise dry-run)")
@@ -189,8 +189,8 @@ func buildValuationCreatePayload(o valuationCreateOpts) (map[string]any, error) 
 	if o.Amount == "" {
 		return nil, fmt.Errorf("amount is required")
 	}
-	if _, err := time.Parse("2006-01-02", o.Date); err != nil {
-		return nil, fmt.Errorf("invalid date (expected YYYY-MM-DD): %w", err)
+	if _, err := parseISODate("date", o.Date); err != nil {
+		return nil, err
 	}
 	valuation := map[string]any{
 		"account_id": o.AccountID,
@@ -216,8 +216,8 @@ func buildValuationUpdatePayload(o valuationUpdateOpts) (map[string]any, error) 
 	}
 	valuation := map[string]any{}
 	if o.Amount != "" {
-		if _, err := time.Parse("2006-01-02", o.Date); err != nil {
-			return nil, fmt.Errorf("invalid date (expected YYYY-MM-DD): %w", err)
+		if _, err := parseISODate("date", o.Date); err != nil {
+			return nil, err
 		}
 		valuation["amount"] = o.Amount
 		valuation["date"] = o.Date

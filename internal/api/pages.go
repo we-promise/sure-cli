@@ -166,7 +166,7 @@ func FetchActiveRecurringTransactions(c *Client) ([]map[string]any, *resty.Respo
 func FetchCurrentBudgets(c *Client, today time.Time) ([]map[string]any, *resty.Response, error) {
 	since := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -1, 0)
 	q := url.Values{}
-	q.Set("start_date", since.Format("2006-01-02"))
+	q.Set("start_date", since.Format(time.DateOnly))
 	index, r, err := FetchAllPages(c, "/api/v1/budgets", q, "budgets")
 	if err != nil || r == nil || r.StatusCode() >= 400 {
 		return nil, r, err

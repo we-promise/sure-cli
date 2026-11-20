@@ -61,8 +61,8 @@ func FetchAllTransactionsWindow(client *Client, start, end time.Time, perPage in
 		perPage = MaxPerPage
 	}
 	q := url.Values{}
-	q.Set("start_date", start.Format("2006-01-02"))
-	q.Set("end_date", end.Format("2006-01-02"))
+	q.Set("start_date", start.Format(time.DateOnly))
+	q.Set("end_date", end.Format(time.DateOnly))
 
 	var all []models.Transaction
 	r, err := walkPages(client, "/api/v1/transactions", q, perPage, func(body []byte) error {
@@ -148,7 +148,7 @@ func (a apiTransaction) toModel() (models.Transaction, error) {
 		Excluded:       a.Excluded,
 		SplitParent:    a.SplitParent,
 	}
-	if d, err := time.Parse("2006-01-02", a.Date); err == nil {
+	if d, err := time.Parse(time.DateOnly, a.Date); err == nil {
 		tx.Date = d
 	}
 	if a.Account != nil {
