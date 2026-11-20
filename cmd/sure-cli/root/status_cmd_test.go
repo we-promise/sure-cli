@@ -434,7 +434,7 @@ func TestStatus_CashFlowFailures(t *testing.T) {
 		wantCode     string
 		wantHintPart string
 	}{
-		"older Sure without the endpoint": {http.StatusNotFound, `{"error":"not_found","message":"Not found"}`, "not_found", "September 2026"},
+		"older Sure without the endpoint": {http.StatusNotFound, `{"error":"not_found","message":"Not found"}`, "not_found", "Sure v0.7.5"},
 		"totals missing":                  {http.StatusOK, `{"currency":"EUR","sankey":{}}`, "invalid_response", ""},
 		"totals not decimals":             {http.StatusOK, `{"currency":"EUR","sankey":{"income":"lots","spending":"1"}}`, "invalid_response", ""},
 	} {

@@ -239,7 +239,7 @@ func fetchCashFlow(client *api.Client, start, end time.Time) cashFlow {
 			if ce.Details == nil {
 				ce.Details = map[string]any{}
 			}
-			ce.Details["hint"] = "status reads GET /api/v1/cash_flow, added to Sure in September 2026; upgrade the server"
+			ce.Details["hint"] = "status reads GET /api/v1/cash_flow, which needs Sure v0.7.5 or later; upgrade the server"
 		}
 		fail(ce)
 	}

@@ -221,7 +221,7 @@ sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026
 # GET /api/v1/cash_flow?view=sankey: FX-converted to the family currency and
 # netted per category, so a refund lowers its category's spending. Runway and
 # the burn alerts use these figures. A server older than that endpoint
-# (September 2026) fails with not_found and a hint to upgrade.
+# (before Sure v0.7.5) fails with not_found and a hint to upgrade.
 # Amounts show the currency's own decimals (1234 JPY, 1.235 KWD, 0.00012345 BTC).
 # monthly.subscriptions is Sure's active recurring outflows (no income, no
 # transfers, no one-offs) priced per month from each series' cadence, in the
