@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"time"
@@ -29,40 +30,34 @@ func FetchTransactionsWindow(client *Client, start, end time.Time, perPage int) 
 // FetchAllTransactionsWindow pulls every transaction within [start,end] by
 // paging the Sure API, split parents and excluded rows included (flagged).
 func FetchAllTransactionsWindow(client *Client, start, end time.Time, perPage int) ([]models.Transaction, error) {
-	if perPage <= 0 {
-		perPage = 100
+	if perPage <= 0 || perPage > MaxPerPage {
+		perPage = MaxPerPage
 	}
+	q := url.Values{}
+	q.Set("start_date", start.Format("2006-01-02"))
+	q.Set("end_date", end.Format("2006-01-02"))
 
 	var all []models.Transaction
-	for page := 1; ; page++ {
-		q := url.Values{}
-		q.Set("page", fmt.Sprintf("%d", page))
-		q.Set("per_page", fmt.Sprintf("%d", perPage))
-		q.Set("start_date", start.Format("2006-01-02"))
-		q.Set("end_date", end.Format("2006-01-02"))
-
+	r, err := walkPages(client, "/api/v1/transactions", q, perPage, func(body []byte) error {
 		var res transactionsPage
-		r, err := client.Get("/api/v1/transactions?"+q.Encode(), &res)
-		if err != nil {
-			return nil, err
+		if err := json.Unmarshal(body, &res); err != nil {
+			return fmt.Errorf("decode transactions: %w", err)
 		}
-		if r.StatusCode() >= 400 {
-			return nil, fmt.Errorf("request failed: status %d", r.StatusCode())
-		}
-
 		for _, item := range res.Transactions {
 			tx, err := item.toModel()
 			if err != nil {
-				return nil, fmt.Errorf("transaction %s: %w", item.ID, err)
+				return fmt.Errorf("transaction %s: %w", item.ID, err)
 			}
 			all = append(all, tx)
 		}
-
-		if res.Pagination == nil || page >= res.Pagination.TotalPages {
-			break
-		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
+	if r.StatusCode() >= 400 {
+		return nil, fmt.Errorf("request failed: status %d", r.StatusCode())
+	}
 	return all, nil
 }
 
@@ -70,9 +65,6 @@ func FetchAllTransactionsWindow(client *Client, start, end time.Time, perPage in
 // as rendered by Sure's api/v1/transactions/_transaction.json.jbuilder.
 type transactionsPage struct {
 	Transactions []apiTransaction `json:"transactions"`
-	Pagination   *struct {
-		TotalPages int `json:"total_pages"`
-	} `json:"pagination"`
 }
 
 type apiTransaction struct {

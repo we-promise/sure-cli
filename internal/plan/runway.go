@@ -2,6 +2,7 @@ package plan
 
 import (
 	"math"
+	"strings"
 	"time"
 
 	"github.com/we-promise/sure-cli/internal/models"
@@ -16,14 +17,12 @@ type RunwaySummary struct {
 	Assumptions    []string `json:"assumptions"`
 }
 
-// ComputeRunway estimates runway months based on recent spending.
-func ComputeRunway(balanceText string, txs []models.Transaction, windowDays int) (RunwaySummary, error) {
-	bal, err := models.ParseAmount(balanceText)
-	cur := "EUR"
-	if err != nil {
-		return RunwaySummary{}, err
-	}
-
+// ComputeRunway estimates runway months for a balance (major units of
+// currency) from recent expenses in that same currency. Expenses in another
+// currency cannot be netted without FX and are skipped; transactions with no
+// currency are kept.
+func ComputeRunway(balance float64, currency string, txs []models.Transaction, windowDays int) RunwaySummary {
+	currency = strings.ToUpper(currency)
 	end := time.Now().UTC()
 	start := end.AddDate(0, 0, -windowDays)
 
@@ -33,6 +32,9 @@ func ComputeRunway(balanceText string, txs []models.Transaction, windowDays int)
 			continue
 		}
 		if tx.Classification != "expense" {
+			continue
+		}
+		if tx.Currency != "" && !strings.EqualFold(tx.Currency, currency) {
 			continue
 		}
 		spent += math.Abs(tx.Amount)
@@ -45,15 +47,18 @@ func ComputeRunway(balanceText string, txs []models.Transaction, windowDays int)
 	}
 	runway := 0.0
 	if avgMonthly > 0 {
-		runway = bal / avgMonthly
+		runway = balance / avgMonthly
 	}
 
 	return RunwaySummary{
-		Balance:        bal,
+		Balance:        balance,
 		AvgMonthlyBurn: avgMonthly,
 		RunwayMonths:   runway,
-		Currency:       cur,
+		Currency:       currency,
 		WindowDays:     windowDays,
-		Assumptions:    []string{"expenses counted as Sure reports count them (no split parents, excluded rows or transfers); burn extrapolated to 30-day month"},
-	}, nil
+		Assumptions: []string{
+			"expenses counted as Sure reports count them (no split parents, excluded rows or transfers); burn extrapolated to 30-day month",
+			"only expenses in the account currency count towards burn",
+		},
+	}
 }

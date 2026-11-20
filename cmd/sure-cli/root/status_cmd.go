@@ -3,12 +3,15 @@ package root
 import (
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/insights"
 	"github.com/we-promise/sure-cli/internal/models"
+	"github.com/we-promise/sure-cli/internal/money"
 	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/we-promise/sure-cli/internal/plan"
 )
@@ -16,54 +19,40 @@ import (
 func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Financial snapshot (accounts, spend, runway, alerts)",
+		Short: "Financial snapshot (net worth, accounts, spend, runway, alerts)",
 		Run: func(cmd *cobra.Command, args []string) {
 			client := api.New()
 
-			// 1. Get accounts
-			var accountsRes map[string]any
-			r, err := client.Get("/api/v1/accounts", &accountsRes)
+			// 1. Net worth: Sure's balance sheet is authoritative (FX-converted
+			// to the family currency, honours exclude_from_reports).
+			var bsRes map[string]any
+			r, err := client.Get("/api/v1/balance_sheet", &bsRes)
 			checkResponse(r, err)
+			bs := parseBalanceSheet(bsRes)
+			primaryCurrency := bs.Currency
 
-			accounts, _ := accountsRes["accounts"].([]any)
-			var totalBalance float64
+			// 2. Every account across pages, for the native-currency breakdown
+			// and the cash that funds runway.
+			accounts, r, err := api.FetchAllAccounts(client, false)
+			checkResponse(r, err)
+			totals, accountSummaries := summarizeAccounts(accounts)
+
+			// Runway can only count cash held in the family currency.
 			var cashBalance float64
-			var accountSummaries []map[string]any
-			primaryCurrency := ""
-
-			for _, acc := range accounts {
-				a, _ := acc.(map[string]any)
-				name := fmt.Sprint(a["name"])
-				balance := fmt.Sprint(a["balance"])
-				cashBalanceText := fmt.Sprint(a["cash_balance"])
-				accType := fmt.Sprint(a["account_type"])
-				currency := fmt.Sprint(a["currency"])
-				if primaryCurrency == "" && currency != "" && currency != "<nil>" {
-					primaryCurrency = currency
-				}
-
-				bal, _ := amountFromAPI(a, "balance", "balance_cents")
-				totalBalance += bal
-
-				accountSummaries = append(accountSummaries, map[string]any{
-					"name":         name,
-					"type":         accType,
-					"balance":      balance,
-					"cash_balance": cashBalanceText,
-					"currency":     currency,
-				})
-
-				// Track cash accounts for runway
-				if accType == "depository" || accType == "checking" || accType == "savings" {
-					cash, ok := amountFromAPIOK(a, "cash_balance", "cash_balance_cents")
-					if !ok {
-						cash = bal
-					}
-					cashBalance += cash
+			if t := totals[primaryCurrency]; t != nil {
+				cashBalance = t.Cash
+			}
+			byCurrency := make(map[string]any, len(totals))
+			for cur, t := range totals {
+				byCurrency[cur] = map[string]any{
+					"assets":      formatMoneyValue(t.Assets, cur),
+					"liabilities": formatMoneyValue(t.Liabilities, cur),
+					"net_worth":   formatMoneyValue(t.NetWorth(), cur),
+					"cash":        formatMoneyValue(t.Cash, cur),
 				}
 			}
 
-			// 2. Get recent transactions for spend analysis
+			// 3. Get recent transactions for spend analysis
 			end := time.Now().UTC()
 			start := end.AddDate(0, -1, 0) // last month
 			txs, err := api.FetchTransactionsWindow(client, start, end, 500)
@@ -72,15 +61,15 @@ func newStatusCmd() *cobra.Command {
 				return
 			}
 
-			monthlySpend, monthlyIncome := monthlyTotals(txs)
+			monthlySpend, monthlyIncome := monthlyTotals(txs, primaryCurrency)
 
-			// 3. Calculate runway if we have cash balance
+			// 4. Calculate runway if we have cash balance
 			var runwayMonths float64
 			if monthlySpend > 0 && cashBalance > 0 {
 				runwayMonths = cashBalance / monthlySpend
 			}
 
-			// 4. Detect potential issues (alerts)
+			// 5. Detect potential issues (alerts)
 			var alerts []map[string]any
 
 			// Check for high burn rate
@@ -99,7 +88,7 @@ func newStatusCmd() *cobra.Command {
 				})
 			}
 
-			// 5. Get subscription count
+			// 6. Get subscription count
 			subTxs, _ := api.FetchTransactionsWindow(client, end.AddDate(0, -6, 0), end, 500)
 			subs := insights.DetectSubscriptions(subTxs)
 			var monthlySubscriptions float64
@@ -109,16 +98,22 @@ func newStatusCmd() *cobra.Command {
 				}
 			}
 
-			// 6. Budget pacing for current month
+			// 7. Budget pacing for current month
 			budgetResult, _ := plan.ComputeMonthlyBudget(time.Now(), txs)
 
 			status := map[string]any{
 				"as_of": time.Now().UTC().Format(time.RFC3339),
+				"net_worth": map[string]any{
+					"currency":    primaryCurrency,
+					"net_worth":   formatMoneyValue(bs.NetWorth, primaryCurrency),
+					"assets":      formatMoneyValue(bs.Assets, primaryCurrency),
+					"liabilities": formatMoneyValue(bs.Liabilities, primaryCurrency),
+				},
 				"accounts": map[string]any{
-					"count":         len(accounts),
-					"total_balance": formatMoneyValue(totalBalance, primaryCurrency),
-					"cash_balance":  formatMoneyValue(cashBalance, primaryCurrency),
-					"list":          accountSummaries,
+					"count":        len(accounts),
+					"cash_balance": formatMoneyValue(cashBalance, primaryCurrency),
+					"by_currency":  byCurrency,
+					"list":         accountSummaries,
 				},
 				"monthly": map[string]any{
 					"income":        formatMoneyValue(monthlyIncome, primaryCurrency),
@@ -148,10 +143,92 @@ func newStatusCmd() *cobra.Command {
 	return cmd
 }
 
+// balanceSheet is GET /api/v1/balance_sheet in major units of Currency.
+type balanceSheet struct {
+	Currency                      string
+	NetWorth, Assets, Liabilities float64
+}
+
+func parseBalanceSheet(res map[string]any) balanceSheet {
+	amount := func(key string) float64 {
+		m, _ := res[key].(map[string]any)
+		v, _ := decimalValue(m["amount"])
+		return v
+	}
+	cur, _ := res["currency"].(string)
+	return balanceSheet{
+		Currency:    cur,
+		NetWorth:    amount("net_worth"),
+		Assets:      amount("assets"),
+		Liabilities: amount("liabilities"),
+	}
+}
+
+// currencyTotals aggregates accounts held in one currency, in major units.
+type currencyTotals struct {
+	Assets, Liabilities, Cash float64
+}
+
+func (t currencyTotals) NetWorth() float64 { return t.Assets - t.Liabilities }
+
+// summarizeAccounts totals accounts per native currency the way Sure's
+// balance sheet counts them: by classification, skipping accounts marked
+// exclude_from_reports. Cash is the cash balance of depository assets.
+// No FX conversion happens here; the converted figure is the balance sheet.
+func summarizeAccounts(accounts []map[string]any) (map[string]*currencyTotals, []map[string]any) {
+	totals := map[string]*currencyTotals{}
+	list := make([]map[string]any, 0, len(accounts))
+	for _, a := range accounts {
+		currency, _ := a["currency"].(string)
+		currency = strings.ToUpper(currency)
+		accType := fmt.Sprint(a["account_type"])
+		classification := fmt.Sprint(a["classification"])
+		excluded, _ := a["exclude_from_reports"].(bool)
+
+		list = append(list, map[string]any{
+			"name":                 fmt.Sprint(a["name"]),
+			"type":                 accType,
+			"classification":       classification,
+			"balance":              fmt.Sprint(a["balance"]),
+			"cash_balance":         fmt.Sprint(a["cash_balance"]),
+			"currency":             currency,
+			"exclude_from_reports": excluded,
+		})
+		if excluded {
+			continue
+		}
+
+		t := totals[currency]
+		if t == nil {
+			t = &currencyTotals{}
+			totals[currency] = t
+		}
+		bal, _ := amountFromAPIOK(a, "balance", "balance_cents")
+		switch classification {
+		case "asset":
+			t.Assets += bal
+			if accType == "depository" {
+				cash, ok := amountFromAPIOK(a, "cash_balance", "cash_balance_cents")
+				if !ok {
+					cash = bal
+				}
+				t.Cash += cash
+			}
+		case "liability":
+			t.Liabilities += bal
+		}
+	}
+	return totals, list
+}
+
 // monthlyTotals sums expense and income magnitudes of reportable
-// transactions (see api.FetchTransactionsWindow).
-func monthlyTotals(txs []models.Transaction) (spend, income float64) {
+// transactions (see api.FetchTransactionsWindow) held in currency. Amounts in
+// other currencies cannot be added without FX conversion and are skipped.
+func monthlyTotals(txs []models.Transaction, currency string) (spend, income float64) {
 	for _, tx := range txs {
+		if tx.Currency != "" && !strings.EqualFold(tx.Currency, currency) {
+			continue
+		}
 		switch tx.Classification {
 		case "expense":
 			spend += math.Abs(tx.Amount)
@@ -162,27 +239,12 @@ func monthlyTotals(txs []models.Transaction) (spend, income float64) {
 	return spend, income
 }
 
-func amountFromAPI(m map[string]any, formattedKey, centsKey string) (float64, error) {
-	amount, ok := amountFromAPIOK(m, formattedKey, centsKey)
-	if ok {
-		return amount, nil
-	}
-	return 0, fmt.Errorf("missing amount")
-}
-
+// amountFromAPIOK reads an amount in major units, preferring Sure's integer
+// minor-unit field (scaled by the currency's minor unit) over parsing the
+// locale-formatted string, which is ambiguous ("1.234,56 €").
 func amountFromAPIOK(m map[string]any, formattedKey, centsKey string) (float64, bool) {
-	switch v := m[centsKey].(type) {
-	case float64:
-		return v / 100.0, true
-	case int:
-		return float64(v) / 100.0, true
-	case int64:
-		return float64(v) / 100.0, true
-	case string:
-		var n float64
-		if _, err := fmt.Sscanf(v, "%f", &n); err == nil {
-			return n / 100.0, true
-		}
+	if minor, ok := decimalValue(m[centsKey]); ok {
+		return money.FromMinor(minor, fmt.Sprint(m["currency"])), true
 	}
 	text := fmt.Sprint(m[formattedKey])
 	if text == "" || text == "<nil>" {
@@ -190,6 +252,23 @@ func amountFromAPIOK(m map[string]any, formattedKey, centsKey string) (float64, 
 	}
 	amount, err := models.ParseAmount(text)
 	return amount, err == nil
+}
+
+// decimalValue reads a JSON number, or a decimal string as Rails renders
+// BigDecimal.
+func decimalValue(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
+		return f, err == nil
+	}
+	return 0, false
 }
 
 func formatMoneyValue(value float64, currency string) string {
