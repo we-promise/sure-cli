@@ -16,9 +16,18 @@ import (
 func TestErrorCodesComeFromTheCatalogue(t *testing.T) {
 	codeTakers := map[string]bool{"output.Fail": true, "errs.New": true, "errs.Wrap": true}
 	fset := token.NewFileSet()
-	err := filepath.WalkDir("../../..", func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+	const module = "../../.."
+	err := filepath.WalkDir(module, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
 			return err
+		}
+		// Hidden directories (.git, .claude worktrees) and testdata are not
+		// part of the module's code.
+		if d.IsDir() && path != module && (strings.HasPrefix(d.Name(), ".") || d.Name() == "testdata") {
+			return fs.SkipDir
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
 		}
 		f, err := parser.ParseFile(fset, path, nil, 0)
 		if err != nil {
