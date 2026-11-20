@@ -2,6 +2,7 @@ package root
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -11,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/we-promise/sure-cli/internal/api"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newFamilyExportsCmd() *cobra.Command {
@@ -65,8 +65,7 @@ func newFamilyExportsCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			if outFile == "" {
-				output.Fail("validation_failed", "out is required", nil)
-				return
+				failValidation(errors.New("--out is required"))
 			}
 			// Ctrl-C cancels the transfer instead of killing the process, so
 			// the partial temp file next to --out is removed.

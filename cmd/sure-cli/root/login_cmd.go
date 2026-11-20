@@ -41,16 +41,14 @@ func newLoginCmd() *cobra.Command {
 				passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
 				fmt.Println() // newline after hidden input
 				if err != nil {
-					output.Fail("password_read_failed", err.Error(), nil)
-					return
+					output.Fail(errs.CodePasswordReadFailed, err.Error(), nil)
 				}
 				password = string(passwordBytes)
 			} else {
 				reader := bufio.NewReader(os.Stdin)
 				input, err := reader.ReadString('\n')
 				if err != nil && input == "" {
-					output.Fail("password_read_failed", err.Error(), nil)
-					return
+					output.Fail(errs.CodePasswordReadFailed, err.Error(), nil)
 				}
 				password = strings.TrimRight(input, "\r\n")
 			}
@@ -67,13 +65,10 @@ func newLoginCmd() *cobra.Command {
 				Device:   config.Device(),
 			})
 			if err != nil {
-				ce := loginError(err, otp)
-				output.Fail(ce.Code, ce.Message, ce.Details)
-				return
+				fail(loginError(err, otp))
 			}
 			if res.AccessToken == "" {
-				output.Fail("login_failed", "login response returned empty access token", nil)
-				return
+				output.Fail(errs.CodeLoginFailed, "login response returned empty access token", nil)
 			}
 
 			config.SetAuthMode("bearer")
@@ -88,15 +83,14 @@ func newLoginCmd() *cobra.Command {
 			}
 			if err := config.Save(); err != nil {
 				output.Fail(errs.CodeConfigSaveFailed, err.Error(), nil)
-				return
 			}
 
-			_ = output.Print(format, output.Envelope{Data: map[string]any{
+			printEnvelope(map[string]any{
 				"token_type": res.TokenType,
 				"expires_in": res.ExpiresIn,
 				"created_at": res.CreatedAt,
 				"user":       res.User,
-			}})
+			}, nil)
 		},
 	}
 
@@ -117,5 +111,5 @@ func loginError(err error, otp string) *errs.CLIError {
 		}
 		return errs.New(errs.CodeMFARequired, msg).WithDetails(ce.Details)
 	}
-	return errs.New("login_failed", ce.Message).WithDetails(ce.Details)
+	return errs.New(errs.CodeLoginFailed, ce.Message).WithDetails(ce.Details)
 }

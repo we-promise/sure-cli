@@ -6,7 +6,6 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 type importPreflightOpts struct {
@@ -45,10 +44,7 @@ func newImportsPreflightCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := buildImportPreflightPayload(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-				return
-			}
+			failValidation(err)
 
 			client := api.New()
 			var res any

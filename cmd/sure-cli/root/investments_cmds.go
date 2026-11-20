@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newSecuritiesCmd() *cobra.Command {
@@ -180,10 +179,7 @@ func newRecurringTransactionsCreateCmd() *cobra.Command {
 		Short: "Create recurring transaction (default dry-run; use --apply to execute)",
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := buildRecurringCreatePayload(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-				return
-			}
+			failValidation(err)
 			dispatchWrite(o.Apply, "POST", "/api/v1/recurring_transactions", payload)
 		},
 	}
@@ -214,10 +210,7 @@ func newRecurringTransactionsUpdateCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := buildRecurringUpdatePayload(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-				return
-			}
+			failValidation(err)
 			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/recurring_transactions/%s", url.PathEscape(args[0])), payload)
 		},
 	}

@@ -10,7 +10,6 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newCategoriesCmd() *cobra.Command {
@@ -380,12 +379,6 @@ func newRuleRunsCmd() *cobra.Command {
 	return cmd
 }
 
-func failValidation(err error) {
-	if err != nil {
-		output.Fail("validation_failed", err.Error(), nil)
-	}
-}
-
 func addPagingFlags(cmd *cobra.Command, page, perPage *int) {
 	cmd.Flags().IntVar(page, "page", 1, "page number")
 	cmd.Flags().IntVar(perPage, "per-page", 25, "items per page (maps to per_page)")
@@ -453,7 +446,7 @@ func dispatchWrite(apply bool, method, path string, body any) {
 	case "DELETE":
 		printDelete(path)
 	default:
-		output.Fail("internal_error", "dispatchWrite: unsupported HTTP method "+method, nil)
+		panic("dispatchWrite: unsupported HTTP method " + method)
 	}
 }
 
@@ -465,10 +458,5 @@ func printDryRun(method, path string, body any) {
 	if body != nil {
 		request["body"] = body
 	}
-	if err := output.Print(format, output.Envelope{Data: map[string]any{
-		"dry_run": true,
-		"request": request,
-	}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-	}
+	printEnvelope(map[string]any{"dry_run": true, "request": request}, nil)
 }

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newChatsCmd() *cobra.Command {
@@ -90,10 +89,7 @@ func newChatsCreateCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			body, err := buildChatCreateBody(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-				return
-			}
+			failValidation(err)
 			dispatchWrite(o.Apply, "POST", "/api/v1/chats", body)
 		},
 	}
@@ -126,10 +122,7 @@ func newChatsUpdateCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			body, err := buildChatUpdateBody(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-				return
-			}
+			failValidation(err)
 			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/chats/%s", url.PathEscape(args[0])), body)
 		},
 	}
@@ -192,10 +185,7 @@ func newChatsMessagesCreateCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			body, err := buildMessageCreateBody(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-				return
-			}
+			failValidation(err)
 			dispatchWrite(o.Apply, "POST", fmt.Sprintf("/api/v1/chats/%s/messages", url.PathEscape(o.ChatID)), body)
 		},
 	}
@@ -225,10 +215,7 @@ func newChatsMessagesRetryCmd() *cobra.Command {
 		Short: "Retry the last assistant response in a chat (default dry-run; use --apply to execute)",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := validateMessageRetryOpts(o); err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-				return
-			}
+			failValidation(validateMessageRetryOpts(o))
 			dispatchWrite(o.Apply, "POST", fmt.Sprintf("/api/v1/chats/%s/messages/retry", url.PathEscape(o.ChatID)), map[string]any{})
 		},
 	}

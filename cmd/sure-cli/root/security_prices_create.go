@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/models"
 	"github.com/we-promise/sure-cli/internal/output"
 )
@@ -67,11 +68,9 @@ dates, price > 0 with at most 4 decimals, one currency per request.`,
 			if err != nil {
 				var rowErrs securityPriceRowErrors
 				if errors.As(err, &rowErrs) {
-					output.Fail("validation_failed", "Prices were not sent", map[string]any{"errors": rowErrs})
-					return
+					output.Fail(errs.CodeValidation, "Prices were not sent", map[string]any{"errors": rowErrs})
 				}
-				output.Fail("validation_failed", err.Error(), nil)
-				return
+				failValidation(err)
 			}
 			dispatchWrite(apply, "POST", "/api/v1/security_prices", payload)
 		},

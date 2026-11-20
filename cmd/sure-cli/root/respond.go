@@ -4,33 +4,49 @@ import (
 	"github.com/go-resty/resty/v2"
 
 	"github.com/we-promise/sure-cli/internal/api"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/output"
 )
 
-// respond is the canonical handler for an API call result. It maps transport
-// errors and >=400 HTTP responses to a typed CLIError envelope via
-// api.CheckResponse, and renders the success payload via output.Print
-// otherwise. Centralizing here closes the long-standing bug where every
-// print* helper passed 4xx/5xx response bodies through as Envelope.Data
-// instead of Envelope.Error.
+// respond renders one Sure response: a typed error envelope for a transport
+// error or an HTTP status >= 400, else data with meta.status set to the
+// response's status.
 func respond(r *resty.Response, err error, data any) {
 	checkResponse(r, err)
 	status := 0
 	if r != nil {
 		status = r.StatusCode()
 	}
-	if err := output.Print(format, output.Envelope{Data: data, Meta: &output.Meta{Status: status}}); err != nil {
-		output.Fail("output_failed", err.Error(), nil)
-	}
+	printEnvelope(data, &output.Meta{Status: status})
 }
 
 // checkResponse fails with a typed error envelope on transport error or any
 // >=400 HTTP status. On success it returns and the caller can use the
-// response. Call sites that need to do typed processing on the body (e.g.
-// status_cmd, transactions windowing, insights aggregation) use this instead
-// of respond, which always renders.
+// response. Commands that process the body before printing it use this
+// instead of respond.
 func checkResponse(r *resty.Response, err error) {
 	if ce := api.CheckResponse(r, err); ce != nil {
-		output.Fail(ce.Code, ce.Message, ce.Details)
+		fail(ce)
+	}
+}
+
+// printEnvelope prints data in the --format chosen. meta.status is set only
+// when data is a single Sure response; output computed from several calls
+// or locally leaves it out.
+func printEnvelope(data any, meta *output.Meta) {
+	if err := output.Print(format, output.Envelope{Data: data, Meta: meta}); err != nil {
+		fail(errs.Wrap(errs.CodeOutputFailed, err.Error(), err))
+	}
+}
+
+// fail prints ce as the error envelope and exits 1.
+func fail(ce *errs.CLIError) {
+	output.Fail(ce.Code, ce.Message, ce.Details)
+}
+
+// failValidation fails with validation_failed when err is not nil.
+func failValidation(err error) {
+	if err != nil {
+		output.Fail(errs.CodeValidation, err.Error(), nil)
 	}
 }

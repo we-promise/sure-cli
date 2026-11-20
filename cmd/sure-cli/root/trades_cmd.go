@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/models"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newTradesCmd() *cobra.Command {
@@ -213,10 +212,7 @@ type: share types, dividend, interest and fee return a trade; deposit and
 withdrawal return a transaction, or a transfer when --transfer-account-id is set.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := buildTradeCreatePayload(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-				return
-			}
+			failValidation(err)
 			dispatchWrite(o.Apply, "POST", "/api/v1/trades", payload)
 		},
 	}
@@ -244,10 +240,7 @@ func newTradesUpdateCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := buildTradeUpdatePayload(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-				return
-			}
+			failValidation(err)
 			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/trades/%s", url.PathEscape(args[0])), payload)
 		},
 	}

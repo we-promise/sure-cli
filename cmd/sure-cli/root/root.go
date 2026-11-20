@@ -10,7 +10,6 @@ import (
 
 	"github.com/we-promise/sure-cli/internal/config"
 	errs "github.com/we-promise/sure-cli/internal/errors"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 var (
@@ -135,8 +134,7 @@ func guardCommandGroups(cmd *cobra.Command) {
 }
 
 func failUnknownCommand(c *cobra.Command, args []string) {
-	ce := unknownCommandError(c, args)
-	output.Fail(ce.Code, ce.Message, ce.Details)
+	fail(unknownCommandError(c, args))
 }
 
 // unknownCommandError describes args[0] as an unknown subcommand of c, with
@@ -157,7 +155,7 @@ func unknownCommandError(c *cobra.Command, args []string) *errs.CLIError {
 			break
 		}
 	}
-	return errs.New("unknown_command", msg).WithDetails(details)
+	return errs.New(errs.CodeUnknownCommand, msg).WithDetails(details)
 }
 
 func Execute() {

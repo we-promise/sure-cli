@@ -39,14 +39,9 @@ func newInsightsListCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			res, status, ce := fetchInsights()
 			if ce != nil {
-				output.Fail(ce.Code, ce.Message, ce.Details)
+				fail(ce)
 			}
-			if err := output.Print(format, output.Envelope{Data: res, Meta: &output.Meta{
-				Schema: "docs/schemas/v1/insights_list.schema.json",
-				Status: status,
-			}}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			printEnvelope(res, &output.Meta{Schema: "docs/schemas/v1/insights_list.schema.json", Status: status})
 		},
 	}
 }
@@ -69,14 +64,9 @@ func newInsightsAckCmd() *cobra.Command {
 			}
 			status, ce := acknowledgeInsight(args[0])
 			if ce != nil {
-				output.Fail(ce.Code, ce.Message, ce.Details)
+				fail(ce)
 			}
-			if err := output.Print(format, output.Envelope{
-				Data: map[string]any{"id": args[0], "in_feed": false},
-				Meta: &output.Meta{Status: status},
-			}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			printEnvelope(map[string]any{"id": args[0], "in_feed": false}, &output.Meta{Status: status})
 		},
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "execute the request (otherwise dry-run)")

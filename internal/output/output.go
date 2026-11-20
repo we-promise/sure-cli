@@ -42,28 +42,3 @@ func Fail(code, message string, details any) {
 	fmt.Fprintln(os.Stderr, message)
 	os.Exit(1)
 }
-
-// FailErr is a convenience wrapper for structured errors
-func FailErr(err error) {
-	// Try to extract structured error info
-	type codeError interface {
-		Error() string
-	}
-	type detailError interface {
-		Details() map[string]any
-	}
-
-	code := "error"
-	message := err.Error()
-	var details any
-
-	// Check for our CLIError type (duck typing to avoid import cycle)
-	if ce, ok := err.(interface{ Code() string }); ok {
-		code = ce.Code()
-	}
-	if de, ok := err.(detailError); ok {
-		details = de.Details()
-	}
-
-	Fail(code, message, details)
-}

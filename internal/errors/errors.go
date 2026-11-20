@@ -12,31 +12,41 @@ import (
 	"unicode/utf8"
 )
 
-// Error codes for agent-friendly error handling
+// Error codes: every error.code the CLI emits is one of these.
 const (
-	CodeAuthRequired  = "auth_required"
-	CodeAuthInvalid   = "auth_invalid"
-	CodeAuthExpired   = "auth_expired"
-	CodeMFARequired   = "mfa_required"
-	CodeForbidden     = "forbidden"
-	CodeBadRequest    = "bad_request"
-	CodeConflict      = "conflict"
-	CodeNotFound      = "not_found"
+	CodeAuthRequired = "auth_required"
+	// CodeAuthInvalid means the credentials lack a scope (403 insufficient_scope).
+	CodeAuthInvalid = "auth_invalid"
+	CodeMFARequired = "mfa_required"
+	CodeForbidden   = "forbidden"
+	CodeBadRequest  = "bad_request"
+	CodeConflict    = "conflict"
+	CodeNotFound    = "not_found"
+	// CodeValidation covers both Sure's 422 and input the CLI rejects before
+	// sending anything.
 	CodeValidation    = "validation_failed"
 	CodeNetwork       = "network_error"
 	CodeTimeout       = "timeout"
 	CodeRateLimit     = "rate_limited"
 	CodeServerError   = "server_error"
 	CodeConfigMissing = "config_missing"
-	CodeConfigInvalid = "config_invalid"
-	CodeExportFailed  = "export_failed"
 	// CodeConfigSaveFailed means the config file could not be written.
 	CodeConfigSaveFailed = "config_save_failed"
+	CodeExportFailed     = "export_failed"
 	// CodeCanceled means the user interrupted the command (SIGINT/SIGTERM).
 	CodeCanceled = "canceled"
 	// CodeInvalidResponse means Sure answered 2xx with a body the CLI cannot read.
-	CodeInvalidResponse = "invalid_response"
-	CodeUnknown         = "unknown_error"
+	CodeInvalidResponse     = "invalid_response"
+	CodeLoginFailed         = "login_failed"
+	CodePasswordReadFailed  = "password_read_failed"
+	CodeRefreshTokenMissing = "missing_refresh_token"
+	CodeRefreshFailed       = "refresh_failed"
+	// CodeUnknownCommand means the command line names no command, or one
+	// that was removed.
+	CodeUnknownCommand = "unknown_command"
+	// CodeOutputFailed means the result could not be written to stdout.
+	CodeOutputFailed = "output_failed"
+	CodeUnknown      = "unknown_error"
 )
 
 // CLIError is a structured error with code and details for agent consumption.

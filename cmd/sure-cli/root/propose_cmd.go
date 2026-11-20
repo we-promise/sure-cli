@@ -41,7 +41,7 @@ func newProposeRulesCmd() *cobra.Command {
 
 			if !apply {
 				// Just show proposals
-				_ = output.Print(format, output.Envelope{Data: result, Meta: &output.Meta{Schema: "docs/schemas/v1/propose_rules.schema.json", Status: 200}})
+				printEnvelope(result, &output.Meta{Schema: "docs/schemas/v1/propose_rules.schema.json"})
 				return
 			}
 
@@ -107,14 +107,14 @@ func newProposeRulesCmd() *cobra.Command {
 				}
 			}
 
-			_ = output.Print(format, output.Envelope{Data: map[string]any{
+			printEnvelope(map[string]any{
 				"applied_count": len(applied),
 				"skipped_count": len(skipped),
 				"error_count":   len(errors),
 				"applied":       applied,
 				"skipped":       skipped,
 				"errors":        errors,
-			}, Meta: &output.Meta{Status: 200}})
+			}, nil)
 		},
 	}
 	cmd.Flags().IntVar(&months, "months", 3, "lookback months")

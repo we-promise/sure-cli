@@ -11,7 +11,6 @@ import (
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/models"
 	"github.com/we-promise/sure-cli/internal/money"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -133,7 +132,7 @@ func newStatusCmd() *cobra.Command {
 				"alert_count":   len(alerts),
 			}
 
-			_ = output.Print(format, output.Envelope{Data: status, Meta: &output.Meta{Status: 200}})
+			printEnvelope(status, nil)
 		},
 	}
 	return cmd

@@ -3,6 +3,7 @@ package root
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,8 +12,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/models"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newExportCmd() *cobra.Command {
@@ -34,6 +35,10 @@ func newExportTransactionsCmd() *cobra.Command {
 		Use:   "transactions",
 		Short: "Export transactions to CSV or JSON",
 		Run: func(cmd *cobra.Command, args []string) {
+			write, ok := transactionWriters[exportFormat]
+			if !ok {
+				failValidation(errors.New("--out-format must be csv or json"))
+			}
 			client := api.New()
 
 			if months <= 0 {
@@ -49,28 +54,16 @@ func newExportTransactionsCmd() *cobra.Command {
 				outFile = fmt.Sprintf("transactions_%s.%s", time.Now().Format(time.DateOnly), exportFormat)
 			}
 
-			switch exportFormat {
-			case "csv":
-				if err := exportTransactionsCSV(txs, outFile); err != nil {
-					output.Fail("export_failed", err.Error(), nil)
-					return
-				}
-			case "json":
-				if err := exportTransactionsJSON(txs, outFile); err != nil {
-					output.Fail("export_failed", err.Error(), nil)
-					return
-				}
-			default:
-				output.Fail("invalid_format", "out-format must be csv or json", nil)
-				return
+			if err := writeFile(outFile, func(w io.Writer) error { return write(w, txs) }); err != nil {
+				fail(errs.Wrap(errs.CodeExportFailed, err.Error(), err))
 			}
 
-			_ = output.Print(format, output.Envelope{Data: map[string]any{
+			printEnvelope(map[string]any{
 				"exported":   len(txs),
 				"file":       outFile,
 				"out_format": exportFormat,
 				"date_range": map[string]string{"start": start.Format(time.DateOnly), "end": end.Format(time.DateOnly)},
-			}, Meta: &output.Meta{Status: 200}})
+			}, nil)
 		},
 	}
 	cmd.Flags().IntVar(&months, "months", 12, "lookback months")
@@ -79,12 +72,10 @@ func newExportTransactionsCmd() *cobra.Command {
 	return cmd
 }
 
-func exportTransactionsCSV(txs []models.Transaction, path string) error {
-	return writeFile(path, func(w io.Writer) error { return writeTransactionsCSV(w, txs) })
-}
-
-func exportTransactionsJSON(txs []models.Transaction, path string) error {
-	return writeFile(path, func(w io.Writer) error { return writeTransactionsJSON(w, txs) })
+// transactionWriters maps each --out-format to the writer of its file.
+var transactionWriters = map[string]func(io.Writer, []models.Transaction) error{
+	"csv":  writeTransactionsCSV,
+	"json": writeTransactionsJSON,
 }
 
 // writeFile creates path and hands it to write. A failure to write or to

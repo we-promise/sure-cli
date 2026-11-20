@@ -78,9 +78,7 @@ func newImportSessionsCreateCmd() *cobra.Command {
 		Short: "Create an import session (default dry-run; use --apply to execute)",
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := buildImportSessionCreatePayload(o)
-			if err != nil {
-				failValidation(err)
-			}
+			failValidation(err)
 			dispatchWrite(o.Apply, "POST", "/api/v1/import_sessions", payload)
 		},
 	}
@@ -158,9 +156,7 @@ func newImportSessionsAddChunkCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			plan, err := buildChunkCreate(o)
-			if err != nil {
-				failValidation(err)
-			}
+			failValidation(err)
 			path := fmt.Sprintf("/api/v1/import_sessions/%s/chunks", url.PathEscape(args[0]))
 
 			if !o.Apply {

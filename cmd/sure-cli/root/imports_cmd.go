@@ -12,7 +12,6 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
-	"github.com/we-promise/sure-cli/internal/output"
 )
 
 type importCreateOpts struct {
@@ -112,21 +111,9 @@ func newImportsCreateCmd() *cobra.Command {
 		Short: "Create an import (default dry-run; use --apply to execute)",
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := buildImportCreatePayload(o)
-			if err != nil {
-				output.Fail("validation_failed", err.Error(), nil)
-			}
-
+			failValidation(err)
 			if !o.Apply {
-				if err := output.Print(format, output.Envelope{Data: map[string]any{
-					"dry_run": true,
-					"request": map[string]any{
-						"method": "POST",
-						"path":   "/api/v1/imports",
-						"body":   payload,
-					},
-				}}); err != nil {
-					output.Fail("output_failed", err.Error(), nil)
-				}
+				printDryRun("POST", "/api/v1/imports", payload)
 				return
 			}
 

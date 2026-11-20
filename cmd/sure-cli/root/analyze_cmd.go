@@ -12,6 +12,7 @@ import (
 
 	"github.com/we-promise/sure-cli/internal/analyze"
 	"github.com/we-promise/sure-cli/internal/api"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/money"
 	"github.com/we-promise/sure-cli/internal/output"
 )
@@ -55,7 +56,7 @@ func newAnalyzeLeaksCmd() *cobra.Command {
 			if cands == nil {
 				cands = []analyze.LeakCandidate{}
 			}
-			if err := output.Print(format, output.Envelope{Data: map[string]any{
+			printEnvelope(map[string]any{
 				"window": map[string]any{
 					"start": start.Format(time.DateOnly),
 					"end":   end.Format(time.DateOnly),
@@ -63,9 +64,7 @@ func newAnalyzeLeaksCmd() *cobra.Command {
 				},
 				"params":     params,
 				"candidates": cands,
-			}, Meta: &output.Meta{Schema: "docs/schemas/v1/analyze_leaks.schema.json"}}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			}, &output.Meta{Schema: "docs/schemas/v1/analyze_leaks.schema.json"})
 		},
 	}
 	cmd.Flags().IntVar(&months, "months", 3, "lookback months ending today (ignored with --start-date/--end-date)")
@@ -145,8 +144,7 @@ func newAnalyzeRunwayCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			if accountID == "" {
-				output.Fail("missing_account", "--account-id is required", nil)
-				return
+				failValidation(errors.New("--account-id is required"))
 			}
 			start, end, err := runwayWindow(windowDays, time.Now())
 			failValidation(err)
@@ -160,17 +158,14 @@ func newAnalyzeRunwayCmd() *cobra.Command {
 			checkResponse(r, err)
 			bal, ok := amountFromAPIOK(acc, "balance", "balance_cents")
 			if !ok {
-				output.Fail("account_balance_missing", "account has no usable balance", map[string]any{"account_id": accountID})
-				return
+				output.Fail(errs.CodeValidation, "account has no usable balance", map[string]any{"account_id": accountID})
 			}
 
 			txs, err := api.FetchTransactionsWindow(client, start, end, api.MaxPerPage)
 			checkResponse(nil, err)
 
 			out := analyze.ComputeRunway(bal, fmt.Sprint(acc["currency"]), txs, start, end)
-			if err := output.Print(format, output.Envelope{Data: out, Meta: &output.Meta{Schema: "docs/schemas/v1/analyze_runway.schema.json", Status: 200}}); err != nil {
-				output.Fail("output_failed", err.Error(), nil)
-			}
+			printEnvelope(out, &output.Meta{Schema: "docs/schemas/v1/analyze_runway.schema.json"})
 		},
 	}
 	cmd.Flags().StringVar(&accountID, "account-id", "", "cash account id")
