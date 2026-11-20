@@ -1,11 +1,13 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -250,21 +252,133 @@ func TestFetchAllPages_StopsOnEmptyPage(t *testing.T) {
 	}
 }
 
-func TestFetchAllPages_FollowsOnlyTheFirstTotalPages(t *testing.T) {
-	// total_pages growing on every page must not extend the walk.
+func TestFetchAllPages_FollowsTheLatestTotalPages(t *testing.T) {
+	// t6 lands at the head after page 1 is served: t4 is served twice and
+	// t2, which existed before the walk began, is pushed onto a third page.
+	ids := []string{"t5", "t4", "t3", "t2"}
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		rows := ids[min(2*(page-1), len(ids)):min(2*page, len(ids))]
+		body, _ := json.Marshal(map[string]any{"accounts": idRows(rows...), "pagination": map[string]any{"total_pages": (len(ids) + 1) / 2}})
+		if page == 1 {
+			ids = append([]string{"t6"}, ids...)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	})
+	items, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := itemIDs(items); fmt.Sprint(got) != "[t5 t4 t3 t2]" {
+		t.Fatalf("ids = %v, want every row that existed when the walk began", got)
+	}
+}
+
+func TestWalkPages_StopsAtTheCapWhenTotalPagesKeepsGrowing(t *testing.T) {
 	calls := 0
 	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(w, `{"accounts":[{"id":"a%d"}],"pagination":{"total_pages":%d}}`, calls, calls+1)
 	})
-	items, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
-	if err != nil || len(items) != 2 || calls != 2 {
-		t.Fatalf("items=%v calls=%d err=%v", items, calls, err)
+	_, err := walkPages(c, "/api/v1/accounts", nil, MaxPerPage, 5, func([]byte) error { return nil })
+	assertCode(t, err, errs.CodeTooManyPages)
+	if calls != 5 {
+		t.Fatalf("calls = %d, want 5 (the cap)", calls)
 	}
 }
 
-func TestFetchAllPages_ImplausiblePageCountIsInvalidResponse(t *testing.T) {
+func TestFetchAllPages_PageLargerThanPerPageIsInvalidResponse(t *testing.T) {
+	rows := make([]string, MaxPerPage+1)
+	for i := range rows {
+		rows[i] = fmt.Sprint(i)
+	}
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := json.Marshal(map[string]any{"accounts": idRows(rows...), "pagination": map[string]any{"total_pages": 1}})
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	})
+	_, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
+	assertCode(t, err, errs.CodeInvalidResponse)
+}
+
+func TestFetchAllPages_ListThatChangesMidWalkIsListChanged(t *testing.T) {
+	for name, pages := range map[string][2]string{
+		// A row deleted after page 1 pulls c back onto page 1, so c is
+		// never served.
+		"total_count moves": {
+			`{"accounts":[{"id":"a"},{"id":"b"}],"pagination":{"total_pages":2,"total_count":4}}`,
+			`{"accounts":[{"id":"d"}],"pagination":{"total_pages":2,"total_count":3}}`,
+		},
+		"rows read differ from total_count": {
+			`{"accounts":[{"id":"a"},{"id":"b"}],"pagination":{"total_pages":2,"total_count":4}}`,
+			`{"accounts":[{"id":"b"},{"id":"c"}],"pagination":{"total_pages":2,"total_count":4}}`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+				page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(pages[page-1]))
+			})
+			_, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
+			ce := assertCode(t, err, errs.CodeListChanged)
+			if ce.Details["hint"] == nil {
+				t.Fatalf("details = %v, want a hint to retry", ce.Details)
+			}
+		})
+	}
+}
+
+func TestFetchAllPages_FailsEarlyWhenTheRateLimitCannotCoverTheWalk(t *testing.T) {
+	for remaining, wantCalls := range map[string]int{"3": 1, "4": 5} {
+		calls := 0
+		c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-RateLimit-Limit", "100")
+			w.Header().Set("X-RateLimit-Remaining", remaining)
+			w.Header().Set("X-RateLimit-Reset", "1800")
+			_, _ = fmt.Fprintf(w, `{"accounts":[{"id":"a%d"}],"pagination":{"total_pages":5}}`, calls)
+		})
+		_, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
+		if calls != wantCalls {
+			t.Fatalf("remaining %s: calls = %d, want %d", remaining, calls, wantCalls)
+		}
+		if wantCalls == 5 {
+			if err != nil {
+				t.Fatalf("remaining %s: %v", remaining, err)
+			}
+			continue
+		}
+		ce := assertCode(t, err, errs.CodeRateLimit)
+		if ce.Details["needed_requests"] != 4 || ce.Details["hint"] == nil {
+			t.Fatalf("details = %v", ce.Details)
+		}
+		if rl, _ := ce.Details["rate_limit"].(map[string]string); rl["remaining"] != "3" || rl["reset"] != "1800" {
+			t.Fatalf("rate_limit = %v", ce.Details["rate_limit"])
+		}
+	}
+}
+
+func idRows(ids ...string) []map[string]string {
+	rows := make([]map[string]string, len(ids))
+	for i, id := range ids {
+		rows[i] = map[string]string{"id": id}
+	}
+	return rows
+}
+
+func itemIDs(items []map[string]any) []any {
+	ids := make([]any, len(items))
+	for i, it := range items {
+		ids[i] = it["id"]
+	}
+	return ids
+}
+
+func TestFetchAllPages_ImplausiblePageCountIsTooManyPages(t *testing.T) {
 	calls := 0
 	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
 		calls++
@@ -272,9 +386,9 @@ func TestFetchAllPages_ImplausiblePageCountIsInvalidResponse(t *testing.T) {
 		_, _ = w.Write([]byte(`{"accounts":[{"id":"a"}],"pagination":{"total_pages":2147483647}}`))
 	})
 	_, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
-	var ce *errs.CLIError
-	if !errors.As(err, &ce) || ce.Code != errs.CodeInvalidResponse {
-		t.Fatalf("err = %v, want invalid_response", err)
+	ce := assertCode(t, err, errs.CodeTooManyPages)
+	if ce.Details["total_pages"] != 2147483647 || ce.Details["hint"] == nil {
+		t.Fatalf("details = %v", ce.Details)
 	}
 	if calls != 1 {
 		t.Fatalf("calls = %d, want 1", calls)
