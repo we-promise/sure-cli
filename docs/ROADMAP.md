@@ -49,4 +49,4 @@ Future features and ideas for `sure-cli`.
 - AI chats CRUD + message send/retry via `chats` subtree.
 - Account-level AI enable via `auth enable-ai`.
 
-See [GitHub releases](https://github.com/we-promise/sure-cli/releases) for shipped features.
+See [CHANGELOG](../CHANGELOG.md) for unreleased changes and [GitHub releases](https://github.com/we-promise/sure-cli/releases) for shipped features.
