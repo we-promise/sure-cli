@@ -1,7 +1,13 @@
 package root
 
 import (
+	"encoding/json"
+	"fmt"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -167,6 +173,38 @@ func TestMonthlyTotals_UsesSignedAmounts(t *testing.T) {
 	}
 }
 
+func TestMonthlyTotals_ClassifiesAsSureReports(t *testing.T) {
+	// A loan payment is an expense whatever its sign, and so is an investment
+	// contribution under Sure's default family setting.
+	txs := []models.Transaction{
+		{Classification: "income", Kind: "loan_payment", Amount: 300, Currency: "EUR"},
+		{Classification: "income", Kind: "investment_contribution", Amount: 200, Currency: "EUR"},
+		{Classification: "income", Kind: "standard", Amount: 1000, Currency: "EUR"},
+	}
+	spend, income := monthlyTotals(txs, "EUR")
+	if spend != 500 || income != 1000 {
+		t.Fatalf("spend=%v income=%v, want 500 and 1000", spend, income)
+	}
+}
+
+func TestAmountFromAPIOK_FallbackReadsLocalizedText(t *testing.T) {
+	cases := []struct {
+		text, currency string
+		want           float64
+	}{
+		{"1.234,56 €", "EUR", 1234.56},
+		{"R$ 12.345,00", "BRL", 12345},
+		{"¥1,234", "JPY", 1234},
+		{"ر.س12.50", "SAR", 12.5},
+	}
+	for _, c := range cases {
+		got, ok := amountFromAPIOK(map[string]any{"balance": c.text, "currency": c.currency}, "balance", "balance_cents")
+		if !ok || got != c.want {
+			t.Errorf("%q: got %v ok=%v, want %v", c.text, got, ok, c.want)
+		}
+	}
+}
+
 func TestMonthlyTotals_SkipsOtherCurrencies(t *testing.T) {
 	txs := []models.Transaction{
 		{Classification: "expense", Amount: -10, Currency: "EUR"},
@@ -188,6 +226,12 @@ func TestFormatMoneyValue(t *testing.T) {
 		{123.45, "USD", "123.45 USD"},
 		{1.5, "EUR", "1.50 EUR"},
 		{0, "GBP", "0.00 GBP"},
+		// Each currency's own precision (Sure's default_precision).
+		{0.00012345, "BTC", "0.00012345 BTC"},
+		{0.5, "ETH", "0.50000000 ETH"},
+		{1.2346, "KWD", "1.235 KWD"},
+		{1234, "JPY", "1234 JPY"},
+		{1.5, "MGA", "1.5 MGA"},
 		// Empty / nil-stringified currency → no suffix (graceful for accounts
 		// whose response lacks a currency field).
 		{42.0, "", "42.00"},
@@ -306,5 +350,79 @@ func TestBudgetPacing_UninitializedHasNoBudgetedFigures(t *testing.T) {
 	}
 	if p["actual_spending"] != "500.00 EUR" {
 		t.Fatalf("actual_spending = %#v", p["actual_spending"])
+	}
+}
+
+// statusServer mirrors the endpoints `status` reads. Transactions are
+// filtered by the requested window, as Sure filters them.
+func statusServer(t *testing.T, transactions []map[string]any, seen *url.Values) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/balance_sheet":
+			fmt.Fprint(w, `{"currency":"EUR","net_worth":{"amount":"10000.0","currency":"EUR"},"assets":{"amount":"10000.0","currency":"EUR"},"liabilities":{"amount":"0.0","currency":"EUR"}}`)
+		case "/api/v1/accounts":
+			fmt.Fprint(w, `{"accounts":[
+			  {"id":"a1","name":"Checking","account_type":"depository","currency":"EUR","balance_cents":1000000,"cash_balance_cents":1000000,"classification":"asset","status":"active","exclude_from_reports":false},
+			  {"id":"a2","name":"Hidden","account_type":"depository","currency":"EUR","balance_cents":0,"cash_balance_cents":0,"classification":"asset","status":"active","exclude_from_reports":true}
+			],"pagination":{"page":1,"total_pages":1}}`)
+		case "/api/v1/transactions":
+			q := r.URL.Query()
+			*seen = q
+			var rows []map[string]any
+			for _, tx := range transactions {
+				d := tx["date"].(string)
+				if d >= q.Get("start_date") && d <= q.Get("end_date") {
+					rows = append(rows, tx)
+				}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"transactions": rows, "pagination": map[string]any{"page": 1, "total_pages": 1}})
+		case "/api/v1/recurring_transactions":
+			fmt.Fprint(w, `{"recurring_transactions":[],"pagination":{"page":1,"total_pages":1}}`)
+		case "/api/v1/budgets":
+			fmt.Fprint(w, `{"budgets":[],"pagination":{"page":1,"total_pages":1}}`)
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	apiClientFor(t, srv.URL)
+}
+
+func TestStatus_MonthlyWindowCountsAMonthlyBillOnce(t *testing.T) {
+	now := time.Now().UTC()
+	expense := func(id string, date time.Time, amount, account string) map[string]any {
+		return map[string]any{"id": id, "date": date.Format(time.DateOnly), "amount": "€" + amount, "amount_decimal": amount,
+			"currency": "EUR", "name": id, "classification": "expense", "kind": "standard", "account": map[string]any{"id": account, "name": account}}
+	}
+	var seen url.Values
+	statusServer(t, []map[string]any{
+		expense("rent-last-month", now.AddDate(0, -1, 0), "500", "a1"),
+		expense("rent-this-month", now, "500", "a1"),
+		expense("on-excluded-account", now, "300", "a2"),
+	}, &seen)
+
+	cmd := newStatusCmd()
+	cmd.SetArgs([]string{})
+	out := captureStdout(t, func() { _ = cmd.Execute() })
+	var env struct {
+		Data struct {
+			Monthly map[string]any   `json:"monthly"`
+			Alerts  []map[string]any `json:"alerts"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("decode %s: %v", out, err)
+	}
+	if got := env.Data.Monthly["expenses"]; got != "500.00 EUR" {
+		t.Errorf("monthly expenses = %v, want 500.00 EUR (window %s..%s)", got, seen.Get("start_date"), seen.Get("end_date"))
+	}
+	if want := lookbackStart(now, 1).Format(time.DateOnly); seen.Get("start_date") != want {
+		t.Errorf("start_date = %s, want %s", seen.Get("start_date"), want)
+	}
+	if env.Data.Alerts == nil || !strings.Contains(out, `"alerts": []`) {
+		t.Errorf("no alerts must render as [], got %s", out)
 	}
 }

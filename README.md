@@ -184,8 +184,13 @@ sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026
 # Status (financial snapshot)
 # net_worth comes from /api/v1/balance_sheet (family currency, FX-converted,
 # excludes exclude_from_reports accounts). accounts.by_currency totals assets,
-# liabilities, net worth and cash per native currency with the same exclusions.
+# liabilities, net worth and cash per native currency with the same exclusions;
+# unlike Sure it cannot leave out accounts a user has taken out of their
+# finances (include_in_finances is not in the API).
 # Runway uses depository cash in the family currency only.
+# monthly covers the last month, each day once (run on 2026-11-20: 2026-10-21..2026-11-20),
+# and counts transactions as described under "Amounts and Totals".
+# Amounts show the currency's own decimals (1234 JPY, 1.235 KWD, 0.00012345 BTC).
 # monthly.subscriptions is Sure's active recurring outflows (no income, no
 # transfers, no one-offs) priced per month from each series' cadence, in the
 # family currency; subscriptions_by_currency lists every currency apart.
@@ -326,13 +331,18 @@ Required device payload fields are stored under `auth.device.*` in config (defau
 
 Sure stores transaction amounts in the entry convention: positive is an outflow (expense), negative an inflow (income). The `amount` field is a localized display string rounded to the currency's precision (`"-€2,000.00"`).
 
-`status`, `analyze`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against a server without `amount_decimal` they fall back to parsing `amount` and take the sign from `classification`.
+`status`, `analyze`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against an older server they read `signed_amount_cents` (Sure #899) divided by the currency's minor unit (100 for EUR, 1 for JPY, 1000 for KWD), and only without it parse the localized `amount`, taking the sign from `classification`. The separators of that string depend on the server's locale, so the CLI infers them: a `.` or `,` that repeats, or one followed by exactly three digits in a currency without three decimals, groups thousands.
 
-Totals count what Sure's own income statement counts. These rows are skipped:
+Totals approximate Sure's income statement with what the API exposes. These rows are skipped:
 
 - `split_parent: true`: the split's children carry the amount, so counting the parent would count it twice.
 - `excluded: true`: the user left the row out of budgets and reports.
 - `kind` `funds_movement`, `cc_payment` or `one_time` (Sure's `BUDGET_EXCLUDED_KINDS`): transfers between your own accounts, card payments and one-offs.
+- Rows on accounts marked `exclude_from_reports`, or not draft or active (absent from `accounts list` without `--include-disabled`).
+
+`loan_payment` rows count as expenses whatever their sign, as in Sure. `investment_contribution` rows count as expenses too: that is Sure's default, but a family can turn off `investment_contributions_as_spending`, and the API does not say whether it did.
+
+Sure also leaves out rows the API gives a client no way to spot, so the CLI counts them: rows on tax-advantaged accounts (401k, IRA, ISA, HSA, ...), on accounts the user took out of their finances (`include_in_finances`), pending rows, and investment-account rows labelled Transfer, Sweep In, Sweep Out or Exchange. A family with any of these sees CLI totals that differ from Sure's.
 
 `export transactions` writes every row. Its `amount` column is the exact signed decimal; `kind`, `excluded` and `split_parent` columns tell you which rows to leave out of a sum.
 

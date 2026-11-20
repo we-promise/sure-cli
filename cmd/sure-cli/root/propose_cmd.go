@@ -33,7 +33,7 @@ func newProposeRulesCmd() *cobra.Command {
 				months = 3
 			}
 			end := time.Now().UTC()
-			start := end.AddDate(0, -months, 0)
+			start := lookbackStart(end, months)
 			txs, err := api.FetchTransactionsWindow(client, start, end, 500)
 			checkResponse(nil, err)
 
