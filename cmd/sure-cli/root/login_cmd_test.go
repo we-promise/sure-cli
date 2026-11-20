@@ -3,9 +3,11 @@ package root
 import (
 	stderrors "errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/we-promise/sure-cli/internal/api"
 	errs "github.com/we-promise/sure-cli/internal/errors"
 )
 
@@ -53,8 +55,56 @@ func TestLoginError_OtherFailuresKeepSureMessage(t *testing.T) {
 		t.Fatalf("details = %v", ce.Details)
 	}
 
-	plain := loginError(stderrors.New("boom"), "")
-	if plain.Code != "login_failed" || plain.Message != "boom" {
-		t.Fatalf("got %s %q", plain.Code, plain.Message)
+}
+
+// credentialFailures are the answers with which Sure turns down a login or
+// refresh: bad credentials, a disabled login, missing or rejected device info.
+var credentialFailures = []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity}
+
+// otherFailures keep their classified code: Sure was not reached, its answer
+// was lost or unreadable, or it asked the CLI to wait or look elsewhere.
+func otherFailures() map[string]error {
+	return map[string]error{
+		errs.CodeRedirectRefused: errs.New(errs.CodeRedirectRefused, "redirect").WithDetails(map[string]any{"status": http.StatusMovedPermanently}),
+		errs.CodeOutcomeUnknown:  errs.New(errs.CodeOutcomeUnknown, "lost"),
+		errs.CodeTimeout:         errs.New(errs.CodeTimeout, "slow"),
+		errs.CodeNetwork:         errs.New(errs.CodeNetwork, "refused"),
+		errs.CodeRateLimit:       errs.ClassifyHTTPError(http.StatusTooManyRequests, nil, http.Header{"Retry-After": {"60"}}),
+		errs.CodeServerError:     errs.ClassifyHTTPError(http.StatusBadGateway, nil, nil),
+		errs.CodeNotFound:        errs.ClassifyHTTPError(http.StatusNotFound, nil, nil),
+		errs.CodeInvalidResponse: errs.InvalidResponse(http.StatusOK, []byte("<html>"), nil, stderrors.New("html")),
+		errs.CodeValidation:      errs.New(errs.CodeValidation, "api_url"),
+		errs.CodeUnknown:         stderrors.New("boom"),
+	}
+}
+
+func TestCredentialErrors_KeepTheCodeOfAFailureToReachSure(t *testing.T) {
+	for code, err := range otherFailures() {
+		if got := loginError(err, ""); got.Code != code {
+			t.Errorf("login: %s became %s", code, got.Code)
+		}
+		if got := refreshError(err); got.Code != code {
+			t.Errorf("refresh: %s became %s", code, got.Code)
+		}
+	}
+	for _, status := range credentialFailures {
+		sure := errs.ClassifyHTTPError(status, []byte(`{"error":"Invalid email or password"}`), nil)
+		if got := loginError(sure, ""); got.Code != errs.CodeLoginFailed || got.Message != "Invalid email or password" || got.Details["status"] != status {
+			t.Errorf("login %d: got %s %q %v", status, got.Code, got.Message, got.Details)
+		}
+		if got := refreshError(sure); got.Code != errs.CodeRefreshFailed || got.Details["status"] != status {
+			t.Errorf("refresh %d: got %s %v", status, got.Code, got.Details)
+		}
+	}
+}
+
+func TestLogin_RedirectIsRedirectRefused(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://example.invalid"+r.URL.Path, http.StatusMovedPermanently)
+	}))
+	t.Cleanup(srv.Close)
+	_, err := apiClientFor(t, srv.URL).Login(api.LoginRequest{Email: "a", Password: "b"})
+	if got := loginError(err, ""); got.Code != errs.CodeRedirectRefused {
+		t.Fatalf("code = %s, want redirect_refused", got.Code)
 	}
 }

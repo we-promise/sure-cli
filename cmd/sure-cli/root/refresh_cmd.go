@@ -25,8 +25,7 @@ func newRefreshCmd() *cobra.Command {
 				Device:       config.Device(),
 			})
 			if err != nil {
-				ce := errs.From(err)
-				output.Fail(errs.CodeRefreshFailed, ce.Message, ce.Details)
+				fail(refreshError(err))
 			}
 			if res.AccessToken == "" {
 				output.Fail(errs.CodeRefreshFailed, "refresh response returned empty access token", nil)
@@ -43,4 +42,10 @@ func newRefreshCmd() *cobra.Command {
 	}
 
 	return cmd
+}
+
+// refreshError is refresh_failed when Sure rejects the refresh token, and
+// the classified error otherwise (see credentialError).
+func refreshError(err error) *errs.CLIError {
+	return credentialError(errs.CodeRefreshFailed, errs.From(err))
 }

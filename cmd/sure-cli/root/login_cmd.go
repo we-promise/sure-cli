@@ -3,6 +3,7 @@ package root
 import (
 	"bufio"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"syscall"
@@ -92,7 +93,8 @@ func newLoginCmd() *cobra.Command {
 
 // loginError maps a Login failure to the envelope error. Sure's MFA
 // challenge (401 mfa_required) keeps its own code with a hint about --otp;
-// everything else is login_failed with Sure's message and details.
+// Sure turning the credentials down is login_failed with Sure's message and
+// details; any other failure keeps its own code (see credentialError).
 func loginError(err error, otp string) *errs.CLIError {
 	ce := errs.From(err)
 	if ce.Code == errs.CodeMFARequired {
@@ -102,7 +104,19 @@ func loginError(err error, otp string) *errs.CLIError {
 		}
 		return errs.New(errs.CodeMFARequired, msg).WithDetails(ce.Details)
 	}
-	return errs.New(errs.CodeLoginFailed, ce.Message).WithDetails(ce.Details)
+	return credentialError(errs.CodeLoginFailed, ce)
+}
+
+// credentialError is ce as code when Sure answered that it rejects the
+// credentials or device a login or refresh sent (400, 401, 403, 422).
+// Anything else (a redirect, a timeout, a rate limit, a 5xx, an answer lost
+// or unreadable) keeps its own code, which says what to do about it.
+func credentialError(code string, ce *errs.CLIError) *errs.CLIError {
+	switch ce.Details["status"] {
+	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity:
+		return errs.New(code, ce.Message).WithDetails(ce.Details)
+	}
+	return ce
 }
 
 // requireWritableConfig fails before a call that makes Sure revoke the stored

@@ -39,6 +39,7 @@ The `heuristics.*` config keys are no longer read.
 - 403 is `forbidden`. `auth_invalid` now means only a missing scope (403 `insufficient_scope`). Before, every 403 was `auth_invalid`.
 - 400 is `bad_request` and 409 is `conflict`; both were `unknown_error`.
 - A 401 asking for a second factor is `mfa_required`, also from `login`.
+- `login` and `refresh` report `login_failed` and `refresh_failed` only when Sure turns the credentials down (400, 401, 403 or 422). Any other failure keeps its own code (`redirect_refused`, `timeout`, `network_error`, `outcome_unknown`, `rate_limited`, `server_error`, `not_found`, `invalid_response`, `validation_failed`); every failure was `login_failed` or `refresh_failed`.
 - `request_failed` is gone: `status`, `export`, `propose` and `analyze` report the classified code (`forbidden`, `not_found`, `server_error`, ...) with Sure's message and details.
 - `account_not_found` is gone: `analyze runway` reads the account by id and reports `not_found`.
 - `missing_account`, `invalid_format` and `account_balance_missing` are now `validation_failed`, as is every input the CLI rejects before sending a request.
