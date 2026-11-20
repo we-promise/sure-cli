@@ -308,7 +308,7 @@ func TestWalkPages_StopsAtTheCapWhenTotalPagesKeepsGrowing(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(w, `{"accounts":[{"id":"a%d"}],"pagination":{"total_pages":%d}}`, calls, calls+1)
 	})
-	_, err := walkPages(context.Background(), c, "/api/v1/accounts", nil, MaxPerPage, 5, func([]byte) error { return nil })
+	_, err := walkPages(context.Background(), c, "/api/v1/accounts", "accounts", nil, MaxPerPage, 5, func([]json.RawMessage) error { return nil })
 	assertCode(t, err, errs.CodeTooManyPages)
 	if calls != 5 {
 		t.Fatalf("calls = %d, want 5 (the cap)", calls)
@@ -457,9 +457,27 @@ func TestFetchAllPages_EmptyIndexIsAnEmptyList(t *testing.T) {
 	}
 }
 
-func TestUniqueByID_KeepsFirstAndRowsWithoutID(t *testing.T) {
-	got := uniqueByID([]string{"a", "", "b", "a", ""}, func(s string) string { return s })
-	if fmt.Sprint(got) != "[a  b ]" {
-		t.Fatalf("got %q", got)
+func TestWalkPages_VisitsEachIDOnceAndKeepsRowsWithoutID(t *testing.T) {
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("page") == "1" {
+			_, _ = w.Write([]byte(`{"accounts":[{"id":"a"},{"name":"no id"},{"id":"b"}],"pagination":{"total_pages":2}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"accounts":[{"id":"b"},{"name":"no id"},{"id":"c"}],"pagination":{"total_pages":2}}`))
+	})
+	var visited []string
+	_, err := walkPages(context.Background(), c, "/api/v1/accounts", "accounts", nil, MaxPerPage, 5, func(rows []json.RawMessage) error {
+		for _, row := range rows {
+			visited = append(visited, string(row))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `[{"id":"a"} {"name":"no id"} {"id":"b"} {"name":"no id"} {"id":"c"}]`
+	if fmt.Sprint(visited) != want {
+		t.Fatalf("visited %v, want %s", visited, want)
 	}
 }

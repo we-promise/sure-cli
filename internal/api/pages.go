@@ -24,8 +24,10 @@ const MaxPages = 1000
 const StreamMaxPages = 10000
 
 // walkPages GETs path, cancelled with ctx, one page at a time with q plus
-// page/per_page, handing each response body to visit, for at most maxPages
-// pages. It walks up to the total_pages the latest page reports, so rows
+// page/per_page, for at most maxPages pages, and hands visit the rows of the
+// page's key list it has not seen before: each id once (offset paging over a
+// list that gains rows mid-walk serves a row twice), rows without an id
+// always. It walks up to the total_pages the latest page reports, so rows
 // pushed onto a new page by an insert mid-walk are still read, and stops at a
 // page with no rows. It stops at the first transport error, HTTP status >= 400
 // or visit error and returns that response so callers can report it as usual.
@@ -38,7 +40,7 @@ const StreamMaxPages = 10000
 // overflow :last_page), fewer rows read, each id once, than the first
 // total_count. A row inserted mid-walk only makes a row repeat, which is
 // dropped.
-func walkPages(ctx context.Context, c *Client, path string, q url.Values, perPage, maxPages int, visit func(body []byte) error) (*resty.Response, error) {
+func walkPages(ctx context.Context, c *Client, path, key string, q url.Values, perPage, maxPages int, visit func(rows []json.RawMessage) error) (*resty.Response, error) {
 	query := url.Values{}
 	for k, v := range q {
 		query[k] = v
@@ -57,12 +59,28 @@ func walkPages(ctx context.Context, c *Client, path string, q url.Values, perPag
 		if err := json.Unmarshal(r.Body(), &body); err != nil {
 			return r, errs.InvalidResponse(r.StatusCode(), r.Body(), r.Header(), err)
 		}
-		rows := pageRows(body)
+		var rows []json.RawMessage
+		if raw, ok := body[key]; ok {
+			if err := json.Unmarshal(raw, &rows); err != nil {
+				return r, errs.Wrap(errs.CodeInvalidResponse, fmt.Sprintf("unreadable %q list from %s", key, path), err)
+			}
+		}
 		if len(rows) > perPage {
 			return r, errs.New(errs.CodeInvalidResponse, fmt.Sprintf("%s served %d rows on a page of %d", path, len(rows), perPage)).
 				WithDetails(map[string]any{"status": r.StatusCode(), "rows": len(rows), "per_page": perPage})
 		}
-		if err := visit(r.Body()); err != nil {
+		fresh := rows[:0:0]
+		for _, row := range rows {
+			if id := rowID(row); id != "" {
+				if seen[id] {
+					continue
+				}
+				seen[id] = true
+			}
+			fresh = append(fresh, row)
+		}
+		read += len(fresh)
+		if err := visit(fresh); err != nil {
 			return r, err
 		}
 		var meta struct {
@@ -75,15 +93,6 @@ func walkPages(ctx context.Context, c *Client, path string, q url.Values, perPag
 		}
 		if err := json.Unmarshal(raw, &meta); err != nil {
 			return r, errs.Wrap(errs.CodeInvalidResponse, "unreadable pagination in "+path, err)
-		}
-		for _, row := range rows {
-			if id := rowID(row); id != "" {
-				if seen[id] {
-					continue
-				}
-				seen[id] = true
-			}
-			read++
 		}
 		if meta.TotalCount != nil {
 			if *meta.TotalCount < lastTotal {
@@ -108,19 +117,6 @@ func walkPages(ctx context.Context, c *Client, path string, q url.Values, perPag
 			return r, err
 		}
 	}
-}
-
-// pageRows returns the rows of a Sure index body: its top-level lists, of
-// which there is one (e.g. "accounts") beside pagination.
-func pageRows(body map[string]json.RawMessage) []json.RawMessage {
-	var all []json.RawMessage
-	for _, raw := range body {
-		var rows []json.RawMessage
-		if json.Unmarshal(raw, &rows) == nil {
-			all = append(all, rows...)
-		}
-	}
-	return all
 }
 
 // rowID returns a row's id as raw JSON, or "" when it has none.
@@ -152,24 +148,6 @@ func checkRateBudget(r *resty.Response, path string, pagesLeft int) *errs.CLIErr
 		WithDetails(map[string]any{"needed_requests": pagesLeft, "rate_limit": rl, "hint": "wait for the reset, narrow the query, or use family-exports for a full export"})
 }
 
-// uniqueByID keeps the first item for each id. Offset paging over a list
-// that gains rows mid-walk serves a row twice; items with no id are kept.
-func uniqueByID[T any](items []T, id func(T) string) []T {
-	seen := make(map[string]bool, len(items))
-	out := items[:0]
-	for _, it := range items {
-		k := id(it)
-		if k != "" {
-			if seen[k] {
-				continue
-			}
-			seen[k] = true
-		}
-		out = append(out, it)
-	}
-	return out
-}
-
 // FetchAllPages walks a paginated Sure index endpoint at MaxPerPage and
 // returns every element of the `key` array across all pages, each id once,
 // as an empty (never nil) slice when there are none.
@@ -180,27 +158,20 @@ func uniqueByID[T any](items []T, id func(T) string) []T {
 // CLIError, for bodies that cannot be decoded.
 func FetchAllPages(c *Client, path string, q url.Values, key string) ([]map[string]any, *resty.Response, error) {
 	all := []map[string]any{}
-	r, err := walkPages(context.Background(), c, path, q, MaxPerPage, MaxPages, func(body []byte) error {
-		var page map[string]json.RawMessage
-		if err := json.Unmarshal(body, &page); err != nil {
-			return errs.Wrap(errs.CodeInvalidResponse, "unreadable response from "+path, err)
-		}
-		var items []map[string]any
-		if raw, ok := page[key]; ok {
-			if err := json.Unmarshal(raw, &items); err != nil {
-				return errs.Wrap(errs.CodeInvalidResponse, fmt.Sprintf("unreadable %q list from %s", key, path), err)
+	r, err := walkPages(context.Background(), c, path, key, q, MaxPerPage, MaxPages, func(rows []json.RawMessage) error {
+		for _, row := range rows {
+			var item map[string]any
+			if err := json.Unmarshal(row, &item); err != nil {
+				return errs.Wrap(errs.CodeInvalidResponse, fmt.Sprintf("unreadable %q row from %s", key, path), err)
 			}
+			all = append(all, item)
 		}
-		all = append(all, items...)
 		return nil
 	})
 	if err != nil || r == nil || r.StatusCode() >= 400 {
 		return nil, r, err
 	}
-	return uniqueByID(all, func(m map[string]any) string {
-		id, _ := m["id"].(string)
-		return id
-	}), r, nil
+	return all, r, nil
 }
 
 // AccountsQuery builds the filters accepted by GET /api/v1/accounts.

@@ -66,22 +66,15 @@ func EachTransactionInWindow(ctx context.Context, client *Client, start, end tim
 	q.Set("start_date", start.Format(time.DateOnly))
 	q.Set("end_date", end.Format(time.DateOnly))
 
-	seen := map[string]bool{}
-	r, err := walkPages(ctx, client, "/api/v1/transactions", q, MaxPerPage, maxPages, func(body []byte) error {
-		var res transactionsPage
-		if err := json.Unmarshal(body, &res); err != nil {
-			return errs.Wrap(errs.CodeInvalidResponse, "unreadable transactions page", err)
-		}
-		for _, item := range res.Transactions {
+	r, err := walkPages(ctx, client, "/api/v1/transactions", "transactions", q, MaxPerPage, maxPages, func(rows []json.RawMessage) error {
+		for _, row := range rows {
+			var item apiTransaction
+			if err := json.Unmarshal(row, &item); err != nil {
+				return errs.Wrap(errs.CodeInvalidResponse, "unreadable transactions page", err)
+			}
 			tx, err := item.toModel()
 			if err != nil {
 				return errs.Wrap(errs.CodeInvalidResponse, fmt.Sprintf("transaction %s has an unreadable amount", item.ID), err)
-			}
-			if tx.ID != "" {
-				if seen[tx.ID] {
-					continue
-				}
-				seen[tx.ID] = true
 			}
 			if err := visit(tx); err != nil {
 				return err
@@ -95,12 +88,8 @@ func EachTransactionInWindow(ctx context.Context, client *Client, start, end tim
 	return nil
 }
 
-// transactionsPage is the subset of GET /api/v1/transactions the CLI reads,
-// as rendered by Sure's api/v1/transactions/_transaction.json.jbuilder.
-type transactionsPage struct {
-	Transactions []apiTransaction `json:"transactions"`
-}
-
+// apiTransaction is the subset of a GET /api/v1/transactions row the CLI
+// reads, as rendered by Sure's api/v1/transactions/_transaction.json.jbuilder.
 type apiTransaction struct {
 	ID                string       `json:"id"`
 	EntryID           string       `json:"entry_id"`
