@@ -11,8 +11,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/we-promise/sure-cli/internal/models"
 )
 
 func TestAmountFromAPIOK_CentsPreferredOverFormatted(t *testing.T) {
@@ -162,32 +160,6 @@ func TestAmountFromAPIOK_BothMissing(t *testing.T) {
 	}
 }
 
-func TestMonthlyTotals_UsesSignedAmounts(t *testing.T) {
-	txs := []models.Transaction{
-		{Classification: "expense", Amount: -12.25, Currency: "EUR"},
-		{Classification: "expense", Amount: -0.75},
-		{Classification: "income", Amount: 2000.5, Currency: "eur"},
-	}
-	spend, income := monthlyTotals(txs, "EUR")
-	if spend != 13 || income != 2000.5 {
-		t.Fatalf("spend=%v income=%v, want 13 and 2000.5", spend, income)
-	}
-}
-
-func TestMonthlyTotals_ClassifiesAsSureReports(t *testing.T) {
-	// A loan payment is an expense whatever its sign, and so is an investment
-	// contribution under Sure's default family setting.
-	txs := []models.Transaction{
-		{Classification: "income", Kind: "loan_payment", Amount: 300, Currency: "EUR"},
-		{Classification: "income", Kind: "investment_contribution", Amount: 200, Currency: "EUR"},
-		{Classification: "income", Kind: "standard", Amount: 1000, Currency: "EUR"},
-	}
-	spend, income := monthlyTotals(txs, "EUR")
-	if spend != 500 || income != 1000 {
-		t.Fatalf("spend=%v income=%v, want 500 and 1000", spend, income)
-	}
-}
-
 func TestAmountFromAPIOK_FallbackReadsLocalizedText(t *testing.T) {
 	cases := []struct {
 		text, currency string
@@ -203,18 +175,6 @@ func TestAmountFromAPIOK_FallbackReadsLocalizedText(t *testing.T) {
 		if !ok || got != c.want {
 			t.Errorf("%q: got %v ok=%v, want %v", c.text, got, ok, c.want)
 		}
-	}
-}
-
-func TestMonthlyTotals_SkipsOtherCurrencies(t *testing.T) {
-	txs := []models.Transaction{
-		{Classification: "expense", Amount: -10, Currency: "EUR"},
-		{Classification: "expense", Amount: -5000, Currency: "JPY"},
-		{Classification: "income", Amount: 300, Currency: "USD"},
-	}
-	spend, income := monthlyTotals(txs, "EUR")
-	if spend != 10 || income != 0 {
-		t.Fatalf("spend=%v income=%v, want 10 and 0", spend, income)
 	}
 }
 
@@ -355,9 +315,10 @@ func TestBudgetPacing_UninitializedHasNoBudgetedFigures(t *testing.T) {
 }
 
 // statusServer mirrors the endpoints `status` reads, for a family in UTC.
-// Transactions are filtered by the requested window, as Sure filters them.
-// It returns how many requests each path got.
-func statusServer(t *testing.T, transactions []map[string]any, seen *url.Values) func(path string) int {
+// GET /api/v1/cash_flow answers with cashFlowStatus and cashFlowBody, and
+// its query lands in seen. It returns the server URL and how many requests
+// each path got.
+func statusServer(t *testing.T, cashFlowStatus int, cashFlowBody string, seen *url.Values) (string, func(path string) int) {
 	t.Helper()
 	var mu sync.Mutex
 	hits := map[string]int{}
@@ -376,17 +337,12 @@ func statusServer(t *testing.T, transactions []map[string]any, seen *url.Values)
 			  {"id":"a1","name":"Checking","account_type":"depository","currency":"EUR","balance_cents":1000000,"cash_balance_cents":1000000,"classification":"asset","status":"active","exclude_from_reports":false},
 			  {"id":"a2","name":"Hidden","account_type":"depository","currency":"EUR","balance_cents":0,"cash_balance_cents":0,"classification":"asset","status":"active","exclude_from_reports":true}
 			],"pagination":{"page":1,"total_pages":1}}`)
-		case "/api/v1/transactions":
-			q := r.URL.Query()
-			*seen = q
-			var rows []map[string]any
-			for _, tx := range transactions {
-				d := tx["date"].(string)
-				if d >= q.Get("start_date") && d <= q.Get("end_date") {
-					rows = append(rows, tx)
-				}
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"transactions": rows, "pagination": map[string]any{"page": 1, "total_pages": 1}})
+		case "/api/v1/cash_flow":
+			mu.Lock()
+			*seen = r.URL.Query()
+			mu.Unlock()
+			w.WriteHeader(cashFlowStatus)
+			fmt.Fprint(w, cashFlowBody)
 		case "/api/v1/recurring_transactions":
 			fmt.Fprint(w, `{"recurring_transactions":[],"pagination":{"page":1,"total_pages":1}}`)
 		case "/api/v1/budgets":
@@ -398,25 +354,27 @@ func statusServer(t *testing.T, transactions []map[string]any, seen *url.Values)
 	}))
 	t.Cleanup(srv.Close)
 	apiClientFor(t, srv.URL)
-	return func(path string) int {
+	return srv.URL, func(path string) int {
 		mu.Lock()
 		defer mu.Unlock()
 		return hits[path]
 	}
 }
 
-func TestStatus_MonthlyWindowCountsAMonthlyBillOnce(t *testing.T) {
-	now := time.Now().UTC()
-	expense := func(id string, date time.Time, amount, account string) map[string]any {
-		return map[string]any{"id": id, "date": date.Format(time.DateOnly), "amount": "€" + amount, "amount_decimal": amount,
-			"currency": "EUR", "name": id, "classification": "expense", "kind": "standard", "account": map[string]any{"id": account, "name": account}}
-	}
+// sankeyCashFlow is GET /api/v1/cash_flow?view=sankey as
+// IncomeStatement::CashFlowGraph renders it, nodes and links left out.
+func sankeyCashFlow(start, end, income, spending string) string {
+	return fmt.Sprintf(`{"as_of":%[2]q,"time_zone":"UTC","currency":"EUR","period":{"start_date":%[1]q,"end_date":%[2]q},
+	  "sankey":{"basis":"net_by_category","income":%[3]q,"spending":%[4]q,"invested":"0.0","net_savings":"0.0","nodes":[],"links":[]}}`,
+		start, end, income, spending)
+}
+
+func TestStatus_MonthlyTotalsComeFromSureCashFlow(t *testing.T) {
+	end := today(time.Now().UTC())
+	start := lookbackStart(end, 1)
 	var seen url.Values
-	hits := statusServer(t, []map[string]any{
-		expense("rent-last-month", now.AddDate(0, -1, 0), "500", "a1"),
-		expense("rent-this-month", now, "500", "a1"),
-		expense("on-excluded-account", now, "300", "a2"),
-	}, &seen)
+	_, hits := statusServer(t, http.StatusOK,
+		sankeyCashFlow(start.Format(time.DateOnly), end.Format(time.DateOnly), "3000.5", "4000.25"), &seen)
 
 	cmd := newStatusCmd()
 	cmd.SetArgs([]string{})
@@ -424,22 +382,84 @@ func TestStatus_MonthlyWindowCountsAMonthlyBillOnce(t *testing.T) {
 	var env struct {
 		Data struct {
 			Monthly map[string]any   `json:"monthly"`
+			Runway  map[string]any   `json:"runway"`
 			Alerts  []map[string]any `json:"alerts"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal([]byte(out), &env); err != nil {
 		t.Fatalf("decode %s: %v", out, err)
 	}
-	if got := env.Data.Monthly["expenses"]; got != "500.00 EUR" {
-		t.Errorf("monthly expenses = %v, want 500.00 EUR (window %s..%s)", got, seen.Get("start_date"), seen.Get("end_date"))
+
+	want := url.Values{"view": {"sankey"}, "start_date": {start.Format(time.DateOnly)}, "end_date": {end.Format(time.DateOnly)}}
+	if seen.Encode() != want.Encode() {
+		t.Errorf("cash_flow query = %s, want %s", seen.Encode(), want.Encode())
 	}
-	if want := lookbackStart(now, 1).Format(time.DateOnly); seen.Get("start_date") != want {
-		t.Errorf("start_date = %s, want %s", seen.Get("start_date"), want)
+	for key, want := range map[string]string{"income": "3000.50 EUR", "expenses": "4000.25 EUR", "net": "-999.75 EUR"} {
+		if got := env.Data.Monthly[key]; got != want {
+			t.Errorf("monthly.%s = %v, want %s", key, got, want)
+		}
 	}
-	if env.Data.Alerts == nil || !strings.Contains(out, `"alerts": []`) {
-		t.Errorf("no alerts must render as [], got %s", out)
+	if got := env.Data.Monthly["period"]; fmt.Sprint(got) != fmt.Sprint(map[string]any{"start_date": start.Format(time.DateOnly), "end_date": end.Format(time.DateOnly)}) {
+		t.Errorf("monthly.period = %v, want Sure's period", got)
+	}
+	if got, want := env.Data.Runway["months"], 10000/4000.25; math.Abs(got.(float64)-want) > 1e-9 {
+		t.Errorf("runway.months = %v, want %v", got, want)
+	}
+	if len(env.Data.Alerts) != 2 || env.Data.Alerts[0]["type"] != "high_burn" || env.Data.Alerts[1]["type"] != "low_runway" {
+		t.Errorf("alerts = %v, want high_burn and low_runway", env.Data.Alerts)
+	}
+	if n := hits("/api/v1/transactions"); n != 0 {
+		t.Errorf("read transactions %d times, want 0: Sure computes the totals", n)
 	}
 	if n := hits("/api/v1/accounts"); n != 1 {
 		t.Errorf("read the accounts %d times, want once", n)
+	}
+}
+
+func TestStatus_NoAlertsRenderAsEmptyList(t *testing.T) {
+	var seen url.Values
+	statusServer(t, http.StatusOK, sankeyCashFlow("2026-10-21", "2026-11-20", "5000", "1000"), &seen)
+	cmd := newStatusCmd()
+	cmd.SetArgs([]string{})
+	out := captureStdout(t, func() { _ = cmd.Execute() })
+	if !strings.Contains(out, `"alerts": []`) {
+		t.Errorf("no alerts must render as [], got %s", out)
+	}
+}
+
+func TestStatus_CashFlowFailures(t *testing.T) {
+	for name, tc := range map[string]struct {
+		status       int
+		body         string
+		wantCode     string
+		wantHintPart string
+	}{
+		"older Sure without the endpoint": {http.StatusNotFound, `{"error":"not_found","message":"Not found"}`, "not_found", "September 2026"},
+		"totals missing":                  {http.StatusOK, `{"currency":"EUR","sankey":{}}`, "invalid_response", ""},
+		"totals not decimals":             {http.StatusOK, `{"currency":"EUR","sankey":{"income":"lots","spending":"1"}}`, "invalid_response", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var seen url.Values
+			srvURL, _ := statusServer(t, tc.status, tc.body, &seen)
+			child, stdout := startCLI(t, "--config", apiKeyConfig(t, t.TempDir(), srvURL), "status")
+			if err := child.Wait(); err == nil {
+				t.Fatalf("status exited 0; stdout %s", stdout)
+			}
+			var env struct {
+				Error struct {
+					Code    string         `json:"code"`
+					Details map[string]any `json:"details"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+				t.Fatalf("decode %s: %v", stdout, err)
+			}
+			if env.Error.Code != tc.wantCode {
+				t.Errorf("code = %q, want %q (%s)", env.Error.Code, tc.wantCode, stdout)
+			}
+			if hint := fmt.Sprint(env.Error.Details["hint"]); !strings.Contains(hint, tc.wantHintPart) {
+				t.Errorf("hint = %q, want it to mention %q", hint, tc.wantHintPart)
+			}
+		})
 	}
 }

@@ -3,12 +3,14 @@ package root
 import (
 	"fmt"
 	"math"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/models"
 	"github.com/we-promise/sure-cli/internal/money"
 )
@@ -49,15 +51,11 @@ func newStatusCmd() *cobra.Command {
 				}
 			}
 
-			// 3. Reportable transactions of the last month, each day once,
-			// up to the family's today.
-			now := familyClock(client)()
-			end := today(now)
-			start := lookbackStart(end, 1)
-			txs, err := api.FetchReportableTransactionsWindow(client, start, end, api.ReportableAccountIDs(accounts))
-			checkResponse(nil, err)
-
-			monthlySpend, monthlyIncome := monthlyTotals(txs, primaryCurrency)
+			// 3. Income and spending over the last month up to the family's
+			// today, as Sure's income statement computes them.
+			end := today(familyClock(client)())
+			flow := fetchCashFlow(client, lookbackStart(end, 1), end)
+			monthlySpend, monthlyIncome := flow.Spending, flow.Income
 
 			// 4. Calculate runway if we have cash balance
 			var runwayMonths float64
@@ -94,11 +92,11 @@ func newStatusCmd() *cobra.Command {
 			}
 
 			// 7. Pacing of each current budget, in that budget's currency.
-			budgets, r, err := api.FetchCurrentBudgets(client, now)
+			budgets, r, err := api.FetchCurrentBudgets(client, end)
 			checkResponse(r, err)
 			pacing := make([]map[string]any, 0, len(budgets))
 			for _, b := range budgets {
-				pacing = append(pacing, budgetPacing(b, now))
+				pacing = append(pacing, budgetPacing(b, end))
 			}
 
 			status := map[string]any{
@@ -116,6 +114,7 @@ func newStatusCmd() *cobra.Command {
 					"list":         accountSummaries,
 				},
 				"monthly": map[string]any{
+					"period":        flow.Period,
 					"income":        formatMoneyValue(monthlyIncome, primaryCurrency),
 					"expenses":      formatMoneyValue(monthlySpend, primaryCurrency),
 					"net":           formatMoneyValue(monthlyIncome-monthlySpend, primaryCurrency),
@@ -219,23 +218,40 @@ func summarizeAccounts(accounts []map[string]any) (map[string]*currencyTotals, [
 	return totals, list
 }
 
-// monthlyTotals sums expense and income magnitudes of reportable
-// transactions (see api.FetchTransactionsWindow) held in currency, classified
-// as Sure's income statement classifies them (ReportClassification). Amounts
-// in other currencies cannot be added without FX conversion and are skipped.
-func monthlyTotals(txs []models.Transaction, currency string) (spend, income float64) {
-	for _, tx := range txs {
-		if tx.Currency != "" && !strings.EqualFold(tx.Currency, currency) {
-			continue
+// cashFlow is the income and spending GET /api/v1/cash_flow?view=sankey
+// reports for a period, in the family currency.
+type cashFlow struct {
+	Period           map[string]any
+	Income, Spending float64
+}
+
+// fetchCashFlow reads Sure's income and spending over [start, end]: FX
+// converted to the family currency, scoped to the accounts the user counts in
+// their finances, and netted per category, so a refund lowers its category's
+// spending (IncomeStatement::Sankey). It fails on a server older than the
+// endpoint.
+func fetchCashFlow(client *api.Client, start, end time.Time) cashFlow {
+	q := url.Values{"view": {"sankey"}, "start_date": {start.Format(time.DateOnly)}, "end_date": {end.Format(time.DateOnly)}}
+	var res map[string]any
+	r, err := client.Get(pathWithQuery("/api/v1/cash_flow", q), &res)
+	if ce := api.CheckResponse(r, err); ce != nil {
+		if ce.Code == errs.CodeNotFound {
+			if ce.Details == nil {
+				ce.Details = map[string]any{}
+			}
+			ce.Details["hint"] = "status reads GET /api/v1/cash_flow, added to Sure in September 2026; upgrade the server"
 		}
-		switch tx.ReportClassification() {
-		case "expense":
-			spend += math.Abs(tx.Amount)
-		case "income":
-			income += math.Abs(tx.Amount)
-		}
+		fail(ce)
 	}
-	return spend, income
+	sankey, _ := res["sankey"].(map[string]any)
+	income, okIncome := decimalValue(sankey["income"])
+	spending, okSpending := decimalValue(sankey["spending"])
+	if !okIncome || !okSpending {
+		fail(errs.New(errs.CodeInvalidResponse, "cash_flow has no decimal sankey.income and sankey.spending").
+			WithDetails(map[string]any{"status": r.StatusCode()}))
+	}
+	period, _ := res["period"].(map[string]any)
+	return cashFlow{Period: period, Income: income, Spending: spending}
 }
 
 // recurringMonthlyOutflows totals active recurring outflows per currency as a

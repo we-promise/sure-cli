@@ -216,8 +216,12 @@ sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026
 # unlike Sure it cannot leave out accounts a user has taken out of their
 # finances (include_in_finances is not in the API).
 # Runway uses depository cash in the family currency only.
-# monthly covers the last month, each day once (run on 2026-11-20: 2026-10-21..2026-11-20),
-# and counts transactions as described under "Amounts and Totals".
+# monthly is Sure's own income and spending for the last month, each day once
+# (run on 2026-11-20: 2026-10-21..2026-11-20, echoed in monthly.period), from
+# GET /api/v1/cash_flow?view=sankey: FX-converted to the family currency and
+# netted per category, so a refund lowers its category's spending. Runway and
+# the burn alerts use these figures. A server older than that endpoint
+# (September 2026) fails with not_found and a hint to upgrade.
 # Amounts show the currency's own decimals (1234 JPY, 1.235 KWD, 0.00012345 BTC).
 # monthly.subscriptions is Sure's active recurring outflows (no income, no
 # transfers, no one-offs) priced per month from each series' cadence, in the
@@ -371,9 +375,9 @@ Before `login`, `refresh` or an automatic token refresh the CLI checks that the 
 
 Sure stores transaction amounts in the entry convention: positive is an outflow (expense), negative an inflow (income). The `amount` field is a localized display string rounded to the currency's precision (`"-€2,000.00"`).
 
-`status`, `analyze`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against an older server they read `signed_amount_cents` (Sure #899) divided by the currency's minor unit (100 for EUR, 1 for JPY, 1000 for KWD), and only without it parse the localized `amount`, taking the sign from `classification`. The separators of that string depend on the server's locale, so the CLI infers them: a `.` or `,` that repeats, or one followed by exactly three digits in a currency without three decimals, groups thousands.
+`analyze`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against an older server they read `signed_amount_cents` (Sure #899) divided by the currency's minor unit (100 for EUR, 1 for JPY, 1000 for KWD), and only without it parse the localized `amount`, taking the sign from `classification`. The separators of that string depend on the server's locale, so the CLI infers them: a `.` or `,` that repeats, or one followed by exactly three digits in a currency without three decimals, groups thousands.
 
-Totals approximate Sure's income statement with what the API exposes. These rows are skipped:
+Their totals approximate Sure's income statement with what the API exposes (`status` asks Sure for its own). These rows are skipped:
 
 - `split_parent: true`: the split's children carry the amount, so counting the parent would count it twice.
 - `excluded: true`: the user left the row out of budgets and reports.
