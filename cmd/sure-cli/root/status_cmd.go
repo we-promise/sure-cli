@@ -49,10 +49,12 @@ func newStatusCmd() *cobra.Command {
 				}
 			}
 
-			// 3. Reportable transactions of the last month, each day once.
-			end := today(time.Now())
+			// 3. Reportable transactions of the last month, each day once,
+			// up to the family's today.
+			now := familyClock(client)()
+			end := today(now)
 			start := lookbackStart(end, 1)
-			txs, err := api.FetchTransactionsWindow(client, start, end)
+			txs, err := api.FetchReportableTransactionsWindow(client, start, end, api.ReportableAccountIDs(accounts))
 			checkResponse(nil, err)
 
 			monthlySpend, monthlyIncome := monthlyTotals(txs, primaryCurrency)
@@ -92,12 +94,11 @@ func newStatusCmd() *cobra.Command {
 			}
 
 			// 7. Pacing of each current budget, in that budget's currency.
-			today := time.Now()
-			budgets, r, err := api.FetchCurrentBudgets(client, today)
+			budgets, r, err := api.FetchCurrentBudgets(client, now)
 			checkResponse(r, err)
 			pacing := make([]map[string]any, 0, len(budgets))
 			for _, b := range budgets {
-				pacing = append(pacing, budgetPacing(b, today))
+				pacing = append(pacing, budgetPacing(b, now))
 			}
 
 			status := map[string]any{

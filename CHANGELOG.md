@@ -43,7 +43,7 @@ The `heuristics.*` config keys are no longer read.
 - `account_not_found` is gone: `analyze runway` reads the account by id and reports `not_found`.
 - `missing_account`, `invalid_format` and `account_balance_missing` are now `validation_failed`, as is every input the CLI rejects before sending a request.
 - `compute_failed`, `invalid_month`, `auth_expired` and `config_invalid` are gone.
-- New codes: `invalid_response` (a 2xx body the CLI cannot read, too large or cut short), `timeout`, `canceled` (Ctrl-C or SIGTERM), `config_save_failed`, `unknown_command`.
+- New codes: `invalid_response` (a 2xx body the CLI cannot read, too large or cut short), `timeout`, `canceled` (Ctrl-C or SIGTERM), `config_save_failed`, `unknown_command`, `apply_incomplete`.
 
 `internal/errors/errors.go` lists every code the CLI emits.
 
@@ -54,6 +54,10 @@ The `heuristics.*` config keys are no longer read.
 - `analyze leaks` (was `insights leaks`): `data.params` echoes the thresholds applied as `min_count`, `min_total_minor`, `max_avg_minor` and, with `--currency`, `currency`, in place of `min_total` and `max_avg`. `data.window` adds `days`. Candidates add `merchant_id`, `grouped_by` and `currency`; amounts round to the currency's minor unit.
 - `analyze runway`: `currency` is the account's own, not always `EUR`.
 - `export transactions` CSV: `amount` is the exact signed decimal, income positive and expense negative, where it was Sure's localized display string (`"-€2,000.00"`). The columns are now `id, date, name, amount, currency, classification, kind, category, account, merchant, excluded, split_parent`. Every row is exported, split parents and excluded rows included; the new columns mark the rows to leave out of a sum.
+- `propose rules --apply` exits 1 with `apply_incomplete` when any update fails; it exited 0. `error.details` holds the report (`applied`, `skipped`, `errors` and their counts), and each entry of `errors` has the update's `code`, `error` message and `details`. A 429 stops the run: the updates left are listed in `skipped` with `reason` `rate_limited`. Empty lists are `[]`; they were `null`.
+- `export transactions` CSV: a text cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet reads it as text instead of running it as a formula. `amount` is unchanged.
+- `export transactions` writes the file readable only by you (0600), through a temp file renamed into place: a failed export leaves no file and keeps an earlier one, and a symlink at `--out` is replaced, not followed. The default file name carries the window's end date.
+- `--format table` and the error line on stderr drop control characters from Sure's text, so a name or message cannot send terminal escape sequences.
 - The `imports create` dry run lists the request fields; it printed the internal Go struct. A raw `import-sessions add-chunk` dry run shows `sequence` as a string.
 
 #### Stricter input
@@ -70,7 +74,8 @@ The `heuristics.*` config keys are no longer read.
 
 #### Windows and totals
 
-- `--months` windows start one day later: run on 2026-11-20, `--months 1` covers 2026-10-21 to 2026-11-20, so each day of the month counts once. This applies to `status` (monthly), `analyze leaks`, `propose rules` and `export transactions`.
+- `--months` windows start one day later: run on 2026-11-20, `--months 1` covers 2026-10-21 to 2026-11-20, so each day of the month counts once. A window that ends on the last day of a month covers whole calendar months: run on 2026-04-30, `--months 1` covers 2026-04-01 to 2026-04-30, where it took in the bill of 2026-03-31 too. This applies to `status` (monthly), `analyze leaks`, `propose rules` and `export transactions`.
+- Windows end on the family's today, not the UTC date: `status`, `analyze runway`, `analyze leaks` without `--start-date`, `propose rules` and `export transactions` read the family's time zone from `GET /api/v1/family_settings`, one more request. A family without a zone gets UTC, as in Sure; when the settings cannot be read, the CLI uses the local zone. `status` budget pacing uses the same date.
 - Totals in `status`, `analyze` and `propose` approximate Sure's income statement. They skip split parents, excluded rows, transfers (`funds_movement`, `cc_payment`, `one_time`) and accounts excluded from reports or not draft or active. `loan_payment` and `investment_contribution` rows count as expenses. See "Amounts and Totals" in the README for what the API does not let the CLI reproduce.
 
 #### Requests

@@ -44,6 +44,9 @@ const (
 	// CodeUnknownCommand means the command line names no command, or one
 	// that was removed.
 	CodeUnknownCommand = "unknown_command"
+	// CodeApplyIncomplete means a command that applies several changes
+	// failed some of them; details list what was applied, skipped and failed.
+	CodeApplyIncomplete = "apply_incomplete"
 	// CodeOutputFailed means the result could not be written to stdout.
 	CodeOutputFailed = "output_failed"
 	CodeUnknown      = "unknown_error"

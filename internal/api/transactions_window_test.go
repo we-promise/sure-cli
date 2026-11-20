@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -55,14 +56,21 @@ const windowAccounts = `{"accounts":[
   {"id":"a-hidden","name":"Hidden","currency":"EUR","status":"active","exclude_from_reports":true}
 ],"pagination":{"page":1,"per_page":100,"total_pages":1}}`
 
-func newWindowServer(t *testing.T, pages []string) {
+// newWindowServer serves pages and the accounts list, and returns how many
+// requests each path got.
+func newWindowServer(t *testing.T, pages []string) func(path string) int {
 	t.Helper()
+	var mu sync.Mutex
+	hits := map[string]int{}
 	viper.Reset()
 	_ = config.Init(t.TempDir() + "/config.yaml")
 	viper.Set("auth.mode", "api_key")
 	viper.Set("auth.api_key", "key")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits[r.URL.Path]++
+		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/v1/accounts":
@@ -86,10 +94,25 @@ func newWindowServer(t *testing.T, pages []string) {
 	}))
 	t.Cleanup(srv.Close)
 	viper.Set("api_url", srv.URL)
+	return func(path string) int {
+		mu.Lock()
+		defer mu.Unlock()
+		return hits[path]
+	}
 }
 
 func window() (time.Time, time.Time) {
 	return time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 2, 28, 0, 0, 0, 0, time.UTC)
+}
+
+// allInWindow collects every row EachTransactionInWindow visits.
+func allInWindow(start, end time.Time) ([]models.Transaction, error) {
+	var all []models.Transaction
+	err := EachTransactionInWindow(New(), start, end, func(tx models.Transaction) error {
+		all = append(all, tx)
+		return nil
+	})
+	return all, err
 }
 
 func ids(txs []models.Transaction) []string {
@@ -100,10 +123,10 @@ func ids(txs []models.Transaction) []string {
 	return out
 }
 
-func TestFetchAllTransactionsWindow_DecodesEveryRow(t *testing.T) {
+func TestEachTransactionInWindow_DecodesEveryRow(t *testing.T) {
 	newWindowServer(t, windowPages)
 	start, end := window()
-	txs, err := FetchAllTransactionsWindow(New(), start, end)
+	txs, err := allInWindow(start, end)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -217,7 +240,7 @@ func TestFetchTransactionsWindow_ReturnsTypedErrors(t *testing.T) {
 	}
 }
 
-func TestFetchAllTransactionsWindow_DropsRowsRepeatedByOffsetPaging(t *testing.T) {
+func TestEachTransactionInWindow_DropsRowsRepeatedByOffsetPaging(t *testing.T) {
 	// A sync inserts a newer row between the two page requests, so t4 slides
 	// from page 1 onto page 2.
 	row := func(id string) string {
@@ -228,11 +251,44 @@ func TestFetchAllTransactionsWindow_DropsRowsRepeatedByOffsetPaging(t *testing.T
 		`{"transactions":[` + row("t4") + `,` + row("t3") + `],"pagination":{"page":2,"per_page":2,"total_pages":2}}`,
 	})
 	start, end := window()
-	txs, err := FetchAllTransactionsWindow(New(), start, end)
+	txs, err := allInWindow(start, end)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := ids(txs); !reflect.DeepEqual(got, []string{"t5", "t4", "t3"}) {
 		t.Fatalf("ids = %v, want each transaction once", got)
+	}
+}
+
+func TestFetchReportableTransactionsWindow_UsesTheGivenAccounts(t *testing.T) {
+	// The caller already holds the accounts: no second GET /api/v1/accounts.
+	hits := newWindowServer(t, windowPages)
+	start, end := window()
+	txs, err := FetchReportableTransactionsWindow(New(), start, end, map[string]bool{"a1": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := hits("/api/v1/accounts"); n != 0 {
+		t.Fatalf("read the accounts %d times, want 0", n)
+	}
+	if got, want := ids(txs), []string{"t-exact", "t-child-1", "t-child-2", "t-legacy", "t-cents"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ids = %v, want %v", got, want)
+	}
+}
+
+func TestEachTransactionInWindow_StopsAtTheVisitError(t *testing.T) {
+	hits := newWindowServer(t, windowPages)
+	start, end := window()
+	diskFull := errs.New(errs.CodeExportFailed, "disk full")
+	visited := 0
+	err := EachTransactionInWindow(New(), start, end, func(models.Transaction) error {
+		visited++
+		return diskFull
+	})
+	if err != diskFull {
+		t.Fatalf("err = %v, want the visit error unchanged", err)
+	}
+	if n := hits("/api/v1/transactions"); visited != 1 || n != 1 {
+		t.Fatalf("visited %d rows over %d pages, want 1 over 1", visited, n)
 	}
 }

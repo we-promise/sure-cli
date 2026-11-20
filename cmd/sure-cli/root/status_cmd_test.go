@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -353,13 +354,21 @@ func TestBudgetPacing_UninitializedHasNoBudgetedFigures(t *testing.T) {
 	}
 }
 
-// statusServer mirrors the endpoints `status` reads. Transactions are
-// filtered by the requested window, as Sure filters them.
-func statusServer(t *testing.T, transactions []map[string]any, seen *url.Values) {
+// statusServer mirrors the endpoints `status` reads, for a family in UTC.
+// Transactions are filtered by the requested window, as Sure filters them.
+// It returns how many requests each path got.
+func statusServer(t *testing.T, transactions []map[string]any, seen *url.Values) func(path string) int {
 	t.Helper()
+	var mu sync.Mutex
+	hits := map[string]int{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits[r.URL.Path]++
+		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
+		case "/api/v1/family_settings":
+			fmt.Fprint(w, `{"timezone":"UTC"}`)
 		case "/api/v1/balance_sheet":
 			fmt.Fprint(w, `{"currency":"EUR","net_worth":{"amount":"10000.0","currency":"EUR"},"assets":{"amount":"10000.0","currency":"EUR"},"liabilities":{"amount":"0.0","currency":"EUR"}}`)
 		case "/api/v1/accounts":
@@ -389,6 +398,11 @@ func statusServer(t *testing.T, transactions []map[string]any, seen *url.Values)
 	}))
 	t.Cleanup(srv.Close)
 	apiClientFor(t, srv.URL)
+	return func(path string) int {
+		mu.Lock()
+		defer mu.Unlock()
+		return hits[path]
+	}
 }
 
 func TestStatus_MonthlyWindowCountsAMonthlyBillOnce(t *testing.T) {
@@ -398,7 +412,7 @@ func TestStatus_MonthlyWindowCountsAMonthlyBillOnce(t *testing.T) {
 			"currency": "EUR", "name": id, "classification": "expense", "kind": "standard", "account": map[string]any{"id": account, "name": account}}
 	}
 	var seen url.Values
-	statusServer(t, []map[string]any{
+	hits := statusServer(t, []map[string]any{
 		expense("rent-last-month", now.AddDate(0, -1, 0), "500", "a1"),
 		expense("rent-this-month", now, "500", "a1"),
 		expense("on-excluded-account", now, "300", "a2"),
@@ -424,5 +438,8 @@ func TestStatus_MonthlyWindowCountsAMonthlyBillOnce(t *testing.T) {
 	}
 	if env.Data.Alerts == nil || !strings.Contains(out, `"alerts": []`) {
 		t.Errorf("no alerts must render as [], got %s", out)
+	}
+	if n := hits("/api/v1/accounts"); n != 1 {
+		t.Errorf("read the accounts %d times, want once", n)
 	}
 }
