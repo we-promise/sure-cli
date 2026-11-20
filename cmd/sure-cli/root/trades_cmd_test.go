@@ -175,6 +175,7 @@ func TestBuildTradeCreatePayload_Rejects(t *testing.T) {
 	}{
 		{"missing account", with(buy, func(o *tradeCreateOpts) { o.AccountID = "" }), "account-id is required"},
 		{"missing date", with(buy, func(o *tradeCreateOpts) { o.Date = "" }), "date is required"},
+		{"US-style date", with(buy, func(o *tradeCreateOpts) { o.Date = "05/01/2026" }), "invalid date"},
 		{"unknown type", base("split"), "type must be one of"},
 		{"missing type", base(""), "type must be one of"},
 		{"buy without security", with(buy, func(o *tradeCreateOpts) { o.SecurityID = "" }), "one of security-id, ticker, or manual-ticker is required"},
@@ -206,6 +207,8 @@ func TestBuildTradeCreatePayload_Rejects(t *testing.T) {
 		{"withdrawal negative amount", with(base("withdrawal"), func(o *tradeCreateOpts) { o.Amount = "-5" }), "amount must be a positive decimal"},
 		{"deposit with security", with(base("deposit"), func(o *tradeCreateOpts) { o.Amount, o.Ticker = "1", "AAPL" }), "ticker does not apply to deposit"},
 		{"deposit with qty", with(base("deposit"), func(o *tradeCreateOpts) { o.Amount, o.Qty = "1", "1" }), "qty does not apply to deposit"},
+		{"transfer deposit with currency", with(base("deposit"), func(o *tradeCreateOpts) { o.Amount, o.TransferAccountID, o.Currency = "1", "acc2", "USD" }), "currency does not apply to a deposit with transfer-account-id"},
+		{"transfer withdrawal with currency", with(base("withdrawal"), func(o *tradeCreateOpts) { o.Amount, o.TransferAccountID, o.Currency = "1", "acc2", "USD" }), "currency does not apply to a withdrawal with transfer-account-id"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -277,6 +280,7 @@ func TestBuildTradeUpdatePayload_Rejects(t *testing.T) {
 		{"zero price", tradeUpdateOpts{Price: "0"}, "price must be a positive decimal"},
 		{"non-numeric amount", tradeUpdateOpts{Amount: "1,5"}, "amount must be a decimal number"},
 		{"amount beyond 4 decimals", tradeUpdateOpts{Amount: "1.00001"}, "amount has more than 4 decimal places"},
+		{"US-style date", tradeUpdateOpts{Date: "05/01/2026"}, "invalid date"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

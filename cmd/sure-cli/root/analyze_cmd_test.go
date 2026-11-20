@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/viper"
+
 	"github.com/we-promise/sure-cli/internal/analyze"
 )
 
@@ -304,5 +306,27 @@ func TestAnalyze_DefaultWindowEndsOnTheFamilysToday(t *testing.T) {
 		if got, want := lastQuery().Get("end_date"), time.Now().In(loc).Format(time.DateOnly); got != want {
 			t.Errorf("%s: leaks end_date = %s, want the family's today %s", zone, got, want)
 		}
+	}
+}
+
+func TestAnalyzeRunway_UnreadableBalanceIsAnInvalidResponse(t *testing.T) {
+	// A 2xx account body without a balance the CLI can read is Sure's answer
+	// the CLI cannot use, not bad input.
+	analyzeServer(t, "UTC", `{"id":"a1","currency":"EUR"}`)
+	child, stdout := startCLI(t, "--config", apiKeyConfig(t, t.TempDir(), viper.GetString("api_url")), "analyze", "runway", "--account-id", "a1")
+	if err := child.Wait(); err == nil {
+		t.Fatalf("exited 0: %s", stdout)
+	}
+	var env struct {
+		Error struct {
+			Code    string         `json:"code"`
+			Details map[string]any `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("decode %s: %v", stdout, err)
+	}
+	if env.Error.Code != "invalid_response" || env.Error.Details["account_id"] != "a1" || env.Error.Details["status"] != float64(200) {
+		t.Fatalf("error = %+v, want invalid_response with account_id and status", env.Error)
 	}
 }

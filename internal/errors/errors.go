@@ -118,13 +118,15 @@ const MaxBodyBytes = 1024
 // sureErrorBody is the JSON error shape Sure's API renders:
 // {error: "<code>", message: "...", details?: {...}, errors?: [...]}.
 // AuthController instead puts a human sentence in `error` and may add
-// `mfa_required: true`.
+// `mfa_required: true`. ImportsController adds `import_id` when it created
+// the import before failing.
 type sureErrorBody struct {
 	Error       string `json:"error"`
 	Message     string `json:"message"`
 	Details     any    `json:"details"`
 	Errors      any    `json:"errors"`
 	MFARequired bool   `json:"mfa_required"`
+	ImportID    any    `json:"import_id"`
 }
 
 var sureErrorCode = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -134,7 +136,8 @@ var sureErrorCode = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // when it sends one. Details always carry `status` and the capped `body`,
 // plus, when Sure provides them, `api_error` (Sure's machine code, e.g.
 // insufficient_scope, export_not_ready), `api_details`, `errors`,
-// `mfa_required`, and on 429 `retry_after` / `rate_limit`.
+// `mfa_required`, `import_id` (the import Sure created before failing; do
+// not repeat the POST), and on 429 `retry_after` / `rate_limit`.
 func ClassifyHTTPError(status int, body []byte, header http.Header) *CLIError {
 	details := responseDetails(status, body)
 
@@ -152,6 +155,9 @@ func ClassifyHTTPError(status int, body []byte, header http.Header) *CLIError {
 	}
 	if sure.Errors != nil {
 		details["errors"] = sure.Errors
+	}
+	if sure.ImportID != nil {
+		details["import_id"] = sure.ImportID
 	}
 	if sure.MFARequired {
 		details["mfa_required"] = true

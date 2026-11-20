@@ -33,5 +33,6 @@
       "required": ["page", "per_page", "total_count", "total_pages"]
     }
   },
-  "required": ["accounts", "pagination"]
+  "required": ["accounts"],
+  "$comment": "pagination is Sure's page block; `accounts list --all` reads every page and prints accounts alone"
 }

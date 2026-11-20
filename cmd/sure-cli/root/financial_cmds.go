@@ -184,6 +184,9 @@ func buildValuationCreatePayload(o valuationCreateOpts) (map[string]any, error) 
 	if o.Amount == "" {
 		return nil, fmt.Errorf("amount is required")
 	}
+	if err := checkDecimal("amount", o.Amount, moneyColumn); err != nil {
+		return nil, err
+	}
 	if _, err := parseISODate("date", o.Date); err != nil {
 		return nil, err
 	}
@@ -211,6 +214,9 @@ func buildValuationUpdatePayload(o valuationUpdateOpts) (map[string]any, error) 
 	}
 	valuation := map[string]any{}
 	if o.Amount != "" {
+		if err := checkDecimal("amount", o.Amount, moneyColumn); err != nil {
+			return nil, err
+		}
 		if _, err := parseISODate("date", o.Date); err != nil {
 			return nil, err
 		}

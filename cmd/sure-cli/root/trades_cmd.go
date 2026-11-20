@@ -279,6 +279,9 @@ func buildTradeCreatePayload(o tradeCreateOpts) (map[string]any, error) {
 	if o.Date == "" {
 		return nil, fmt.Errorf("date is required")
 	}
+	if _, err := parseISODate("date", o.Date); err != nil {
+		return nil, err
+	}
 	typ := normalizeTradeType(o.Type)
 	rule, ok := tradeCreateRuleFor(typ)
 	if !ok {
@@ -367,6 +370,10 @@ func checkTradeCreateFields(o tradeCreateOpts, typ string, rule tradeCreateRule)
 	if !rule.Transfer {
 		return notApplicable(tradeFlag{"transfer-account-id", o.TransferAccountID})
 	}
+	// Transfer::Creator books each side in its own account's currency.
+	if o.TransferAccountID != "" && o.Currency != "" {
+		return fmt.Errorf("currency does not apply to a %s with transfer-account-id; each account keeps its own currency", typ)
+	}
 	return nil
 }
 
@@ -430,13 +437,10 @@ func checkTradeUpdateFields(o tradeUpdateOpts, typ string) error {
 			return err
 		}
 	}
-	if o.Amount != "" {
-		if !models.IsDecimal(o.Amount) {
-			return fmt.Errorf("amount must be a decimal number, got %q", o.Amount)
-		}
-		return moneyColumn.check("amount", o.Amount)
+	if _, err := parseOptionalISODate("date", o.Date); err != nil {
+		return err
 	}
-	return nil
+	return checkOptionalDecimal("amount", o.Amount, moneyColumn)
 }
 
 func addAny(m map[string]any, key, value string) {
