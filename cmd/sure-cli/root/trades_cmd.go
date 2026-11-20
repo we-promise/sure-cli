@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/we-promise/sure-cli/internal/models"
 	"github.com/we-promise/sure-cli/internal/output"
 )
 
@@ -224,7 +225,7 @@ withdrawal return a transaction, or a transfer when --transfer-account-id is set
 	cmd.Flags().StringVar(&o.Type, "type", "", "type (required): "+tradeCreateTypeNames())
 	cmd.Flags().StringVar(&o.Qty, "qty", "", "quantity, positive (share types)")
 	cmd.Flags().StringVar(&o.Price, "price", "", "price per share, positive (share types)")
-	cmd.Flags().StringVar(&o.Fee, "fee", "", "trade fee (share types)")
+	cmd.Flags().StringVar(&o.Fee, "fee", "", "trade fee, 0 or more (share types)")
 	cmd.Flags().StringVar(&o.Amount, "amount", "", "amount, positive (dividend, interest, fee, deposit, withdrawal)")
 	cmd.Flags().StringVar(&o.Currency, "currency", "", "currency (defaults to the account currency)")
 	cmd.Flags().StringVar(&o.SecurityID, "security-id", "", "security id")
@@ -252,13 +253,13 @@ func newTradesUpdateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&o.Name, "name", "", "name")
 	cmd.Flags().StringVar(&o.Date, "date", "", "date YYYY-MM-DD")
-	cmd.Flags().StringVar(&o.Amount, "amount", "", "amount")
+	cmd.Flags().StringVar(&o.Amount, "amount", "", "entry amount, signed as Sure stores it (positive = outflow); not with --qty/--price, from which Sure recomputes it")
 	cmd.Flags().StringVar(&o.Currency, "currency", "", "currency")
 	cmd.Flags().StringVar(&o.Notes, "notes", "", "notes")
-	cmd.Flags().StringVar(&o.Nature, "nature", "", "nature: inflow|outflow")
-	cmd.Flags().StringVar(&o.Type, "type", "", "trade type: "+securityTradeTypeNames())
-	cmd.Flags().StringVar(&o.Qty, "qty", "", "quantity")
-	cmd.Flags().StringVar(&o.Price, "price", "", "price")
+	cmd.Flags().StringVar(&o.Nature, "nature", "", "inflow (sell) or outflow (buy); needs --qty or --price, not with --type")
+	cmd.Flags().StringVar(&o.Type, "type", "", "trade type, needs --qty or --price: "+securityTradeTypeNames())
+	cmd.Flags().StringVar(&o.Qty, "qty", "", "quantity, positive")
+	cmd.Flags().StringVar(&o.Price, "price", "", "price per share, positive")
 	cmd.Flags().StringVar(&o.InvestmentActivityLabel, "investment-activity-label", "", "investment activity label (with --type it must be that type's label, e.g. sweep_in -> \"Sweep In\")")
 	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the update (otherwise dry-run)")
 	return cmd
@@ -345,36 +346,33 @@ func checkTradeCreateFields(o tradeCreateOpts, typ string, rule tradeCreateRule)
 		if err := notApplicable(tradeFlag{"amount", o.Amount}); err != nil {
 			return err
 		}
-		if err := requirePositiveDecimal("qty", o.Qty); err != nil {
+		if err := requirePositiveDecimal("qty", o.Qty, tradeQtyColumn); err != nil {
 			return err
 		}
-		if err := requirePositiveDecimal("price", o.Price); err != nil {
+		if err := requirePositiveDecimal("price", o.Price, tradePriceColumn); err != nil {
 			return err
 		}
-		if o.Fee != "" && !isDecimalText(o.Fee) {
-			return fmt.Errorf("fee must be a decimal number, got %q", o.Fee)
+		if o.Fee != "" {
+			// Sure adds the fee to the trade's cost; a negative one would
+			// silently lower it.
+			if !models.IsDecimal(o.Fee) || strings.HasPrefix(o.Fee, "-") {
+				return fmt.Errorf("fee must be a decimal number of 0 or more, got %q", o.Fee)
+			}
+			if err := moneyColumn.check("fee", o.Fee); err != nil {
+				return err
+			}
 		}
 	} else {
 		if err := notApplicable(tradeFlag{"qty", o.Qty}, tradeFlag{"price", o.Price}, tradeFlag{"fee", o.Fee}); err != nil {
 			return err
 		}
-		if err := requirePositiveDecimal("amount", o.Amount); err != nil {
+		if err := requirePositiveDecimal("amount", o.Amount, moneyColumn); err != nil {
 			return err
 		}
 	}
 
 	if !rule.Transfer {
 		return notApplicable(tradeFlag{"transfer-account-id", o.TransferAccountID})
-	}
-	return nil
-}
-
-func requirePositiveDecimal(name, value string) error {
-	if value == "" {
-		return fmt.Errorf("%s is required", name)
-	}
-	if !isPositiveDecimalText(value) {
-		return fmt.Errorf("%s must be a positive decimal number, got %q", name, value)
 	}
 	return nil
 }
@@ -389,6 +387,10 @@ func buildTradeUpdatePayload(o tradeUpdateOpts) (map[string]any, error) {
 		if o.InvestmentActivityLabel != "" && o.InvestmentActivityLabel != label {
 			return nil, fmt.Errorf("investment-activity-label must be %q for type %s", label, typ)
 		}
+	}
+
+	if err := checkTradeUpdateFields(o, typ); err != nil {
+		return nil, err
 	}
 
 	trade := map[string]any{}
@@ -406,6 +408,42 @@ func buildTradeUpdatePayload(o tradeUpdateOpts) (map[string]any, error) {
 		return nil, fmt.Errorf("no fields provided to update")
 	}
 	return map[string]any{"trade": trade}, nil
+}
+
+// checkTradeUpdateFields rejects what Sure's TradesController#update would
+// ignore or overwrite while answering 200: it reads type or nature only to
+// sign a qty/price change (type first), recomputes the amount as
+// qty × price when either is given, and casts qty and price with to_d, so
+// "abc" would be saved as 0.
+func checkTradeUpdateFields(o tradeUpdateOpts, typ string) error {
+	shares := o.Qty != "" || o.Price != ""
+	switch {
+	case typ != "" && o.Nature != "":
+		return fmt.Errorf("use either type or nature, not both")
+	case o.Nature != "" && o.Nature != "inflow" && o.Nature != "outflow":
+		return fmt.Errorf("nature must be inflow or outflow, got %q", o.Nature)
+	case (typ != "" || o.Nature != "") && !shares:
+		return fmt.Errorf("type and nature only apply with qty or price; Sure ignores them otherwise")
+	case o.Amount != "" && shares:
+		return fmt.Errorf("amount cannot be combined with qty or price; Sure recomputes it as qty × price")
+	}
+	if o.Qty != "" {
+		if err := requirePositiveDecimal("qty", o.Qty, tradeQtyColumn); err != nil {
+			return err
+		}
+	}
+	if o.Price != "" {
+		if err := requirePositiveDecimal("price", o.Price, tradePriceColumn); err != nil {
+			return err
+		}
+	}
+	if o.Amount != "" {
+		if !models.IsDecimal(o.Amount) {
+			return fmt.Errorf("amount must be a decimal number, got %q", o.Amount)
+		}
+		return moneyColumn.check("amount", o.Amount)
+	}
+	return nil
 }
 
 func addAny(m map[string]any, key, value string) {

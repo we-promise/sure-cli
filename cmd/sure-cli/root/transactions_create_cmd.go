@@ -3,7 +3,6 @@ package root
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -96,7 +95,7 @@ func buildTxCreatePayload(o txCreateOpts) (map[string]any, error) {
 
 // addTxAmountFlags registers --amount and --nature, shared by create and update.
 func addTxAmountFlags(cmd *cobra.Command, amount, nature *string, defaultNature string) {
-	cmd.Flags().StringVar(amount, "amount", "", "positive decimal amount, sent exactly as typed (e.g. 12.3456); the sign comes from --nature")
+	cmd.Flags().StringVar(amount, "amount", "", "positive decimal amount, at most 4 decimals and 15 digits (e.g. 12.3456); the sign comes from --nature")
 	cmd.Flags().StringVar(nature, "nature", defaultNature, "expense|income|outflow|inflow (maps to Sure transaction.nature)")
 }
 
@@ -120,12 +119,23 @@ func addTxReferenceFields(tx map[string]any, categoryID, merchantID string, tagI
 	}
 }
 
-// validateTxAmount accepts a positive fixed-point decimal and nothing else.
-// The text is sent verbatim: Sure stores decimal(19,4), so a float round trip
-// or %.2f would change the stored value.
+// maxTxAmountDigits bounds the digits of a transaction amount: Sure reads
+// it with String#to_f, and a float keeps 15 significant digits exactly.
+const maxTxAmountDigits = 15
+
+// validateTxAmount accepts a positive decimal that Sure stores as typed. The
+// text is sent verbatim, but Sure's TransactionsController reads it with
+// to_f into decimal(19,4): more than 4 decimals would be rounded away and
+// more than 15 digits would not survive the float.
 func validateTxAmount(amount string) error {
-	if !models.IsDecimal(amount) || strings.HasPrefix(amount, "-") || strings.Trim(amount, "0.") == "" {
+	if !models.IsPositiveDecimal(amount) {
 		return fmt.Errorf("amount must be a positive decimal like 12.34 (got %q); the sign comes from --nature", amount)
+	}
+	if err := moneyColumn.check("amount", amount); err != nil {
+		return err
+	}
+	if models.DecimalIntegerDigits(amount)+models.DecimalScale(amount) > maxTxAmountDigits {
+		return fmt.Errorf("amount has more than %d digits, which Sure cannot store exactly, got %q", maxTxAmountDigits, amount)
 	}
 	return nil
 }

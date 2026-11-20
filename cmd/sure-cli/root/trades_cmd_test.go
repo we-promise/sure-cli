@@ -119,8 +119,8 @@ func TestBuildTradeCreatePayload_PerType(t *testing.T) {
 		},
 		{
 			name: "reinvestment with manual ticker and currency",
-			opts: tradeCreateOpts{AccountID: "acc", Date: "2026-05-01", Type: "reinvestment", Qty: "2", Price: ".5", ManualTicker: "PRIV", Currency: "EUR"},
-			want: map[string]any{"account_id": "acc", "date": "2026-05-01", "type": "reinvestment", "qty": "2", "price": ".5", "manual_ticker": "PRIV", "currency": "EUR"},
+			opts: tradeCreateOpts{AccountID: "acc", Date: "2026-05-01", Type: "reinvestment", Qty: "2", Price: "0.5", ManualTicker: "PRIV", Currency: "EUR"},
+			want: map[string]any{"account_id": "acc", "date": "2026-05-01", "type": "reinvestment", "qty": "2", "price": "0.5", "manual_ticker": "PRIV", "currency": "EUR"},
 		},
 		{
 			name: "dividend",
@@ -184,7 +184,14 @@ func TestBuildTradeCreatePayload_Rejects(t *testing.T) {
 		{"buy zero qty", with(buy, func(o *tradeCreateOpts) { o.Qty = "0.000" }), "qty must be a positive decimal"},
 		{"sell negative price", with(buy, func(o *tradeCreateOpts) { o.Type, o.Price = "sell", "-1" }), "price must be a positive decimal"},
 		{"buy non-numeric qty", with(buy, func(o *tradeCreateOpts) { o.Qty = "1abc" }), "qty must be a positive decimal"},
-		{"buy non-numeric fee", with(buy, func(o *tradeCreateOpts) { o.Fee = "abc" }), "fee must be a decimal"},
+		{"buy non-numeric fee", with(buy, func(o *tradeCreateOpts) { o.Fee = "abc" }), "fee must be a decimal number of 0 or more"},
+		{"buy negative fee", with(buy, func(o *tradeCreateOpts) { o.Fee = "-1" }), "fee must be a decimal number of 0 or more"},
+		{"buy fee beyond 4 decimals", with(buy, func(o *tradeCreateOpts) { o.Fee = "0.12345" }), "fee has more than 4 decimal places"},
+		{"buy qty beyond 18 decimals", with(buy, func(o *tradeCreateOpts) { o.Qty = "0.0000000000000000001" }), "qty has more than 18 decimal places"},
+		{"buy price beyond 10 decimals", with(buy, func(o *tradeCreateOpts) { o.Price = "0.00000000001" }), "price has more than 10 decimal places"},
+		{"buy price too large", with(buy, func(o *tradeCreateOpts) { o.Price = "1234567890" }), "price has more than 9 digits before the decimal point"},
+		{"buy trailing point", with(buy, func(o *tradeCreateOpts) { o.Qty = "3." }), "qty must be a positive decimal"},
+		{"dividend amount beyond 4 decimals", with(base("dividend"), func(o *tradeCreateOpts) { o.SecurityID, o.Amount = "sec", "1.00001" }), "amount has more than 4 decimal places"},
 		{"buy with amount", with(buy, func(o *tradeCreateOpts) { o.Amount = "10" }), "amount does not apply to buy"},
 		{"buy with transfer account", with(buy, func(o *tradeCreateOpts) { o.TransferAccountID = "acc2" }), "transfer-account-id does not apply to buy"},
 		{"dividend without security", with(base("dividend"), func(o *tradeCreateOpts) { o.Amount = "1" }), "one of security-id, ticker, or manual-ticker is required"},
@@ -212,7 +219,7 @@ func TestBuildTradeCreatePayload_Rejects(t *testing.T) {
 
 func TestBuildTradeUpdatePayload_TypeAndLabel(t *testing.T) {
 	for typ, label := range map[string]string{"buy": "Buy", "sell": "Sell", "sweep_in": "Sweep In", "sweep_out": "Sweep Out", "reinvestment": "Reinvestment"} {
-		payload, err := buildTradeUpdatePayload(tradeUpdateOpts{Type: typ, InvestmentActivityLabel: label})
+		payload, err := buildTradeUpdatePayload(tradeUpdateOpts{Type: typ, InvestmentActivityLabel: label, Qty: "1"})
 		if err != nil {
 			t.Fatalf("%s/%s: unexpected err: %v", typ, label, err)
 		}
@@ -249,5 +256,44 @@ func TestBuildTradeUpdatePayload(t *testing.T) {
 	trade := payload["trade"].(map[string]any)
 	if trade["qty"] != "2" || trade["price"] != "11.50" || trade["type"] != "sell" {
 		t.Fatalf("unexpected trade payload: %#v", trade)
+	}
+}
+
+func TestBuildTradeUpdatePayload_Rejects(t *testing.T) {
+	// Sure's TradesController#update reads type and nature only to sign qty
+	// and price, recomputes amount from them, and casts qty/price with to_d.
+	cases := []struct {
+		name    string
+		opts    tradeUpdateOpts
+		wantErr string
+	}{
+		{"type without qty or price", tradeUpdateOpts{Type: "sell"}, "type and nature only apply with qty or price"},
+		{"nature without qty or price", tradeUpdateOpts{Nature: "inflow", Name: "x"}, "type and nature only apply with qty or price"},
+		{"type and nature", tradeUpdateOpts{Type: "buy", Nature: "inflow", Qty: "1"}, "use either type or nature, not both"},
+		{"unknown nature", tradeUpdateOpts{Nature: "income", Qty: "1"}, "nature must be inflow or outflow"},
+		{"amount with qty", tradeUpdateOpts{Amount: "10", Qty: "1"}, "amount cannot be combined with qty or price"},
+		{"amount with price", tradeUpdateOpts{Amount: "10", Price: "1"}, "amount cannot be combined with qty or price"},
+		{"non-numeric qty", tradeUpdateOpts{Qty: "abc"}, "qty must be a positive decimal"},
+		{"zero price", tradeUpdateOpts{Price: "0"}, "price must be a positive decimal"},
+		{"non-numeric amount", tradeUpdateOpts{Amount: "1,5"}, "amount must be a decimal number"},
+		{"amount beyond 4 decimals", tradeUpdateOpts{Amount: "1.00001"}, "amount has more than 4 decimal places"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := buildTradeUpdatePayload(tc.opts)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("err = %v, want containing %q", err, tc.wantErr)
+			}
+		})
+	}
+
+	// The entry amount is signed (positive = outflow), so a negative one is valid.
+	payload, err := buildTradeUpdatePayload(tradeUpdateOpts{Amount: "-25.50"})
+	if err != nil || payload["trade"].(map[string]any)["amount"] != "-25.50" {
+		t.Fatalf("signed amount: payload=%v err=%v", payload, err)
+	}
+	payload, err = buildTradeUpdatePayload(tradeUpdateOpts{Nature: "inflow", Price: "12"})
+	if err != nil || payload["trade"].(map[string]any)["nature"] != "inflow" {
+		t.Fatalf("nature with price: payload=%v err=%v", payload, err)
 	}
 }

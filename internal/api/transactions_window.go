@@ -11,21 +11,46 @@ import (
 )
 
 // FetchTransactionsWindow pulls the transactions within [start,end] that count
-// toward spend and income totals (see models.Transaction.Reportable): split
-// parents, excluded entries and budget-excluded kinds are dropped, as Sure's
-// own reports drop them. Use it for any aggregate.
+// toward spend and income totals. Use it for any aggregate. It drops what
+// Sure's income statement drops and the API lets a client see: rows that are
+// not models.Transaction.Reportable, and rows on accounts that are not
+// draft or active or are excluded from reports (ReportableAccountIDs).
+//
+// It approximates Sure's totals rather than reproducing them: the API does
+// not expose the per-user include_in_finances scoping or which accounts are
+// tax-advantaged (401k, IRA, ISA, ...), both of which Sure leaves out, nor
+// the row-level gaps listed on models.Transaction.Reportable.
 func FetchTransactionsWindow(client *Client, start, end time.Time, perPage int) ([]models.Transaction, error) {
+	accounts, r, err := FetchAllAccounts(client, false)
+	if ce := CheckResponse(r, err); ce != nil {
+		return nil, ce
+	}
+	reportableAccounts := ReportableAccountIDs(accounts)
+
 	all, err := FetchAllTransactionsWindow(client, start, end, perPage)
 	if err != nil {
 		return nil, err
 	}
 	reportable := all[:0]
 	for _, tx := range all {
-		if tx.Reportable() {
+		if tx.Reportable() && reportableAccounts[tx.AccountID] {
 			reportable = append(reportable, tx)
 		}
 	}
 	return reportable, nil
+}
+
+// ReportableAccountIDs returns the ids of the accounts Sure's income
+// statement reads, given GET /api/v1/accounts without include_disabled
+// (draft and active accounts only): those not excluded from reports.
+func ReportableAccountIDs(accounts []map[string]any) map[string]bool {
+	ids := make(map[string]bool, len(accounts))
+	for _, a := range accounts {
+		if excluded, _ := a["exclude_from_reports"].(bool); !excluded {
+			ids[fmt.Sprint(a["id"])] = true
+		}
+	}
+	return ids
 }
 
 // FetchAllTransactionsWindow pulls every transaction within [start,end] by
@@ -67,21 +92,23 @@ type transactionsPage struct {
 }
 
 type apiTransaction struct {
-	ID             string  `json:"id"`
-	EntryID        string  `json:"entry_id"`
-	Date           string  `json:"date"`
-	Amount         string  `json:"amount"`
-	AmountDecimal  *string `json:"amount_decimal"`
-	Currency       string  `json:"currency"`
-	Name           string  `json:"name"`
-	Classification string  `json:"classification"`
-	Kind           string  `json:"kind"`
-	ExternalID     string  `json:"external_id"`
-	Source         string  `json:"source"`
-	UserModified   bool    `json:"user_modified"`
-	Excluded       bool    `json:"excluded"`
-	SplitParent    bool    `json:"split_parent"`
-	Account        *struct {
+	ID                string       `json:"id"`
+	EntryID           string       `json:"entry_id"`
+	Date              string       `json:"date"`
+	Amount            string       `json:"amount"`
+	AmountDecimal     *string      `json:"amount_decimal"`
+	SignedAmountCents *json.Number `json:"signed_amount_cents"`
+	Currency          string       `json:"currency"`
+	Name              string       `json:"name"`
+	Classification    string       `json:"classification"`
+	Kind              string       `json:"kind"`
+	ExternalID        string       `json:"external_id"`
+	Source            string       `json:"source"`
+	UserModified      bool         `json:"user_modified"`
+	Excluded          bool         `json:"excluded"`
+	SplitParent       bool         `json:"split_parent"`
+	Account           *struct {
+		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"account"`
 	Category *struct {
@@ -95,7 +122,13 @@ type apiTransaction struct {
 }
 
 func (a apiTransaction) toModel() (models.Transaction, error) {
-	amount, amountDecimal, err := models.ResolveSignedAmount(a.AmountDecimal, a.Amount, a.Classification)
+	amount, amountDecimal, err := models.ResolveSignedAmount(models.AmountFields{
+		Decimal:        a.AmountDecimal,
+		SignedCents:    a.SignedAmountCents,
+		Display:        a.Amount,
+		Currency:       a.Currency,
+		Classification: a.Classification,
+	})
 	if err != nil {
 		return models.Transaction{}, err
 	}
@@ -119,6 +152,7 @@ func (a apiTransaction) toModel() (models.Transaction, error) {
 		tx.Date = d
 	}
 	if a.Account != nil {
+		tx.AccountID = a.Account.ID
 		tx.AccountName = a.Account.Name
 	}
 	if a.Category != nil {

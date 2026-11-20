@@ -50,9 +50,9 @@ func newStatusCmd() *cobra.Command {
 				}
 			}
 
-			// 3. Get recent transactions for spend analysis
+			// 3. Reportable transactions of the last month, each day once.
 			end := time.Now().UTC()
-			start := end.AddDate(0, -1, 0) // last month
+			start := lookbackStart(end, 1)
 			txs, err := api.FetchTransactionsWindow(client, start, end, 500)
 			checkResponse(nil, err)
 
@@ -65,7 +65,7 @@ func newStatusCmd() *cobra.Command {
 			}
 
 			// 5. Detect potential issues (alerts)
-			var alerts []map[string]any
+			alerts := []map[string]any{}
 
 			// Check for high burn rate
 			if monthlyIncome > 0 && monthlySpend > monthlyIncome*1.2 {
@@ -171,6 +171,8 @@ func (t currencyTotals) NetWorth() float64 { return t.Assets - t.Liabilities }
 // balance sheet counts them: by classification, skipping accounts marked
 // exclude_from_reports. Cash is the cash balance of depository assets.
 // No FX conversion happens here; the converted figure is the balance sheet.
+// Sure also leaves out accounts a user took out of their finances
+// (include_in_finances); the API does not expose that, so they are counted.
 func summarizeAccounts(accounts []map[string]any) (map[string]*currencyTotals, []map[string]any) {
 	totals := map[string]*currencyTotals{}
 	list := make([]map[string]any, 0, len(accounts))
@@ -218,14 +220,15 @@ func summarizeAccounts(accounts []map[string]any) (map[string]*currencyTotals, [
 }
 
 // monthlyTotals sums expense and income magnitudes of reportable
-// transactions (see api.FetchTransactionsWindow) held in currency. Amounts in
-// other currencies cannot be added without FX conversion and are skipped.
+// transactions (see api.FetchTransactionsWindow) held in currency, classified
+// as Sure's income statement classifies them (ReportClassification). Amounts
+// in other currencies cannot be added without FX conversion and are skipped.
 func monthlyTotals(txs []models.Transaction, currency string) (spend, income float64) {
 	for _, tx := range txs {
 		if tx.Currency != "" && !strings.EqualFold(tx.Currency, currency) {
 			continue
 		}
-		switch tx.Classification {
+		switch tx.ReportClassification() {
 		case "expense":
 			spend += math.Abs(tx.Amount)
 		case "income":
@@ -339,17 +342,23 @@ func budgetPacing(b map[string]any, today time.Time) map[string]any {
 func roundTo1(v float64) float64 { return math.Round(v*10) / 10 }
 
 // amountFromAPIOK reads an amount in major units, preferring Sure's integer
-// minor-unit field (scaled by the currency's minor unit) over parsing the
-// locale-formatted string, which is ambiguous ("1.234,56 €").
+// minor-unit field (scaled by the currency's minor unit) over the
+// locale-formatted string, which can only be read by inference
+// (models.ParseDisplayAmount).
 func amountFromAPIOK(m map[string]any, formattedKey, centsKey string) (float64, bool) {
+	currency := fmt.Sprint(m["currency"])
 	if minor, ok := decimalValue(m[centsKey]); ok {
-		return money.FromMinor(minor, fmt.Sprint(m["currency"])), true
+		return money.FromMinor(minor, currency), true
 	}
-	text := fmt.Sprint(m[formattedKey])
-	if text == "" || text == "<nil>" {
+	text, ok := m[formattedKey].(string)
+	if !ok {
 		return 0, false
 	}
-	amount, err := models.ParseAmount(text)
+	decimal, err := models.ParseDisplayAmount(text, currency)
+	if err != nil {
+		return 0, false
+	}
+	amount, err := strconv.ParseFloat(decimal, 64)
 	return amount, err == nil
 }
 
@@ -370,9 +379,11 @@ func decimalValue(v any) (float64, bool) {
 	return 0, false
 }
 
+// formatMoneyValue renders value with the decimals Sure shows for currency
+// (money.Precision): "12.50 EUR", "1234 JPY", "0.00012345 BTC".
 func formatMoneyValue(value float64, currency string) string {
 	if currency == "" || currency == "<nil>" {
 		return fmt.Sprintf("%.2f", value)
 	}
-	return fmt.Sprintf("%.2f %s", value, currency)
+	return fmt.Sprintf("%.*f %s", money.Precision(currency), value, currency)
 }

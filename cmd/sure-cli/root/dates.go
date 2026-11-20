@@ -53,3 +53,16 @@ func parsePairedDateRange(start, end string) (bool, error) {
 	}
 	return true, nil
 }
+
+// lookbackStart is the first day of the window that ends on end's date and
+// spans months calendar months: the day after the same date months earlier,
+// clamped to the end of a shorter month. Each day of the month falls in the
+// window once per month, so a monthly bill is counted once per month.
+func lookbackStart(end time.Time, months int) time.Time {
+	y, m, d := end.Date()
+	first := time.Date(y, m-time.Month(months), 1, 0, 0, 0, 0, end.Location())
+	if last := first.AddDate(0, 1, -1).Day(); d > last {
+		d = last
+	}
+	return time.Date(first.Year(), first.Month(), d+1, 0, 0, 0, 0, end.Location())
+}

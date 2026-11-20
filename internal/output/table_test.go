@@ -35,6 +35,20 @@ func TestPrintTable_Accounts(t *testing.T) {
 	}
 }
 
+// Rows fetched across pages arrive typed ([]map[string]any), not decoded
+// from one response ([]any).
+func TestPrintTable_TypedRows(t *testing.T) {
+	env := Envelope{Data: map[string]any{"accounts": []map[string]any{{"id": "1", "name": "A", "account_type": "depository", "currency": "EUR", "balance": "€1.00", "classification": "asset"}}}}
+	out := captureStdout(t, func() {
+		if !PrintTable(env) {
+			t.Fatalf("expected ok")
+		}
+	})
+	if !strings.Contains(out, "depository") {
+		t.Fatalf("unexpected table output: %q", out)
+	}
+}
+
 func TestPrintTable_Transactions(t *testing.T) {
 	env := Envelope{Data: map[string]any{"transactions": []any{map[string]any{"id": "t1", "date": "2026-01-01", "name": "coffee", "classification": "expense", "amount": "€2.00", "account": map[string]any{"name": "main"}}}}}
 	out := captureStdout(t, func() {
