@@ -187,8 +187,7 @@ func writeTransactionsJSON(out io.Writer, each transactionSource) (err error) {
 		return err
 	}
 	if count == 0 {
-		// No rows: null, as the export has always written them.
-		_, err = io.WriteString(out, "null\n}\n")
+		_, err = io.WriteString(out, "[]\n}\n")
 		return err
 	}
 	if _, err := io.WriteString(out, "["); err != nil {

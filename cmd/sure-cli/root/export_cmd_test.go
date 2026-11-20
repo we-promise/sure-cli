@@ -118,8 +118,8 @@ func TestExportTransactions_StreamedFilesMatchTheBufferedOnes(t *testing.T) {
 	for name, txs := range map[string][]models.Transaction{
 		"rows": exportFixture(),
 		"one":  exportFixture()[:1],
-		// The buffered export held a nil slice when there were no rows.
-		"none": nil,
+		// An empty export lists no rows as [], like every other empty list.
+		"none": {},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var got, want bytes.Buffer
@@ -147,6 +147,23 @@ func TestExportTransactions_StreamedFilesMatchTheBufferedOnes(t *testing.T) {
 				t.Fatalf("json\n got %s\nwant %s", got.String(), want.String())
 			}
 		})
+	}
+}
+
+func TestExportTransactionsJSON_EmptyIsAnEmptyList(t *testing.T) {
+	var got bytes.Buffer
+	if err := writeTransactionsJSON(&got, rowsOf(nil)); err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Count        int             `json:"count"`
+		Transactions json.RawMessage `json:"transactions"`
+	}
+	if err := json.Unmarshal(got.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Count != 0 || string(doc.Transactions) != "[]" {
+		t.Fatalf("count=%d transactions=%s, want 0 and []", doc.Count, doc.Transactions)
 	}
 }
 
