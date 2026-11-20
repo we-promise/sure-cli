@@ -116,7 +116,8 @@ func TestLeaksWindow(t *testing.T) {
 		wantStart, wantEnd string
 		wantErr            bool
 	}{
-		{name: "months back from today", months: 3, wantStart: "2026-02-20", wantEnd: "2026-05-20"},
+		// Each calendar day once: Feb 21..May 20, not Feb 20 too (same rule as status/export).
+		{name: "months back from today", months: 3, wantStart: "2026-02-21", wantEnd: "2026-05-20"},
 		{name: "explicit range wins over months", months: 3, start: "2026-01-01", end: "2026-01-31", wantStart: "2026-01-01", wantEnd: "2026-01-31"},
 		{name: "start without end", months: 3, start: "2026-01-01", wantErr: true},
 		{name: "reversed range", months: 3, start: "2026-02-01", end: "2026-01-01", wantErr: true},
@@ -165,11 +166,13 @@ func TestRunwayWindow(t *testing.T) {
 // txJSON renders one transaction as Sure's _transaction.json.jbuilder does.
 func txJSON(id, date, name, kind, currency, amount string, splitParent bool) string {
 	return fmt.Sprintf(`{"id":%q,"date":%q,"amount":%q,"amount_decimal":%q,"currency":%q,"name":%q,`+
-		`"classification":"expense","kind":%q,"excluded":%t,"split_parent":%t,"account":{"name":"Main"}}`,
+		`"classification":"expense","kind":%q,"excluded":%t,"split_parent":%t,"account":{"id":"a1","name":"Main"}}`,
 		id, date, amount, amount, currency, name, kind, splitParent, splitParent)
 }
 
-// analyzeServer serves one page of transactions and, for runway, one account.
+// analyzeServer serves one page of transactions on the reportable account a1
+// (the accounts list FetchTransactionsWindow filters by) and, for runway, the
+// account itself.
 func analyzeServer(t *testing.T, account string, txs ...string) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -177,6 +180,8 @@ func analyzeServer(t *testing.T, account string, txs ...string) {
 		switch {
 		case r.URL.Path == "/api/v1/transactions":
 			_, _ = fmt.Fprintf(w, `{"transactions":[%s],"pagination":{"page":1,"per_page":100,"total_pages":1}}`, strings.Join(txs, ","))
+		case r.URL.Path == "/api/v1/accounts":
+			_, _ = w.Write([]byte(`{"accounts":[{"id":"a1","name":"Main","currency":"EUR","exclude_from_reports":false}],"pagination":{"page":1,"per_page":100,"total_pages":1}}`))
 		case strings.HasPrefix(r.URL.Path, "/api/v1/accounts/") && account != "":
 			_, _ = w.Write([]byte(account))
 		default:

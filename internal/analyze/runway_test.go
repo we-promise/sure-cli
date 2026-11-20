@@ -92,3 +92,18 @@ func TestInclusiveDays(t *testing.T) {
 		t.Fatalf("March = %d, want 31", got)
 	}
 }
+
+func TestComputeRunway_CountsKindsSureTreatsAsExpenses(t *testing.T) {
+	day := mustDate("2026-01-15")
+	txs := []models.Transaction{
+		// Sure's income statement books loan payments and (by default)
+		// investment contributions as expenses whatever their sign.
+		{Classification: "income", Kind: "loan_payment", Amount: 10, Currency: "EUR", Date: day},
+		{Classification: "income", Kind: "investment_contribution", Amount: 20, Currency: "EUR", Date: day},
+		{Classification: "income", Kind: "standard", Amount: 500, Currency: "EUR", Date: day},
+	}
+	s := ComputeRunway(300, "EUR", txs, mustDate("2026-01-01"), mustDate("2026-01-30"))
+	if s.AvgMonthlyBurn != 30 {
+		t.Fatalf("burn = %v, want 30 from the loan payment and the contribution", s.AvgMonthlyBurn)
+	}
+}

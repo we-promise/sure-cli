@@ -121,7 +121,7 @@ func leaksWindow(months int, startDate, endDate string, now time.Time) (time.Tim
 		return time.Time{}, time.Time{}, errors.New("months must be positive")
 	}
 	end := today(now)
-	return end.AddDate(0, -months, 0), end, nil
+	return lookbackStart(end, months), end, nil
 }
 
 // runwayWindow is the last `days` calendar days up to today, inclusive.

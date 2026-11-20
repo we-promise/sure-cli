@@ -96,7 +96,9 @@ func DetectLeaks(txs []models.Transaction, start, end time.Time, p LeakParams) [
 
 	groups := map[leakGroup][]models.Transaction{}
 	for _, tx := range txs {
-		if tx.Classification != "expense" {
+		// Loan payments and investment contributions are commitments, not
+		// discretionary spend.
+		if tx.Classification != "expense" || tx.Kind == "loan_payment" || tx.Kind == "investment_contribution" {
 			continue
 		}
 		if d := day(tx.Date); d.Before(first) || d.After(last) {

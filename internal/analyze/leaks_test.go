@@ -234,3 +234,17 @@ func TestDetectLeaks_StableOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestDetectLeaks_IgnoresLoanPaymentsAndContributions(t *testing.T) {
+	var txs []models.Transaction
+	for i, kind := range []string{"investment_contribution", "investment_contribution", "investment_contribution", "loan_payment", "loan_payment", "loan_payment"} {
+		name := "Round-up"
+		if kind == "loan_payment" {
+			name = "Loan"
+		}
+		txs = append(txs, models.Transaction{ID: string(rune('a' + i)), Name: name, Kind: kind, Classification: "expense", Amount: -6, Currency: "EUR", Date: mustDate("2026-01-10")})
+	}
+	if got := DetectLeaks(txs, mustDate("2026-01-01"), mustDate("2026-01-31"), DefaultLeakParams); len(got) != 0 {
+		t.Fatalf("contributions and loan payments are not discretionary spend, got %+v", got)
+	}
+}

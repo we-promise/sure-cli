@@ -32,7 +32,7 @@ func ComputeRunway(balance float64, currency string, txs []models.Transaction, s
 		if d := day(tx.Date); d.Before(first) || d.After(last) {
 			continue
 		}
-		if tx.Classification != "expense" {
+		if tx.ReportClassification() != "expense" {
 			continue
 		}
 		if tx.Currency != "" && !strings.EqualFold(tx.Currency, currency) {
@@ -55,7 +55,7 @@ func ComputeRunway(balance float64, currency string, txs []models.Transaction, s
 		WindowDays:     windowDays,
 		Assumptions: []string{
 			"burn is the whole family's expenses from every account, not only this account's",
-			"expenses counted as Sure reports count them (no split parents, excluded rows or transfers); burn extrapolated to 30-day month",
+			"expenses approximate Sure's income statement: no split parents, excluded rows, transfers or accounts excluded from reports; loan payments and investment contributions count as expenses (Sure's default family setting); burn extrapolated to 30-day month",
 			"only expenses in the account currency count towards burn",
 		},
 	}
