@@ -62,7 +62,7 @@ func FetchAllTransactionsWindow(client *Client, start, end time.Time) ([]models.
 	q.Set("end_date", end.Format(time.DateOnly))
 
 	var all []models.Transaction
-	r, err := walkPages(client, "/api/v1/transactions", q, MaxPerPage, func(body []byte) error {
+	r, err := walkPages(client, "/api/v1/transactions", q, MaxPerPage, MaxPages, func(body []byte) error {
 		var res transactionsPage
 		if err := json.Unmarshal(body, &res); err != nil {
 			return errs.Wrap(errs.CodeInvalidResponse, "unreadable transactions page", err)

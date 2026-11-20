@@ -15,17 +15,16 @@ import (
 // MaxPerPage is the largest page Sure serves (Api::V1::BaseController#safe_per_page_param).
 const MaxPerPage = 100
 
-// MaxPages bounds a page walk: a total_pages beyond it (100k rows at
-// MaxPerPage) is taken as a broken pagination block, not a reason to loop.
+// MaxPages is the default bound on a page walk (100k rows at MaxPerPage).
 const MaxPages = 1000
 
 // walkPages GETs path one page at a time with q plus page/per_page, handing
-// each response body to visit. It follows the total_pages Sure reports on the
+// each response body to visit, for at most maxPages pages. It follows the total_pages Sure reports on the
 // first page (a list that grows mid-walk does not extend it) and stops early
 // at a page with no rows. It stops at the first transport error, HTTP status
 // >= 400 or visit error and returns that response so callers can report it
 // as usual.
-func walkPages(c *Client, path string, q url.Values, perPage int, visit func(body []byte) error) (*resty.Response, error) {
+func walkPages(c *Client, path string, q url.Values, perPage, maxPages int, visit func(body []byte) error) (*resty.Response, error) {
 	query := url.Values{}
 	for k, v := range q {
 		query[k] = v
@@ -60,8 +59,8 @@ func walkPages(c *Client, path string, q url.Values, perPage int, visit func(bod
 		}
 		if page == 1 {
 			totalPages = meta.TotalPages
-			if totalPages > MaxPages {
-				return r, errs.New(errs.CodeInvalidResponse, fmt.Sprintf("%s reports %d pages, more than the %d the CLI walks", path, totalPages, MaxPages)).
+			if totalPages > maxPages {
+				return r, errs.New(errs.CodeInvalidResponse, fmt.Sprintf("%s reports %d pages, more than the %d the CLI walks", path, totalPages, maxPages)).
 					WithDetails(map[string]any{"total_pages": totalPages})
 			}
 		}
@@ -111,7 +110,7 @@ func uniqueByID[T any](items []T, id func(T) string) []T {
 // CLIError, for bodies that cannot be decoded.
 func FetchAllPages(c *Client, path string, q url.Values, key string) ([]map[string]any, *resty.Response, error) {
 	all := []map[string]any{}
-	r, err := walkPages(c, path, q, MaxPerPage, func(body []byte) error {
+	r, err := walkPages(c, path, q, MaxPerPage, MaxPages, func(body []byte) error {
 		var page map[string]json.RawMessage
 		if err := json.Unmarshal(body, &page); err != nil {
 			return errs.Wrap(errs.CodeInvalidResponse, "unreadable response from "+path, err)
