@@ -40,7 +40,7 @@ func newImportsPreflightCmd() *cobra.Command {
 
 func buildImportPreflightPayload(o importPreflightOpts) (upload, error) {
 	if o.Type == "" {
-		return upload{}, errors.New("type is required (e.g. TransactionImport, SureImport)")
+		return upload{}, errors.New("--type is required (e.g. TransactionImport, SureImport)")
 	}
 	return o.importConfig.upload(o.File, o.RawFileContent, o.Type)
 }

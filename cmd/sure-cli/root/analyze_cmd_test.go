@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/spf13/viper"
 
 	"github.com/we-promise/sure-cli/internal/analyze"
 )
@@ -80,8 +84,8 @@ func TestLeakParams(t *testing.T) {
 		{name: "explicit zero minimum total", set: []string{"min-total"}, minTotal: 0, currency: "EUR", wantTotal: 0, wantAvg: 1000, wantCurrency: "EUR"},
 		{name: "min-total needs a currency", set: []string{"min-total"}, minTotal: 20, wantErr: "--min-total"},
 		{name: "max-avg needs a currency", set: []string{"max-avg"}, maxAvg: 2, wantErr: "--max-avg"},
-		{name: "zero max-avg", set: []string{"max-avg"}, maxAvg: 0, currency: "EUR", wantErr: "max_avg"},
-		{name: "negative min-total", set: []string{"min-total"}, minTotal: -1, currency: "EUR", wantErr: "min_total"},
+		{name: "zero max-avg", set: []string{"max-avg"}, maxAvg: 0, currency: "EUR", wantErr: "--max-avg must be positive"},
+		{name: "negative min-total", set: []string{"min-total"}, minTotal: -1, currency: "EUR", wantErr: "--min-total must not be negative"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -126,7 +130,7 @@ func TestLeaksWindow(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			start, end, err := leaksWindow(c.months, c.start, c.end, now)
+			start, end, err := leaksWindow(c.months, c.start, c.end, func() time.Time { return now })
 			if c.wantErr {
 				if err == nil {
 					t.Fatalf("expected an error, got %v..%v", start, end)
@@ -144,20 +148,24 @@ func TestLeaksWindow(t *testing.T) {
 }
 
 func TestLookbackWindow_Days(t *testing.T) {
-	// Late in the day, and in a zone whose date is already tomorrow in UTC.
+	// Late in the family's day, when the date is already tomorrow in UTC.
 	now := time.Date(2026, 5, 20, 23, 30, 0, 0, time.FixedZone("UTC-2", -2*3600))
-	start, end, err := lookbackWindow("days", 30, daysBack, now)
+	start, end, err := lookbackWindow("days", 30, daysBack, func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if start.Format(time.DateOnly) != "2026-04-22" || end.Format(time.DateOnly) != "2026-05-21" {
-		t.Fatalf("window = %s..%s, want the 30 UTC days 2026-04-22..2026-05-21", start.Format(time.DateOnly), end.Format(time.DateOnly))
+	if start.Format(time.DateOnly) != "2026-04-21" || end.Format(time.DateOnly) != "2026-05-20" {
+		t.Fatalf("window = %s..%s, want the 30 family days 2026-04-21..2026-05-20", start.Format(time.DateOnly), end.Format(time.DateOnly))
 	}
 	if got := analyze.InclusiveDays(start, end); got != 30 {
 		t.Fatalf("window has %d days, want 30", got)
 	}
 	for _, days := range []int{0, -5} {
-		if _, _, err := lookbackWindow("days", days, daysBack, now); err == nil {
+		_, _, err := lookbackWindow("days", days, daysBack, func() time.Time {
+			t.Fatal("an invalid --days must be rejected before reading the clock (a request)")
+			return now
+		})
+		if err == nil {
 			t.Fatalf("--days %d must be rejected", days)
 		}
 	}
@@ -171,13 +179,23 @@ func txJSON(id, date, name, kind, currency, amount string, splitParent bool) str
 }
 
 // analyzeServer serves one page of transactions on the reportable account a1
-// (the accounts list FetchTransactionsWindow filters by) and, for runway, the
-// account itself.
-func analyzeServer(t *testing.T, account string, txs ...string) string {
+// (the accounts list FetchTransactionsWindow filters by), the family's time
+// zone unless timezone is "" and, for runway, the account itself. It returns
+// the query of the last transactions request.
+func analyzeServer(t *testing.T, timezone, account string, txs ...string) func() url.Values {
 	t.Helper()
+	var mu sync.Mutex
+	var txQuery url.Values
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/transactions" {
+			mu.Lock()
+			txQuery = r.URL.Query()
+			mu.Unlock()
+		}
 		switch {
+		case r.URL.Path == "/api/v1/family_settings" && timezone != "":
+			_, _ = fmt.Fprintf(w, `{"timezone":%q}`, timezone)
 		case r.URL.Path == "/api/v1/transactions":
 			_, _ = fmt.Fprintf(w, `{"transactions":[%s],"pagination":{"page":1,"per_page":100,"total_pages":1}}`, strings.Join(txs, ","))
 		case r.URL.Path == "/api/v1/accounts":
@@ -191,7 +209,11 @@ func analyzeServer(t *testing.T, account string, txs ...string) string {
 	}))
 	t.Cleanup(srv.Close)
 	apiClientFor(t, srv.URL)
-	return srv.URL
+	return func() url.Values {
+		mu.Lock()
+		defer mu.Unlock()
+		return txQuery
+	}
 }
 
 // runAnalyze runs `analyze args...` and decodes the envelope's data into out.
@@ -217,7 +239,8 @@ func runAnalyze(t *testing.T, out any, args ...string) {
 }
 
 func TestAnalyzeLeaks_EchoesAppliedParamsAndSkipsUnreportableRows(t *testing.T) {
-	analyzeServer(t, "",
+	// An explicit window needs no family time zone: no family_settings request.
+	analyzeServer(t, "", "",
 		txJSON("c1", "2026-01-05", "Coffee", "standard", "EUR", "0.5", false),
 		txJSON("c2", "2026-01-12", "Coffee", "standard", "EUR", "0.5", false),
 		txJSON("c3", "2026-01-19", "Coffee", "standard", "EUR", "0.5", false),
@@ -250,7 +273,7 @@ func TestAnalyzeLeaks_EchoesAppliedParamsAndSkipsUnreportableRows(t *testing.T) 
 
 func TestAnalyzeRunway_BurnSkipsUnreportableRows(t *testing.T) {
 	today := time.Now().UTC().Format(time.DateOnly)
-	analyzeServer(t, `{"id":"a1","balance":"€300.00","balance_cents":30000,"currency":"EUR"}`,
+	analyzeServer(t, "UTC", `{"id":"a1","balance":"€300.00","balance_cents":30000,"currency":"EUR"}`,
 		txJSON("rent", today, "Rent", "standard", "EUR", "30.0", false),
 		txJSON("split", today, "Groceries", "standard", "EUR", "1000.0", true),
 		txJSON("move", today, "To savings", "funds_movement", "EUR", "500.0", false),
@@ -262,11 +285,35 @@ func TestAnalyzeRunway_BurnSkipsUnreportableRows(t *testing.T) {
 	}
 }
 
+// The default window ends on the family's today, which is a day ahead of UTC
+// all morning in Kiritimati (UTC+14) and a day behind all evening in Pago Pago.
+func TestAnalyze_DefaultWindowEndsOnTheFamilysToday(t *testing.T) {
+	for _, zone := range []string{"Pacific/Kiritimati", "Pacific/Pago_Pago"} {
+		loc, err := time.LoadLocation(zone)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lastQuery := analyzeServer(t, zone, `{"id":"a1","balance_cents":30000,"currency":"EUR"}`)
+		var s analyze.RunwaySummary
+		runAnalyze(t, &s, "runway", "--account-id", "a1", "--days", "30")
+		if got, want := lastQuery().Get("end_date"), time.Now().In(loc).Format(time.DateOnly); got != want {
+			t.Errorf("%s: runway end_date = %s, want the family's today %s", zone, got, want)
+		}
+
+		lastQuery = analyzeServer(t, zone, "")
+		var leaks map[string]any
+		runAnalyze(t, &leaks, "leaks", "--months", "1")
+		if got, want := lastQuery().Get("end_date"), time.Now().In(loc).Format(time.DateOnly); got != want {
+			t.Errorf("%s: leaks end_date = %s, want the family's today %s", zone, got, want)
+		}
+	}
+}
+
 func TestAnalyzeRunway_UnreadableBalanceIsAnInvalidResponse(t *testing.T) {
 	// A 2xx account body without a balance the CLI can read is Sure's answer
 	// the CLI cannot use, not bad input.
-	srvURL := analyzeServer(t, `{"id":"a1","currency":"EUR"}`)
-	child, stdout := startCLI(t, "--config", apiKeyConfig(t, t.TempDir(), srvURL), "analyze", "runway", "--account-id", "a1")
+	analyzeServer(t, "UTC", `{"id":"a1","currency":"EUR"}`)
+	child, stdout := startCLI(t, "--config", apiKeyConfig(t, t.TempDir(), viper.GetString("api_url")), "analyze", "runway", "--account-id", "a1")
 	if err := child.Wait(); err == nil {
 		t.Fatalf("exited 0: %s", stdout)
 	}

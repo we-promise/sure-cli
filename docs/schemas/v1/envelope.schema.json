@@ -6,7 +6,22 @@
   "additionalProperties": false,
   "properties": {
     "data": {},
-    "meta": {},
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema": {"type": "string"},
+        "status": {"type": "integer"},
+        "warnings": {
+          "description": "What the command could not do and worked around; data is still valid.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/error"}
+        }
+      }
+    },
+    "error": {"$ref": "#/$defs/error"}
+  },
+  "$defs": {
     "error": {
       "type": "object",
       "additionalProperties": false,

@@ -1,6 +1,7 @@
 package root
 
 import (
+	"cmp"
 	"fmt"
 	"net/url"
 	"strings"
@@ -26,78 +27,22 @@ func newTransactionsCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List transactions",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := api.New()
-
 			q := url.Values{}
-			if startDate == "" {
-				startDate = from
+			for key, value := range map[string]string{
+				"start_date": cmp.Or(startDate, from), "end_date": cmp.Or(endDate, to),
+				"account_id": cmp.Or(accountID, account), "category_id": cmp.Or(categoryID, category), "merchant_id": cmp.Or(merchantID, merchant),
+				"min_amount": minAmount, "max_amount": maxAmount, "type": typ, "search": search,
+			} {
+				if value != "" {
+					q.Set(key, value)
+				}
 			}
-			if endDate == "" {
-				endDate = to
-			}
-			if accountID == "" {
-				accountID = account
-			}
-			if categoryID == "" {
-				categoryID = category
-			}
-			if merchantID == "" {
-				merchantID = merchant
-			}
-			if startDate != "" {
-				q.Set("start_date", startDate)
-			}
-			if endDate != "" {
-				q.Set("end_date", endDate)
-			}
-			if accountID != "" {
-				q.Set("account_id", accountID)
-			}
-			if categoryID != "" {
-				q.Set("category_id", categoryID)
-			}
-			if merchantID != "" {
-				q.Set("merchant_id", merchantID)
-			}
-			if minAmount != "" {
-				q.Set("min_amount", minAmount)
-			}
-			if maxAmount != "" {
-				q.Set("max_amount", maxAmount)
-			}
-			if typ != "" {
-				q.Set("type", typ)
-			}
-			if search != "" {
-				q.Set("search", search)
-			}
-			for _, id := range splitFlagValues(accountIDs) {
-				q.Add("account_ids[]", id)
-			}
-			for _, id := range splitFlagValues(categoryIDs) {
-				q.Add("category_ids[]", id)
-			}
-			for _, id := range splitFlagValues(merchantIDs) {
-				q.Add("merchant_ids[]", id)
-			}
-			for _, id := range splitFlagValues(tagIDs) {
-				q.Add("tag_ids[]", id)
-			}
-			if page > 0 {
-				q.Set("page", fmt.Sprintf("%d", page))
-			}
-			if perPage > 0 {
-				q.Set("per_page", fmt.Sprintf("%d", perPage))
-			}
-
-			path := "/api/v1/transactions"
-			if enc := strings.TrimPrefix(q.Encode(), ""); enc != "" {
-				path = path + "?" + enc
-			}
-
-			var res any
-			r, err := client.Get(path, &res)
-			respond(r, err, res)
+			addRepeatedQuery(q, "account_ids", splitFlagValues(accountIDs))
+			addRepeatedQuery(q, "category_ids", splitFlagValues(categoryIDs))
+			addRepeatedQuery(q, "merchant_ids", splitFlagValues(merchantIDs))
+			addRepeatedQuery(q, "tag_ids", splitFlagValues(tagIDs))
+			addPagingQuery(q, page, perPage)
+			printGet(pathWithQuery("/api/v1/transactions", q))
 		},
 	}
 
@@ -119,8 +64,7 @@ func newTransactionsCmd() *cobra.Command {
 	list.Flags().StringSliceVar(&categoryIDs, "category-ids", nil, "category ids (repeat or comma-separated)")
 	list.Flags().StringSliceVar(&merchantIDs, "merchant-ids", nil, "merchant ids (repeat or comma-separated)")
 	list.Flags().StringSliceVar(&tagIDs, "tag-ids", nil, "tag ids (repeat or comma-separated)")
-	list.Flags().IntVar(&page, "page", 1, "page number")
-	list.Flags().IntVar(&perPage, "per-page", 25, "items per page (maps to per_page)")
+	addPagingFlags(list, &page, &perPage)
 	cmd.AddCommand(list)
 
 	cmd.AddCommand(&cobra.Command{

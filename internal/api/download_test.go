@@ -244,3 +244,49 @@ func assertOnlyFiles(t *testing.T, dir string, names ...string) {
 		}
 	}
 }
+
+// unavailableServer answers 503 with Sure's message after delay, counting calls.
+func unavailableServer(t *testing.T, delay time.Duration) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		time.Sleep(delay)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"maintenance","message":"Sure is upgrading"}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &calls
+}
+
+func TestGetToFile_RetryThatOutlastsTheTimeoutReportsSuresAnswer(t *testing.T) {
+	// The retry would wait 1s, longer than the 150ms timeout: it is not
+	// attempted, and the 503 is reported rather than a stall.
+	srv, calls := unavailableServer(t, 0)
+	c := timeoutClient(t, srv.URL, 150*time.Millisecond)
+	dir := t.TempDir()
+
+	_, err := c.GetToFile(context.Background(), "/dl", filepath.Join(dir, "export.zip"), 0)
+	if ce := assertCode(t, err, errs.CodeServerError); ce.Message != "Sure is upgrading" {
+		t.Fatalf("message = %q, want Sure's", ce.Message)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("requests = %d, want 1", got)
+	}
+	assertOnlyFiles(t, dir)
+}
+
+func TestGetToFile_EachAttemptGetsTheWholeTimeout(t *testing.T) {
+	// Every answer takes 2/3 of the timeout: three attempts together outlast
+	// it, but no attempt waits that long for data.
+	srv, calls := unavailableServer(t, 200*time.Millisecond)
+	c := timeoutClient(t, srv.URL, 300*time.Millisecond)
+	c.http.SetRetryWaitTime(50 * time.Millisecond).SetRetryMaxWaitTime(50 * time.Millisecond)
+
+	_, err := c.GetToFile(context.Background(), "/dl", filepath.Join(t.TempDir(), "export.zip"), 0)
+	assertCode(t, err, errs.CodeServerError)
+	if got := calls.Load(); got != 3 {
+		t.Fatalf("requests = %d, want 3 (the first try and both retries)", got)
+	}
+}

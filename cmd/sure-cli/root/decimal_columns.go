@@ -23,10 +23,10 @@ var (
 // check reports why the decimal s, the value of flag name, does not fit.
 func (c decimalColumn) check(name, s string) error {
 	if models.DecimalScale(s) > c.Scale {
-		return fmt.Errorf("%s has more than %d decimal places, got %q", name, c.Scale, s)
+		return fmt.Errorf("--%s has more than %d decimal places, got %q", name, c.Scale, s)
 	}
 	if models.DecimalIntegerDigits(s) > c.IntegerDigits {
-		return fmt.Errorf("%s has more than %d digits before the decimal point, got %q", name, c.IntegerDigits, s)
+		return fmt.Errorf("--%s has more than %d digits before the decimal point, got %q", name, c.IntegerDigits, s)
 	}
 	return nil
 }
@@ -35,10 +35,10 @@ func (c decimalColumn) check(name, s string) error {
 // in column.
 func requirePositiveDecimal(name, value string, column decimalColumn) error {
 	if value == "" {
-		return fmt.Errorf("%s is required", name)
+		return fmt.Errorf("--%s is required", name)
 	}
 	if !models.IsPositiveDecimal(value) {
-		return fmt.Errorf("%s must be a positive decimal number, got %q", name, value)
+		return fmt.Errorf("--%s must be a positive decimal number, got %q", name, value)
 	}
 	return column.check(name, value)
 }
@@ -46,7 +46,7 @@ func requirePositiveDecimal(name, value string, column decimalColumn) error {
 // checkDecimal checks a signed decimal flag that lands in column.
 func checkDecimal(name, value string, column decimalColumn) error {
 	if !models.IsDecimal(value) {
-		return fmt.Errorf("%s must be a decimal number, got %q", name, value)
+		return fmt.Errorf("--%s must be a decimal number, got %q", name, value)
 	}
 	return column.check(name, value)
 }

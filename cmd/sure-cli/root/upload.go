@@ -54,9 +54,9 @@ func (u upload) dryRunBody() map[string]any {
 func checkUploadContent(file, raw, rawFlag string) error {
 	switch {
 	case file == "" && raw == "":
-		return fmt.Errorf("file or %s is required", rawFlag)
+		return fmt.Errorf("--file or --%s is required", rawFlag)
 	case file != "" && raw != "":
-		return fmt.Errorf("provide only one of file or %s", rawFlag)
+		return fmt.Errorf("provide only one of --file or --%s", rawFlag)
 	case file != "":
 		_, err := regularFile(file)
 		return err
@@ -68,20 +68,21 @@ func checkUploadContent(file, raw, rawFlag string) error {
 func regularFile(path string) (os.FileInfo, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("file not accessible: %w", err)
+		return nil, fmt.Errorf("--file not accessible: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return nil, errors.New("file must be a regular file")
+		return nil, errors.New("--file must be a regular file")
 	}
 	return info, nil
 }
 
 // uploadContentTypes maps file extensions to the parameter-free Content-Type
-// sent on multipart file parts. Sure's upload endpoints do exact-match
-// `include?` checks against their allow-lists (Import::ALLOWED_CSV_MIME_TYPES,
-// SureImport::ALLOWED_NDJSON_CONTENT_TYPES,
-// AccountStatement::ALLOWED_EXTENSION_CONTENT_TYPES), so the charset-suffixed
-// value resty would auto-detect ("text/plain; charset=utf-8") is rejected.
+// sent on multipart file parts. The import endpoints check the declared type
+// with exact-match `include?` against Import::ALLOWED_CSV_MIME_TYPES and
+// SureImport::ALLOWED_NDJSON_CONTENT_TYPES, so the charset-suffixed value
+// resty would auto-detect ("text/plain; charset=utf-8") is rejected there.
+// AccountStatement re-detects the type from the content (Marcel, with the
+// declared type only as a hint) and then checks its per-extension list.
 var uploadContentTypes = map[string]string{
 	".csv":    "text/csv",
 	".ndjson": "application/x-ndjson",

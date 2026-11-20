@@ -68,13 +68,13 @@ var categoryHexColorRE = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 func buildCategoryCreatePayload(o categoryCreateOpts) (map[string]any, error) {
 	name := strings.TrimSpace(o.Name)
 	if name == "" {
-		return nil, fmt.Errorf("name is required")
+		return nil, fmt.Errorf("--name is required")
 	}
 	if o.Color == "" {
-		return nil, fmt.Errorf("color is required (upstream Category model validates presence)")
+		return nil, fmt.Errorf("--color is required (Sure's Category validates its presence)")
 	}
 	if !categoryHexColorRE.MatchString(o.Color) {
-		return nil, fmt.Errorf("color must match #RRGGBB hex format, got %q", o.Color)
+		return nil, fmt.Errorf("--color must be a #RRGGBB hex color, got %q", o.Color)
 	}
 	// Send the trimmed value — otherwise `--name "  Food  "` passes presence
 	// validation here but the surrounding whitespace leaks into the payload
@@ -171,10 +171,10 @@ func newMerchantsImportCmd() *cobra.Command {
 // the CLI derives it from the extension.
 func validateMerchantsImportFile(file string) error {
 	if file == "" {
-		return errors.New("file is required")
+		return errors.New("--file is required")
 	}
 	if !strings.EqualFold(filepath.Ext(file), ".csv") {
-		return fmt.Errorf("file must be a .csv file, got %q", filepath.Base(file))
+		return fmt.Errorf("--file must be a .csv file, got %q", filepath.Base(file))
 	}
 	_, err := regularFile(file)
 	return err
@@ -271,7 +271,7 @@ func newTagsDeleteCmd() *cobra.Command {
 
 func buildTagCreatePayload(o tagWriteOpts) (map[string]any, error) {
 	if o.Name == "" {
-		return nil, fmt.Errorf("name is required")
+		return nil, fmt.Errorf("--name is required")
 	}
 	tag := map[string]any{"name": o.Name}
 	if o.Color != "" {

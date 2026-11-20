@@ -58,14 +58,14 @@ func buildTxUpdatePayload(o txUpdateOpts) (map[string]any, error) {
 		return nil, err
 	}
 	if o.Nature != "" && o.Amount == "" {
-		return nil, errors.New("nature only applies with amount; Sure ignores it otherwise")
+		return nil, errors.New("--nature only applies with --amount; Sure ignores it otherwise")
 	}
 	if o.Amount != "" {
 		if err := validateTxAmount(o.Amount); err != nil {
 			return nil, err
 		}
 		if o.Nature == "" {
-			return nil, errors.New("nature is required when amount is provided")
+			return nil, errors.New("--nature is required with --amount")
 		}
 		if err := validateTxNature(o.Nature); err != nil {
 			return nil, err

@@ -3,11 +3,11 @@ package root
 import (
 	"fmt"
 	"net/url"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/we-promise/sure-cli/internal/api"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/we-promise/sure-cli/internal/rules"
 )
@@ -27,9 +27,9 @@ func newProposeRulesCmd() *cobra.Command {
 		Use:   "rules",
 		Short: "Propose categorization rules based on transaction patterns",
 		Run: func(cmd *cobra.Command, args []string) {
-			start, end, err := lookbackWindow("months", months, lookbackStart, time.Now())
-			failValidation(err)
 			client := api.New()
+			start, end, err := lookbackWindow("months", months, lookbackStart, familyClock(client))
+			failValidation(err)
 			txs, err := api.FetchTransactionsWindow(client, start, end)
 			checkResponse(nil, err)
 
@@ -41,80 +41,85 @@ func newProposeRulesCmd() *cobra.Command {
 				return
 			}
 
-			// Apply mode: execute the proposals
 			if minConfidence <= 0 {
 				minConfidence = 0.8 // default safety threshold
 			}
-
-			var applied []map[string]any
-			var skipped []map[string]any
-			var errors []map[string]any
-
-			for _, p := range result.Proposals {
-				if p.Confidence < minConfidence {
-					skipped = append(skipped, map[string]any{
-						"pattern":    p.Pattern,
-						"reason":     "confidence_below_threshold",
-						"confidence": p.Confidence,
-						"threshold":  minConfidence,
-					})
-					continue
-				}
-				if p.ValueID == "" {
-					skipped = append(skipped, map[string]any{
-						"pattern": p.Pattern,
-						"reason":  "missing_category_id",
-					})
-					continue
-				}
-
-				// Apply to all affected transactions
-				for _, txID := range p.AffectedTxIDs {
-					path := fmt.Sprintf("/api/v1/transactions/%s", url.PathEscape(txID))
-					payload := map[string]any{
-						"transaction": map[string]any{
-							"category_id": p.ValueID,
-						},
-					}
-					var res any
-					r, err := client.Put(path, payload, &res)
-					if err != nil {
-						errors = append(errors, map[string]any{
-							"tx_id":   txID,
-							"pattern": p.Pattern,
-							"error":   err.Error(),
-						})
-						continue
-					}
-					if r.StatusCode() >= 400 {
-						errors = append(errors, map[string]any{
-							"tx_id":   txID,
-							"pattern": p.Pattern,
-							"error":   fmt.Sprintf("HTTP %d", r.StatusCode()),
-						})
-						continue
-					}
-					applied = append(applied, map[string]any{
-						"tx_id":       txID,
-						"pattern":     p.Pattern,
-						"category":    p.Value,
-						"category_id": p.ValueID,
-					})
-				}
+			report, failures := applyProposals(client, result.Proposals, minConfidence)
+			if failures > 0 {
+				fail(errs.New(errs.CodeApplyIncomplete, fmt.Sprintf("%d of the proposed updates failed", failures)).WithDetails(report))
 			}
-
-			printEnvelope(map[string]any{
-				"applied_count": len(applied),
-				"skipped_count": len(skipped),
-				"error_count":   len(errors),
-				"applied":       applied,
-				"skipped":       skipped,
-				"errors":        errors,
-			}, nil)
+			printEnvelope(report, nil)
 		},
 	}
 	cmd.Flags().IntVar(&months, "months", 3, "lookback months")
 	cmd.Flags().BoolVar(&apply, "apply", false, "execute the proposed rules (otherwise dry-run)")
 	cmd.Flags().Float64Var(&minConfidence, "min-confidence", 0.8, "minimum confidence to apply (with --apply)")
 	return cmd
+}
+
+// applyProposals sets each proposal's category on its affected transactions
+// and reports what was applied, skipped and failed, and how many failed. A
+// failed update does not
+// stop the run, except a rate limit: every update after it would be refused
+// too, so the rest are skipped as rate_limited.
+func applyProposals(client *api.Client, proposals []rules.RuleProposal, minConfidence float64) (map[string]any, int) {
+	applied := []map[string]any{}
+	skipped := []map[string]any{}
+	failed := []map[string]any{}
+	rateLimited := false
+
+	for _, p := range proposals {
+		switch {
+		case p.Confidence < minConfidence:
+			skipped = append(skipped, map[string]any{
+				"pattern":    p.Pattern,
+				"reason":     "confidence_below_threshold",
+				"confidence": p.Confidence,
+				"threshold":  minConfidence,
+			})
+			continue
+		case p.ValueID == "":
+			skipped = append(skipped, map[string]any{
+				"pattern": p.Pattern,
+				"reason":  "missing_category_id",
+			})
+			continue
+		}
+
+		for _, txID := range p.AffectedTxIDs {
+			if rateLimited {
+				skipped = append(skipped, map[string]any{"tx_id": txID, "pattern": p.Pattern, "reason": errs.CodeRateLimit})
+				continue
+			}
+			payload := map[string]any{"transaction": map[string]any{"category_id": p.ValueID}}
+			var res any
+			r, err := client.Put("/api/v1/transactions/"+url.PathEscape(txID), payload, &res)
+			if ce := api.CheckResponse(r, err); ce != nil {
+				failed = append(failed, map[string]any{
+					"tx_id":   txID,
+					"pattern": p.Pattern,
+					"code":    ce.Code,
+					"error":   ce.Message,
+					"details": ce.Details,
+				})
+				rateLimited = ce.Code == errs.CodeRateLimit
+				continue
+			}
+			applied = append(applied, map[string]any{
+				"tx_id":       txID,
+				"pattern":     p.Pattern,
+				"category":    p.Value,
+				"category_id": p.ValueID,
+			})
+		}
+	}
+
+	return map[string]any{
+		"applied_count": len(applied),
+		"skipped_count": len(skipped),
+		"error_count":   len(failed),
+		"applied":       applied,
+		"skipped":       skipped,
+		"errors":        failed,
+	}, len(failed)
 }

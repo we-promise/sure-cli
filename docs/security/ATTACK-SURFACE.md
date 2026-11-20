@@ -88,7 +88,7 @@ sure-cli --[write CSV/JSON]--> os.Create(user-provided path)
 ### High Risk
 - **Credential storage in plaintext** (config.yaml contains tokens/keys)
 - **Config file permissions** (directory created with 0o755, file permissions delegated to viper)
-- **Default HTTP (not HTTPS)** api_url default is `http://localhost:3000`
+- **Default HTTP (not HTTPS)** api_url default is `http://localhost:3000`; plain HTTP to any other host is refused without `--allow-insecure-http`
 - **install.sh curl|bash pattern** (standard but inherently risky)
 
 ### Medium Risk

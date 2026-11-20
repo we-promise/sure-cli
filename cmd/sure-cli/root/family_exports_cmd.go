@@ -1,13 +1,9 @@
 package root
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -60,9 +56,7 @@ func newFamilyExportsCmd() *cobra.Command {
 			if outFile == "" {
 				failValidation(errors.New("--out is required"))
 			}
-			// Ctrl-C cancels the transfer instead of killing the process, so
-			// the partial temp file next to --out is removed.
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			ctx, stop := interruptContext()
 			defer stop()
 
 			client := api.New()
@@ -76,7 +70,7 @@ func newFamilyExportsCmd() *cobra.Command {
 					} `json:"file"`
 				} `json:"data"`
 			}
-			checkResponse(client.Get(exportPath, &export))
+			checkResponse(client.GetContext(ctx, exportPath, &export))
 			r, err := client.GetToFile(ctx, exportPath+"/download", outFile, export.Data.File.ByteSize)
 			// Download returns the file path as the data payload on success.
 			// On a non-2xx (e.g. 409 export_not_ready) or an incomplete body

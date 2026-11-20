@@ -1,8 +1,6 @@
 package root
 
 import (
-	"time"
-
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/config"
@@ -19,6 +17,7 @@ func newRefreshCmd() *cobra.Command {
 			if rt == "" {
 				output.Fail(errs.CodeRefreshTokenMissing, "no refresh token stored; run sure-cli login", nil)
 			}
+			requireWritableConfig()
 
 			client := api.New()
 			res, err := client.Refresh(api.RefreshRequest{
@@ -26,26 +25,13 @@ func newRefreshCmd() *cobra.Command {
 				Device:       config.Device(),
 			})
 			if err != nil {
-				ce := errs.From(err)
-				output.Fail(errs.CodeRefreshFailed, ce.Message, ce.Details)
+				fail(refreshError(err))
 			}
 			if res.AccessToken == "" {
 				output.Fail(errs.CodeRefreshFailed, "refresh response returned empty access token", nil)
 			}
 
-			config.SetAuthMode("bearer")
-			config.SetToken(res.AccessToken)
-			// Guard rotation fields so a partial server response doesn't wipe
-			// the saved values and silently log the user out.
-			if res.RefreshToken != "" {
-				config.SetRefreshToken(res.RefreshToken)
-			}
-			if res.ExpiresIn > 0 {
-				config.SetTokenExpiresAt(time.Now().Add(time.Duration(res.ExpiresIn) * time.Second))
-			}
-			if err := config.Save(); err != nil {
-				output.Fail(errs.CodeConfigSaveFailed, err.Error(), nil)
-			}
+			saveTokens(res)
 
 			printEnvelope(map[string]any{
 				"token_type": res.TokenType,
@@ -56,4 +42,10 @@ func newRefreshCmd() *cobra.Command {
 	}
 
 	return cmd
+}
+
+// refreshError is refresh_failed when Sure rejects the refresh token, and
+// the classified error otherwise (see credentialError).
+func refreshError(err error) *errs.CLIError {
+	return credentialError(errs.CodeRefreshFailed, errs.From(err))
 }

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+
+	errs "github.com/we-promise/sure-cli/internal/errors"
 )
 
 // retriedMethods are the only methods the client retries. Sure can fail
@@ -32,9 +34,10 @@ func shouldRetry(r *resty.Response, err error, maxWait time.Duration) bool {
 		return false
 	}
 	if err != nil {
-		// An oversized body or an expired/cancelled call fails the same way
-		// on every attempt.
-		return !errors.Is(err, resty.ErrResponseBodyTooLarge) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+		// An oversized body, a refused redirect or an expired/cancelled call
+		// fails the same way on every attempt.
+		var ce *errs.CLIError
+		return !errors.As(err, &ce) && !errors.Is(err, resty.ErrResponseBodyTooLarge) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
 	}
 	if r.StatusCode() == http.StatusTooManyRequests {
 		d, ok := retryAfter(r.Header())
@@ -51,4 +54,36 @@ func retryAfter(h http.Header) (time.Duration, bool) {
 		return 0, false
 	}
 	return time.Duration(secs) * time.Second, true
+}
+
+// retryWait is the wait before the retry that follows r: Sure's Retry-After
+// when it sends one, else min doubled per attempt made, capped at max. It is
+// deterministic (no jitter) so the retry condition can tell whether the
+// retry fits in what is left of the call's deadline.
+func retryWait(r *resty.Response, base, ceiling time.Duration) time.Duration {
+	wait, ok := retryAfter(r.Header())
+	if !ok {
+		wait = base
+		for i := 1; i < r.Request.Attempt && wait < ceiling; i++ {
+			wait *= 2
+		}
+	}
+	return max(base, min(wait, ceiling))
+}
+
+// fitsDeadline reports whether waiting wait before retrying r leaves time
+// before the call's deadline, or for a transfer before its stall timer
+// fires. Without it the call would end in a timeout during the wait instead
+// of the answer Sure last gave (e.g. a 503 with its maintenance message).
+func fitsDeadline(r *resty.Response, wait time.Duration) bool {
+	ctx := r.Request.Context()
+	if s := stallOf(ctx); s != nil {
+		// r is data that just moved: the stall counts from now.
+		s.touch()
+		if wait >= s.idle {
+			return false
+		}
+	}
+	deadline, ok := ctx.Deadline()
+	return !ok || time.Until(deadline) > wait
 }

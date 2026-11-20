@@ -3,9 +3,9 @@ package root
 import (
 	"fmt"
 	"net/url"
-	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/we-promise/sure-cli/internal/api"
 )
 
 func newBalanceSheetCmd() *cobra.Command {
@@ -141,6 +141,9 @@ func newValuationsCreateCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Create valuation (default dry-run; use --apply to execute)",
 		Run: func(cmd *cobra.Command, args []string) {
+			if o.Date == "" {
+				o.Date = familyToday(api.New())
+			}
 			payload, err := buildValuationCreatePayload(o)
 			failValidation(err)
 			dispatchWrite(o.Apply, "POST", "/api/v1/valuations", payload)
@@ -148,7 +151,7 @@ func newValuationsCreateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&o.AccountID, "account-id", "", "account id (required)")
 	cmd.Flags().StringVar(&o.Amount, "amount", "", "valuation amount (required)")
-	cmd.Flags().StringVar(&o.Date, "date", time.Now().Format(time.DateOnly), "date YYYY-MM-DD")
+	cmd.Flags().StringVar(&o.Date, "date", "", familyDateUsage)
 	cmd.Flags().StringVar(&o.Notes, "notes", "", "notes")
 	cmd.Flags().BoolVar(&o.Upsert, "upsert", false, "request upsert response semantics")
 	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the create (otherwise dry-run)")
@@ -176,10 +179,10 @@ func newValuationsUpdateCmd() *cobra.Command {
 
 func buildValuationCreatePayload(o valuationCreateOpts) (map[string]any, error) {
 	if o.AccountID == "" {
-		return nil, fmt.Errorf("account-id is required")
+		return nil, fmt.Errorf("--account-id is required")
 	}
 	if o.Amount == "" {
-		return nil, fmt.Errorf("amount is required")
+		return nil, fmt.Errorf("--amount is required")
 	}
 	if err := checkDecimal("amount", o.Amount, moneyColumn); err != nil {
 		return nil, err
@@ -207,7 +210,7 @@ func buildValuationUpdatePayload(o valuationUpdateOpts) (map[string]any, error) 
 		return nil, fmt.Errorf("no fields provided to update")
 	}
 	if (o.Amount == "") != (o.Date == "") {
-		return nil, fmt.Errorf("amount and date must both be provided when updating valuation amount")
+		return nil, fmt.Errorf("--amount and --date must both be given to change a valuation's amount")
 	}
 	valuation := map[string]any{}
 	if o.Amount != "" {

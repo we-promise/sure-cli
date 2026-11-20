@@ -69,7 +69,7 @@ type chatCreateOpts struct {
 
 func buildChatCreateBody(o chatCreateOpts) (map[string]any, error) {
 	if strings.TrimSpace(o.Title) == "" {
-		return nil, errors.New("title is required (upstream validates presence)")
+		return nil, errors.New("--title is required (Sure validates its presence)")
 	}
 	body := map[string]any{"title": o.Title}
 	if o.Message != "" {
@@ -109,7 +109,7 @@ type chatUpdateOpts struct {
 
 func buildChatUpdateBody(o chatUpdateOpts) (map[string]any, error) {
 	if strings.TrimSpace(o.Title) == "" {
-		return nil, errors.New("title is required")
+		return nil, errors.New("--title is required")
 	}
 	return map[string]any{"title": o.Title}, nil
 }
@@ -165,10 +165,10 @@ type messageCreateOpts struct {
 
 func buildMessageCreateBody(o messageCreateOpts) (map[string]any, error) {
 	if o.ChatID == "" {
-		return nil, errors.New("chat-id is required")
+		return nil, errors.New("--chat-id is required")
 	}
 	if strings.TrimSpace(o.Content) == "" {
-		return nil, errors.New("content is required")
+		return nil, errors.New("--content is required")
 	}
 	body := map[string]any{"content": o.Content}
 	if o.Model != "" {
@@ -203,7 +203,7 @@ type messageRetryOpts struct {
 
 func validateMessageRetryOpts(o messageRetryOpts) error {
 	if o.ChatID == "" {
-		return errors.New("chat-id is required")
+		return errors.New("--chat-id is required")
 	}
 	return nil
 }

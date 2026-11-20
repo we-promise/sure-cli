@@ -3,6 +3,8 @@ package output
 import (
 	"fmt"
 	"os"
+	"strings"
+	"unicode"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 )
@@ -17,53 +19,42 @@ func PrintTable(env Envelope) bool {
 
 	// Accounts list
 	if accounts, ok := rows(m["accounts"]); ok {
-		tw := table.NewWriter()
-		tw.SetOutputMirror(os.Stdout)
-		tw.AppendHeader(table.Row{"id", "name", "type", "currency", "balance", "classification"})
-		for _, rowm := range accounts {
-			tw.AppendRow(table.Row{
+		render(table.Row{"id", "name", "type", "currency", "balance", "classification"}, accounts, func(rowm map[string]any) table.Row {
+			return table.Row{
 				fmt.Sprint(rowm["id"]),
 				fmt.Sprint(rowm["name"]),
 				fmt.Sprint(rowm["account_type"]),
 				fmt.Sprint(rowm["currency"]),
 				fmt.Sprint(rowm["balance"]),
 				fmt.Sprint(rowm["classification"]),
-			})
-		}
-		tw.Render()
+			}
+		})
 		return true
 	}
 
 	// Transactions list
 	if txs, ok := rows(m["transactions"]); ok {
-		tw := table.NewWriter()
-		tw.SetOutputMirror(os.Stdout)
-		tw.AppendHeader(table.Row{"id", "date", "name", "classification", "amount", "account"})
-		for _, rowm := range txs {
+		render(table.Row{"id", "date", "name", "classification", "amount", "account"}, txs, func(rowm map[string]any) table.Row {
 			acct := ""
 			if am, ok := rowm["account"].(map[string]any); ok {
 				acct = fmt.Sprint(am["name"])
 			}
-			tw.AppendRow(table.Row{
+			return table.Row{
 				fmt.Sprint(rowm["id"]),
 				fmt.Sprint(rowm["date"]),
 				fmt.Sprint(rowm["name"]),
 				fmt.Sprint(rowm["classification"]),
 				fmt.Sprint(rowm["amount"]),
 				acct,
-			})
-		}
-		tw.Render()
+			}
+		})
 		return true
 	}
 
 	// Holdings list (Sure api/v1/holdings/_holding)
 	if holdings, ok := rows(m["holdings"]); ok {
-		tw := table.NewWriter()
-		tw.SetOutputMirror(os.Stdout)
-		tw.AppendHeader(table.Row{"id", "date", "ticker", "security", "qty", "price", "amount", "avg_cost", "lots", "account"})
-		for _, rowm := range holdings {
-			tw.AppendRow(table.Row{
+		render(table.Row{"id", "date", "ticker", "security", "qty", "price", "amount", "avg_cost", "lots", "account"}, holdings, func(rowm map[string]any) table.Row {
+			return table.Row{
 				cell(rowm["id"]),
 				cell(rowm["date"]),
 				nestedCell(rowm, "security", "ticker"),
@@ -74,19 +65,15 @@ func PrintTable(env Envelope) bool {
 				cell(rowm["avg_cost"]),
 				lotsCell(rowm["lots"]),
 				nestedCell(rowm, "account", "name"),
-			})
-		}
-		tw.Render()
+			}
+		})
 		return true
 	}
 
 	// Trades list (Sure api/v1/trades/_trade)
 	if trades, ok := rows(m["trades"]); ok {
-		tw := table.NewWriter()
-		tw.SetOutputMirror(os.Stdout)
-		tw.AppendHeader(table.Row{"id", "date", "ticker", "activity", "qty", "price", "amount", "lot_source", "account"})
-		for _, rowm := range trades {
-			tw.AppendRow(table.Row{
+		render(table.Row{"id", "date", "ticker", "activity", "qty", "price", "amount", "lot_source", "account"}, trades, func(rowm map[string]any) table.Row {
+			return table.Row{
 				cell(rowm["id"]),
 				cell(rowm["date"]),
 				nestedCell(rowm, "security", "ticker"),
@@ -96,13 +83,44 @@ func PrintTable(env Envelope) bool {
 				cell(rowm["amount"]),
 				cell(rowm["lot_source_trade_id"]),
 				nestedCell(rowm, "account", "name"),
-			})
-		}
-		tw.Render()
+			}
+		})
 		return true
 	}
 
 	return false
+}
+
+// render prints one table row per item to stdout. Cells are Sure data, so
+// they are made Printable first.
+func render(header table.Row, items []map[string]any, row func(map[string]any) table.Row) {
+	tw := table.NewWriter()
+	tw.SetOutputMirror(os.Stdout)
+	tw.AppendHeader(header)
+	for _, item := range items {
+		r := row(item)
+		for i, c := range r {
+			r[i] = Printable(fmt.Sprint(c))
+		}
+		tw.AppendRow(r)
+	}
+	tw.Render()
+}
+
+// Printable makes s safe to print on a terminal: tabs and line breaks become
+// spaces and every other control character (C0, DEL, C1) is dropped, so text
+// from Sure cannot carry escape sequences that move the cursor, recolour the
+// screen or write the clipboard.
+func Printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\t' || r == '\n' || r == '\r':
+			return ' '
+		case unicode.IsControl(r):
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // rows reads a list of objects, decoded from one response ([]any) or

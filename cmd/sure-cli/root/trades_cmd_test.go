@@ -178,8 +178,8 @@ func TestBuildTradeCreatePayload_Rejects(t *testing.T) {
 		{"US-style date", with(buy, func(o *tradeCreateOpts) { o.Date = "05/01/2026" }), "invalid date"},
 		{"unknown type", base("split"), "type must be one of"},
 		{"missing type", base(""), "type must be one of"},
-		{"buy without security", with(buy, func(o *tradeCreateOpts) { o.SecurityID = "" }), "one of security-id, ticker, or manual-ticker is required"},
-		{"buy with two security identifiers", with(buy, func(o *tradeCreateOpts) { o.Ticker = "AAPL" }), "only one of security-id, ticker, or manual-ticker"},
+		{"buy without security", with(buy, func(o *tradeCreateOpts) { o.SecurityID = "" }), "one of --security-id, --ticker or --manual-ticker is required"},
+		{"buy with two security identifiers", with(buy, func(o *tradeCreateOpts) { o.Ticker = "AAPL" }), "only one of --security-id, --ticker or --manual-ticker"},
 		{"buy without qty", with(buy, func(o *tradeCreateOpts) { o.Qty = "" }), "qty is required"},
 		{"buy without price", with(buy, func(o *tradeCreateOpts) { o.Price = "" }), "price is required"},
 		{"buy zero qty", with(buy, func(o *tradeCreateOpts) { o.Qty = "0.000" }), "qty must be a positive decimal"},
@@ -195,7 +195,7 @@ func TestBuildTradeCreatePayload_Rejects(t *testing.T) {
 		{"dividend amount beyond 4 decimals", with(base("dividend"), func(o *tradeCreateOpts) { o.SecurityID, o.Amount = "sec", "1.00001" }), "amount has more than 4 decimal places"},
 		{"buy with amount", with(buy, func(o *tradeCreateOpts) { o.Amount = "10" }), "amount does not apply to buy"},
 		{"buy with transfer account", with(buy, func(o *tradeCreateOpts) { o.TransferAccountID = "acc2" }), "transfer-account-id does not apply to buy"},
-		{"dividend without security", with(base("dividend"), func(o *tradeCreateOpts) { o.Amount = "1" }), "one of security-id, ticker, or manual-ticker is required"},
+		{"dividend without security", with(base("dividend"), func(o *tradeCreateOpts) { o.Amount = "1" }), "one of --security-id, --ticker or --manual-ticker is required"},
 		{"dividend without amount", with(base("dividend"), func(o *tradeCreateOpts) { o.SecurityID = "sec" }), "amount is required"},
 		{"dividend zero amount", with(base("dividend"), func(o *tradeCreateOpts) { o.SecurityID, o.Amount = "sec", "0" }), "amount must be a positive decimal"},
 		{"dividend with qty", with(base("dividend"), func(o *tradeCreateOpts) { o.SecurityID, o.Amount, o.Qty = "sec", "1", "2" }), "qty does not apply to dividend"},
@@ -207,8 +207,8 @@ func TestBuildTradeCreatePayload_Rejects(t *testing.T) {
 		{"withdrawal negative amount", with(base("withdrawal"), func(o *tradeCreateOpts) { o.Amount = "-5" }), "amount must be a positive decimal"},
 		{"deposit with security", with(base("deposit"), func(o *tradeCreateOpts) { o.Amount, o.Ticker = "1", "AAPL" }), "ticker does not apply to deposit"},
 		{"deposit with qty", with(base("deposit"), func(o *tradeCreateOpts) { o.Amount, o.Qty = "1", "1" }), "qty does not apply to deposit"},
-		{"transfer deposit with currency", with(base("deposit"), func(o *tradeCreateOpts) { o.Amount, o.TransferAccountID, o.Currency = "1", "acc2", "USD" }), "currency does not apply to a deposit with transfer-account-id"},
-		{"transfer withdrawal with currency", with(base("withdrawal"), func(o *tradeCreateOpts) { o.Amount, o.TransferAccountID, o.Currency = "1", "acc2", "USD" }), "currency does not apply to a withdrawal with transfer-account-id"},
+		{"transfer deposit with currency", with(base("deposit"), func(o *tradeCreateOpts) { o.Amount, o.TransferAccountID, o.Currency = "1", "acc2", "USD" }), "--currency does not apply to a deposit with --transfer-account-id"},
+		{"transfer withdrawal with currency", with(base("withdrawal"), func(o *tradeCreateOpts) { o.Amount, o.TransferAccountID, o.Currency = "1", "acc2", "USD" }), "--currency does not apply to a withdrawal with --transfer-account-id"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -270,12 +270,12 @@ func TestBuildTradeUpdatePayload_Rejects(t *testing.T) {
 		opts    tradeUpdateOpts
 		wantErr string
 	}{
-		{"type without qty or price", tradeUpdateOpts{Type: "sell"}, "type and nature only apply with qty or price"},
-		{"nature without qty or price", tradeUpdateOpts{Nature: "inflow", Name: "x"}, "type and nature only apply with qty or price"},
-		{"type and nature", tradeUpdateOpts{Type: "buy", Nature: "inflow", Qty: "1"}, "use either type or nature, not both"},
+		{"type without qty or price", tradeUpdateOpts{Type: "sell"}, "--type and --nature only apply with --qty or --price"},
+		{"nature without qty or price", tradeUpdateOpts{Nature: "inflow", Name: "x"}, "--type and --nature only apply with --qty or --price"},
+		{"type and nature", tradeUpdateOpts{Type: "buy", Nature: "inflow", Qty: "1"}, "use either --type or --nature, not both"},
 		{"unknown nature", tradeUpdateOpts{Nature: "income", Qty: "1"}, "nature must be inflow or outflow"},
-		{"amount with qty", tradeUpdateOpts{Amount: "10", Qty: "1"}, "amount cannot be combined with qty or price"},
-		{"amount with price", tradeUpdateOpts{Amount: "10", Price: "1"}, "amount cannot be combined with qty or price"},
+		{"amount with qty", tradeUpdateOpts{Amount: "10", Qty: "1"}, "--amount cannot be combined with --qty or --price"},
+		{"amount with price", tradeUpdateOpts{Amount: "10", Price: "1"}, "--amount cannot be combined with --qty or --price"},
 		{"non-numeric qty", tradeUpdateOpts{Qty: "abc"}, "qty must be a positive decimal"},
 		{"zero price", tradeUpdateOpts{Price: "0"}, "price must be a positive decimal"},
 		{"non-numeric amount", tradeUpdateOpts{Amount: "1,5"}, "amount must be a decimal number"},

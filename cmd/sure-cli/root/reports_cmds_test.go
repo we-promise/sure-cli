@@ -2,6 +2,7 @@ package root
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -84,26 +85,31 @@ func TestBuildCashFlowQuery_Valid(t *testing.T) {
 }
 
 func TestBuildCashFlowQuery_Rejections(t *testing.T) {
-	cases := map[string]cashFlowOpts{
-		"include and view combined":    {Include: "sankey", View: "sankey"},
-		"unknown view":                 {View: "table"},
-		"unknown include":              {Include: "daily"},
-		"group-by without sankey view": {GroupBy: "category"},
-		"group-by with include only":   {Include: "sankey", GroupBy: "account"},
-		"unknown group-by":             {View: "sankey", GroupBy: "merchant"},
-		"range without sankey view":    {StartDate: "2026-01-01", EndDate: "2026-01-31"},
-		"range with month":             {View: "sankey", Month: "2026-01", StartDate: "2026-01-01", EndDate: "2026-01-31"},
-		"start date only":              {View: "sankey", StartDate: "2026-01-01"},
-		"end date only":                {View: "sankey", EndDate: "2026-01-31"},
-		"range out of order":           {View: "sankey", StartDate: "2026-02-01", EndDate: "2026-01-31"},
-		"invalid start date":           {View: "sankey", StartDate: "2026-02-30", EndDate: "2026-03-31"},
-		"month with day":               {Month: "2026-03-01"},
-		"month not a month":            {Month: "2026-13"},
-		"month in another format":      {Month: "03/2026"},
+	// Each case names the rule that must reject it, in
+	// Api::V1::CashFlowsController's order.
+	cases := map[string]struct {
+		opts cashFlowOpts
+		want string
+	}{
+		"include and view combined":    {cashFlowOpts{Include: "sankey", View: "sankey"}, "--include and --view cannot be combined"},
+		"unknown view":                 {cashFlowOpts{View: "table"}, "support only sankey"},
+		"unknown include":              {cashFlowOpts{Include: "daily"}, "support only sankey"},
+		"group-by without sankey view": {cashFlowOpts{GroupBy: "category"}, "--group-by requires --view sankey"},
+		"group-by with include only":   {cashFlowOpts{Include: "sankey", GroupBy: "account"}, "--group-by requires --view sankey"},
+		"unknown group-by":             {cashFlowOpts{View: "sankey", GroupBy: "merchant"}, "--group-by must be category or account"},
+		"range without sankey view":    {cashFlowOpts{StartDate: "2026-01-01", EndDate: "2026-01-31"}, "require --view sankey"},
+		"range with month":             {cashFlowOpts{View: "sankey", Month: "2026-01", StartDate: "2026-01-01", EndDate: "2026-01-31"}, "cannot be combined with --month"},
+		"start date only":              {cashFlowOpts{View: "sankey", StartDate: "2026-01-01"}, "--start-date and --end-date must be given together"},
+		"end date only":                {cashFlowOpts{View: "sankey", EndDate: "2026-01-31"}, "--start-date and --end-date must be given together"},
+		"range out of order":           {cashFlowOpts{View: "sankey", StartDate: "2026-02-01", EndDate: "2026-01-31"}, "--start-date must be on or before --end-date"},
+		"invalid start date":           {cashFlowOpts{View: "sankey", StartDate: "2026-02-30", EndDate: "2026-03-31"}, "--start-date: invalid date"},
+		"month with day":               {cashFlowOpts{Month: "2026-03-01"}, "invalid --month"},
+		"month not a month":            {cashFlowOpts{Month: "2026-13"}, "invalid --month"},
+		"month in another format":      {cashFlowOpts{Month: "03/2026"}, "invalid --month"},
 	}
-	for name, o := range cases {
-		if _, err := buildCashFlowQuery(o); err == nil {
-			t.Fatalf("%s: expected error", name)
+	for name, c := range cases {
+		if _, err := buildCashFlowQuery(c.opts); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want %q", name, err, c.want)
 		}
 	}
 }

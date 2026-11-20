@@ -30,10 +30,25 @@ func checkResponse(r *resty.Response, err error) {
 	}
 }
 
-// printEnvelope prints data in the --format chosen. meta.status is set only
-// when data is a single Sure response; output computed from several calls
-// or locally leaves it out.
+// warnings holds what the command worked around so far (see warn).
+var warnings []output.Error
+
+// warn records ce as worked around: the command goes on, and the envelope
+// it prints lists ce under meta.warnings.
+func warn(ce *errs.CLIError) {
+	warnings = append(warnings, output.Error{Code: ce.Code, Message: ce.Message, Details: ce.Details})
+}
+
+// printEnvelope prints data in the --format chosen, with the warnings
+// recorded so far. meta.status is set only when data is a single Sure
+// response; output computed from several calls or locally leaves it out.
 func printEnvelope(data any, meta *output.Meta) {
+	if len(warnings) > 0 {
+		if meta == nil {
+			meta = &output.Meta{}
+		}
+		meta.Warnings, warnings = append(meta.Warnings, warnings...), nil
+	}
 	if err := output.Print(format, output.Envelope{Data: data, Meta: meta}); err != nil {
 		fail(errs.Wrap(errs.CodeOutputFailed, err.Error(), err))
 	}

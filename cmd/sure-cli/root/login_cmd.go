@@ -3,6 +3,7 @@ package root
 import (
 	"bufio"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"syscall"
@@ -24,6 +25,11 @@ func newLoginCmd() *cobra.Command {
 		Use:   "login",
 		Short: "Login via OAuth (email/password) and store access + refresh tokens",
 		Run: func(cmd *cobra.Command, args []string) {
+			client := api.New()
+			if err := client.Err(); err != nil {
+				fail(errs.From(err))
+			}
+			requireWritableConfig()
 			// Prompt for email if not provided
 			if email == "" {
 				fmt.Print("Email: ")
@@ -53,8 +59,6 @@ func newLoginCmd() *cobra.Command {
 				password = strings.TrimRight(input, "\r\n")
 			}
 
-			client := api.New()
-
 			// Every login revokes the device's previous tokens upstream, so
 			// each install needs its own device_id (persisted below by Save).
 			config.EnsureDeviceID()
@@ -71,19 +75,7 @@ func newLoginCmd() *cobra.Command {
 				output.Fail(errs.CodeLoginFailed, "login response returned empty access token", nil)
 			}
 
-			config.SetAuthMode("bearer")
-			config.SetToken(res.AccessToken)
-			// Guard rotation fields so a partial server response doesn't wipe
-			// saved tokens and silently log the user out.
-			if res.RefreshToken != "" {
-				config.SetRefreshToken(res.RefreshToken)
-			}
-			if res.ExpiresIn > 0 {
-				config.SetTokenExpiresAt(time.Now().Add(time.Duration(res.ExpiresIn) * time.Second))
-			}
-			if err := config.Save(); err != nil {
-				output.Fail(errs.CodeConfigSaveFailed, err.Error(), nil)
-			}
+			saveTokens(res.TokenResponse)
 
 			printEnvelope(map[string]any{
 				"token_type": res.TokenType,
@@ -101,7 +93,8 @@ func newLoginCmd() *cobra.Command {
 
 // loginError maps a Login failure to the envelope error. Sure's MFA
 // challenge (401 mfa_required) keeps its own code with a hint about --otp;
-// everything else is login_failed with Sure's message and details.
+// Sure turning the credentials down is login_failed with Sure's message and
+// details; any other failure keeps its own code (see credentialError).
 func loginError(err error, otp string) *errs.CLIError {
 	ce := errs.From(err)
 	if ce.Code == errs.CodeMFARequired {
@@ -111,5 +104,44 @@ func loginError(err error, otp string) *errs.CLIError {
 		}
 		return errs.New(errs.CodeMFARequired, msg).WithDetails(ce.Details)
 	}
-	return errs.New(errs.CodeLoginFailed, ce.Message).WithDetails(ce.Details)
+	return credentialError(errs.CodeLoginFailed, ce)
+}
+
+// credentialError is ce as code when Sure answered that it rejects the
+// credentials or device a login or refresh sent (400, 401, 403, 422).
+// Anything else (a redirect, a timeout, a rate limit, a 5xx, an answer lost
+// or unreadable) keeps its own code, which says what to do about it.
+func credentialError(code string, ce *errs.CLIError) *errs.CLIError {
+	switch ce.Details["status"] {
+	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity:
+		return errs.New(code, ce.Message).WithDetails(ce.Details)
+	}
+	return ce
+}
+
+// requireWritableConfig fails before a call that makes Sure revoke the stored
+// tokens (a login revokes the device's, a refresh the refresh token), so
+// tokens the CLI could not save do not log the user out.
+func requireWritableConfig() {
+	if err := config.CheckWritable(); err != nil {
+		fail(errs.Wrap(errs.CodeConfigSaveFailed, fmt.Sprintf("config file is not writable (%v); nothing was sent to Sure", err), err))
+	}
+}
+
+// saveTokens stores the tokens of a login or refresh. If the config cannot
+// be saved the new pair is rescued (see config.RescueTokens).
+func saveTokens(res api.TokenResponse) {
+	config.SetAuthMode("bearer")
+	config.SetToken(res.AccessToken)
+	// Guard rotation fields so a partial server response doesn't wipe saved
+	// tokens and silently log the user out.
+	if res.RefreshToken != "" {
+		config.SetRefreshToken(res.RefreshToken)
+	}
+	if res.ExpiresIn > 0 {
+		config.SetTokenExpiresAt(time.Now().Add(time.Duration(res.ExpiresIn) * time.Second))
+	}
+	if err := config.Save(); err != nil {
+		fail(config.RescueTokens(err))
+	}
 }

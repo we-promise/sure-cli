@@ -9,7 +9,10 @@ import (
 )
 
 func newConfigCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "config", Short: "Manage configuration"}
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Manage configuration",
+	}
 	cmd.AddCommand(&cobra.Command{
 		Use:   "get <key>",
 		Short: "Get a config value",
@@ -24,6 +27,10 @@ func newConfigCmd() *cobra.Command {
 		Short: "Set a config value",
 		Args:  cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			if args[0] == "timeout" {
+				_, err := config.ParseTimeout(args[1])
+				failValidation(err)
+			}
 			config.Set(args[0], args[1])
 			if err := config.Save(); err != nil {
 				output.Fail(errs.CodeConfigSaveFailed, err.Error(), nil)

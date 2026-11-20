@@ -46,11 +46,12 @@ func newAnalyzeLeaksCmd() *cobra.Command {
 			"the thresholds applied, in minor units." + jsonOnly,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			start, end, err := leaksWindow(months, startDate, endDate, time.Now())
-			failValidation(err)
 			params, err := leakParams(cmd.Flags().Changed, minCount, minTotal, maxAvg, currency)
 			failValidation(err)
-			txs, err := api.FetchTransactionsWindow(api.New(), start, end)
+			client := api.New()
+			start, end, err := leaksWindow(months, startDate, endDate, familyClock(client))
+			failValidation(err)
+			txs, err := api.FetchTransactionsWindow(client, start, end)
 			checkResponse(nil, err)
 			cands := analyze.DetectLeaks(txs, start, end, params)
 			if cands == nil {
@@ -101,8 +102,9 @@ func leakParams(changed func(flag string) bool, minCount int, minTotal, maxAvg f
 }
 
 // leaksWindow resolves the analysis window in whole days: --start-date and
-// --end-date together, else the last `months` months up to today.
-func leaksWindow(months int, startDate, endDate string, now time.Time) (time.Time, time.Time, error) {
+// --end-date together, else the last `months` months up to today, read from
+// now only then.
+func leaksWindow(months int, startDate, endDate string, now func() time.Time) (time.Time, time.Time, error) {
 	explicit, err := parsePairedDateRange(startDate, endDate)
 	if err != nil {
 		return time.Time{}, time.Time{}, err
@@ -121,15 +123,17 @@ func newAnalyzeRunwayCmd() *cobra.Command {
 		Short: "Estimate runway months based on recent spending",
 		Long: "Divides the account's balance by the monthly burn: the whole family's reportable " +
 			"expenses in the account currency over the last --days days, from every account, " +
-			"extrapolated to 30-day months.",
+			"extrapolated to 30-day months. Expenses are gross and other currencies are left out, " +
+			"so the burn can differ from `status`, which takes Sure's own spending (all currencies " +
+			"converted, refunds netted per category).",
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			if accountID == "" {
 				failValidation(errors.New("--account-id is required"))
 			}
-			start, end, err := lookbackWindow("days", windowDays, daysBack, time.Now())
-			failValidation(err)
 			client := api.New()
+			start, end, err := lookbackWindow("days", windowDays, daysBack, familyClock(client))
+			failValidation(err)
 
 			// Fetch the account directly; include_disabled so a disabled
 			// account can still be planned against when asked for by id.

@@ -120,6 +120,7 @@ func TestUnknownFlagOnACommandFailsValidation(t *testing.T) {
 		{"--bogus accounts list", "--bogus"},
 		{"accounts --bogus list", "--bogus"},
 		{"transactions show", "accepts 1 arg"},
+		{"sync extra", "unknown command"},
 	} {
 		t.Run(c.args, func(t *testing.T) {
 			out, code := runCLI(t, c.args)

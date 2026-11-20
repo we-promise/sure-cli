@@ -13,11 +13,15 @@ Agent-first CLI for **Sure** (we-promise/sure) — self-hosted personal finance 
 ## Agent-first contract
 
 - **Default output is JSON** (`--format=json`) wrapped in a stable **Envelope**: `{data, meta, error}`
-- **API errors** set `error.code` from a stable CLI set (`bad_request`, `auth_required`, `mfa_required`, `auth_invalid` for a missing scope, `forbidden`, `not_found`, `conflict`, `validation_failed`, `rate_limited`, `server_error`, `network_error`, `timeout`, `canceled`, `invalid_response`, `config_save_failed`, ...) and `error.message` to Sure's own message. `error.details` holds `status`, the capped `body`, Sure's machine code as `api_error` (e.g. `insufficient_scope`, `feature_disabled`, `export_not_ready`), `import_id` when Sure created an import before failing (do not repeat the request: read that import), and on 429 `retry_after` and `rate_limit`. Input the CLI rejects before sending a request fails with `validation_failed`. `internal/errors/errors.go` lists every code
+- **API errors** set `error.code` from a stable CLI set (`bad_request`, `auth_required`, `mfa_required`, `auth_invalid` for a missing scope, `forbidden`, `not_found`, `conflict`, `validation_failed`, `rate_limited`, `server_error`, `network_error`, `timeout`, `canceled`, `invalid_response`, `outcome_unknown`, `redirect_refused`, `too_many_pages`, `list_changed`, `config_save_failed`, `apply_incomplete`, ...) and `error.message` to Sure's own message. `error.details` holds `status`, the capped `body`, Sure's machine code as `api_error` (e.g. `insufficient_scope`, `feature_disabled`, `export_not_ready`), `import_id` when Sure created an import before failing (do not repeat the request: read that import), and on 429 `retry_after` and `rate_limit`. Input the CLI rejects before sending a request fails with `validation_failed`. `internal/errors/errors.go` lists every code
 - **Unknown subcommands** exit 1 with `error.code` `unknown_command` and cobra's `suggestions`. For a command an earlier version had, `error.details.hint` names its replacement (see [CHANGELOG.md](CHANGELOG.md))
-- **`invalid_response`** means Sure (or something in front of it, such as a captive portal or an SSO proxy answering with HTML) returned a 2xx the CLI cannot read, a body over 64 MiB, a pagination block past 1000 pages, or a download shorter than the export's `byte_size`. `details.status` tells whether a write was accepted (e.g. `201`), so do not blindly repeat a POST that failed this way
-- **Retries**: only GET/HEAD/PUT/OPTIONS are retried, on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s. POST/PATCH/DELETE are never retried, since Sure may have committed the change before the answer was lost. A 2xx body that cannot be decoded is never retried
-- **Timeouts**: `--timeout` (default `30s`, or the `timeout` config key) bounds each API call, retries included. For `family-exports download` it bounds the wait for the response and any pause in the transfer, so a large export that keeps flowing is not cut off; Ctrl-C cancels it and removes the partial file
+- **`invalid_response`** means Sure (or something in front of it, such as a captive portal or an SSO proxy answering with HTML) returned a 2xx the CLI cannot read, a body over 64 MiB, a page with more rows than it asked for, or a download shorter than the export's `byte_size`. `details.status` tells whether a write was accepted (e.g. `201`), so do not blindly repeat a POST that failed this way
+- **`outcome_unknown`** means a POST, PATCH or DELETE reached Sure but its answer was lost (timeout or dropped connection), so the change may have been applied. `details.may_have_applied` is `true`; read the resource back (`list` or `show`) before repeating the request. A write that never left the CLI (e.g. connection refused) keeps `network_error`
+- **Redirects are refused**: Sure's API never redirects, so a 3xx (often an `http://` `api_url` sent to `https://`, or an SSO proxy) fails with `redirect_refused` and `details.location`, and the API key, token or password is never sent to another address. Set `api_url` to the address that serves the API
+- **Lists read across pages** (`--all`, `status`, `analyze`, `propose`, `export`) follow the page count Sure reports on each page, up to 1000 pages (10,000 for `export transactions`, which writes rows as they arrive); more is `too_many_pages` (narrow the window, or use `family-exports` for a full export). A list that loses rows while it is read, so that offset paging may skip one (its `total_count` drops, or fewer rows are read than it counted on the first page), fails with `list_changed`; run the command again. Rows added meanwhile do not fail the read, and a row that paging serves twice is kept once. When Sure's `X-RateLimit-Remaining` cannot cover the pages left, the command fails after the first page with `rate_limited` and `details.needed_requests` and `details.rate_limit` instead of spending the hour's budget
+- **Retries**: only GET/HEAD/PUT/OPTIONS are retried, on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s. POST/PATCH/DELETE are never retried, since Sure may have committed the change before the answer was lost. A 2xx body that cannot be decoded is never retried. A retry whose wait would outlast `--timeout` is not attempted, so the call reports Sure's last answer (e.g. a 503) rather than `timeout`
+- **Timeouts**: `--timeout` (default `30s`, or the `timeout` config key) bounds each API call, retries included. It takes a duration (`90s`, `2m`) or a number of seconds (`90`); `0` disables it, and a negative or unreadable value fails with `validation_failed`. For `family-exports download` it bounds the wait for the response and any pause in the transfer, so a large export that keeps flowing is not cut off; Ctrl-C cancels it (also while it looks the export up) and removes the partial file, and a second Ctrl-C kills the process. For uploads (`imports create`, `account-statements upload`, ...) it bounds each pause in sending the file and then the wait for Sure's answer
+- **`meta.warnings`** lists what a command could not do and worked around (e.g. reading the family's time zone), each with an error `code`, `message` and `details`; `data` is still valid
 - **Write operations are safe by default**: `--dry-run` is the default; use `--apply` to execute
 - **Schemas are versioned** under `docs/schemas/v1/`. Changes that break scripts, schema renames included, are listed in [CHANGELOG.md](CHANGELOG.md)
 
@@ -75,7 +79,7 @@ go install github.com/we-promise/sure-cli@latest
 sure-cli --help
 
 # Configure
-sure-cli config set api_url http://localhost:3000
+sure-cli config set api_url https://sure.example.com
 
 # Auth
 sure-cli config set auth.mode api_key
@@ -126,6 +130,7 @@ sure-cli import-sessions show <session_id>
 sure-cli import-sessions publish <session_id> --apply
 sure-cli family-exports create
 sure-cli family-exports create --apply
+sure-cli family-exports download <export_id> --out sure-export.zip
 
 # Statement Vault (archives PDF/CSV/XLSX statements, max 25 MB; never imports transactions)
 sure-cli account-statements list --review-status unmatched --start-date 2026-01-01
@@ -133,7 +138,6 @@ sure-cli account-statements list --content-sha256 "$(shasum -a 256 march.pdf | c
 sure-cli account-statements show <statement_id>
 sure-cli account-statements upload --file march.pdf --account-id <account_id>          # dry-run
 sure-cli account-statements upload --file march.pdf --account-id <account_id> --apply  # 200 + meta.duplicate if already stored
-sure-cli family-exports download <export_id> --out sure-export.zip
 
 # Reference data and rules
 sure-cli categories list --roots-only
@@ -171,14 +175,29 @@ sure-cli analyze leaks --months 3            # or --start-date/--end-date; --cur
 sure-cli analyze runway --account-id <id> --days 90
 # runway: balance from balance_cents; burn is the whole family's reportable
 # expenses in the account currency, from every account, over the last --days
-# days (today included), extrapolated to 30-day months.
+# days (today included), extrapolated to 30-day months. Expenses are gross and
+# other currencies are left out, so the burn can differ from status, which
+# takes Sure's own spending (all currencies converted, refunds netted).
 
 # Propose automations
 sure-cli propose rules --months 3
 sure-cli propose rules --months 3 --apply --min-confidence 0.8
+# --apply exits 1 with apply_incomplete if any update fails; error.details holds
+# what was applied, skipped and failed. A 429 stops the run and the updates left
+# are skipped as rate_limited.
 
 # Export
 sure-cli export transactions --months 12 --out-format csv --out transactions.csv
+# The file is readable only by you (0600) and appears only once complete; a
+# failed export leaves an earlier file as it was. A file it replaces keeps its
+# mode tightened to the owner's bits (0644 becomes 0600, 0400 stays 0400), the
+# rule family-exports download and the config file follow too. --out
+# /dev/stdout, a named pipe or another device is written directly, so a
+# failure there can leave part of the output. Ctrl-C or SIGTERM fails it as
+# canceled and removes the partial file; a second Ctrl-C kills the process.
+# Rows go to disk page by page instead of being held in memory. CSV text cells
+# starting with = + - @ get a leading ' so spreadsheets do not run them as
+# formulas.
 
 # Financial history
 sure-cli balance-sheet show
@@ -198,9 +217,15 @@ sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026
 # liabilities, net worth and cash per native currency with the same exclusions;
 # unlike Sure it cannot leave out accounts a user has taken out of their
 # finances (include_in_finances is not in the API).
-# Runway uses depository cash in the family currency only.
-# monthly covers the last month, each day once (run on 2026-11-20: 2026-10-21..2026-11-20),
-# and counts transactions as described under "Amounts and Totals".
+# Runway uses depository cash in the family currency only: the API has no rate
+# to convert the rest. With cash in other currencies, runway.partial is true,
+# runway.cash_currencies_left_out lists them, and no low_runway alert is raised.
+# monthly is Sure's own income and spending for the last month, each day once
+# (run on 2026-11-20: 2026-10-21..2026-11-20, echoed in monthly.period), from
+# GET /api/v1/cash_flow?view=sankey: FX-converted to the family currency and
+# netted per category, so a refund lowers its category's spending. Runway and
+# the burn alerts use these figures. A server older than that endpoint
+# (before Sure v0.7.5) fails with not_found and a hint to upgrade.
 # Amounts show the currency's own decimals (1234 JPY, 1.235 KWD, 0.00012345 BTC).
 # monthly.subscriptions is Sure's active recurring outflows (no income, no
 # transfers, no one-offs) priced per month from each series' cadence, in the
@@ -266,8 +291,8 @@ sure-cli users reset status
 sure-cli users delete-me
 sure-cli users delete-me --apply
 
-# Sync (trigger a one-shot sync)
-sure-cli sync
+# Sync (trigger a one-shot sync; dry-run unless --apply, like every write)
+sure-cli sync --apply
 
 # Transfers (categorized transfers, payments, loan payments)
 sure-cli transfers list --status pending --account-id <account_id> --start-date 2026-01-01
@@ -339,7 +364,11 @@ If the account has two-factor authentication, login fails with `error.code=mfa_r
 
 Required device payload fields are stored under `auth.device.*` in config (defaults are provided; `device_type` accepts `ios`, `android` or `web`). Sure revokes a device's previous tokens on every login, so the first login stores a random per-install `auth.device.device_id`; logging in on another machine no longer logs this one out. A custom `device_id` you set is kept.
 
-The config file is written atomically with owner-only permissions (0600), and only the keys the command changed are merged into the file as it is on disk, so concurrent commands do not undo each other's token rotation. Before an automatic token refresh the CLI checks that the config file is writable and fails with `config_save_failed` otherwise, since Sure revokes the old refresh token on rotation; if saving still fails after Sure rotated, `details.refresh_token` carries the new token to put back with `sure-cli config set auth.refresh_token <token>`. When two commands refresh at once, the one Sure rejects picks up the tokens the other saved.
+The config file is written atomically with owner-only permissions (0600); a file you made stricter (e.g. 0400) keeps its mode, and a looser one is tightened to 0600. Only the keys the command changed are merged into the file as it is on disk, under a lock file (`.config.yaml.lock` next to it), so concurrent commands do not undo each other's changes or token rotation. A symlinked config is written through to its target, even one that does not exist yet. The CLI refuses to replace a config file another user owns, so `sudo sure-cli ...` cannot hand yours to root. Temp files a crashed save left behind are removed on the next run.
+
+Before `login`, `refresh` or an automatic token refresh the CLI checks that the config file is writable and fails with `config_save_failed` otherwise, since Sure revokes the old tokens when it issues new ones. If saving still fails after that, the new tokens are written to a new owner-only file in the user cache directory (`~/.cache/sure-cli/` on Linux, `~/Library/Caches/sure-cli/` on macOS, `%LocalAppData%\sure-cli\` on Windows) and `details.rescue_file` gives its path; copy `auth.token` and `auth.refresh_token` from it with `sure-cli config set`, then delete it. The tokens themselves never appear in the output. When two commands refresh at once, the one Sure rejects picks up the tokens the other saved.
+
+`api_url` must be `https://`, except for this machine (`localhost`, `*.localhost`, `127.0.0.0/8`, `::1`). Any other `http://` URL fails with `validation_failed` before a request is sent, because tokens and API keys would cross the network unencrypted; pass `--allow-insecure-http` or set `allow_insecure_http: true` to accept that, e.g. on a trusted LAN. Both this check and the timeout check run only for commands that call Sure, so `config` can repair either setting and `version`, `help` and `completion` still run.
 
 ## Docs
 
@@ -353,9 +382,9 @@ The config file is written atomically with owner-only permissions (0600), and on
 
 Sure stores transaction amounts in the entry convention: positive is an outflow (expense), negative an inflow (income). The `amount` field is a localized display string rounded to the currency's precision (`"-€2,000.00"`).
 
-`status`, `analyze`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against an older server they read `signed_amount_cents` (Sure #899) divided by the currency's minor unit (100 for EUR, 1 for JPY, 1000 for KWD), and only without it parse the localized `amount`, taking the sign from `classification`. The separators of that string depend on the server's locale, so the CLI infers them: a `.` or `,` that repeats, or one followed by exactly three digits in a currency without three decimals, groups thousands.
+`analyze`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against an older server they read `signed_amount_cents` (Sure #899) divided by the currency's minor unit (100 for EUR, 1 for JPY, 1000 for KWD), and only without it parse the localized `amount`, taking the sign from `classification`. The separators of that string depend on the server's locale, so the CLI infers them: a `.` or `,` that repeats, or one followed by exactly three digits in a currency without three decimals, groups thousands.
 
-Totals approximate Sure's income statement with what the API exposes. These rows are skipped:
+Their totals approximate Sure's income statement with what the API exposes (`status` asks Sure for its own). These rows are skipped:
 
 - `split_parent: true`: the split's children carry the amount, so counting the parent would count it twice.
 - `excluded: true`: the user left the row out of budgets and reports.
@@ -366,7 +395,9 @@ Totals approximate Sure's income statement with what the API exposes. These rows
 
 Sure also leaves out rows the API gives a client no way to spot, so the CLI counts them: rows on tax-advantaged accounts (401k, IRA, ISA, HSA, ...), on accounts the user took out of their finances (`include_in_finances`), pending rows, and investment-account rows labelled Transfer, Sweep In, Sweep Out or Exchange. A family with any of these sees CLI totals that differ from Sure's.
 
-`export transactions` writes every row. Its `amount` column is the exact signed decimal; `kind`, `excluded` and `split_parent` columns tell you which rows to leave out of a sum.
+Windows that end today (`status`, `analyze`, `propose`, `export`) end on the family's date, and `transactions create`, `valuations create` and `trades create` without `--date` use that date. The time zone is the one `family-settings show` reports, resolved as Sure does: a Rails name such as `Madrid` or `Eastern Time (US & Canada)` maps to its IANA zone, and no zone or one Sure does not know is UTC. When the settings cannot be read, the local zone stands in and `meta.warnings` holds the failed request's code and message. A `--months` window ending on the last day of a month covers whole calendar months.
+
+`export transactions` writes every row. CSV columns and JSON row keys are the same: `id, date, name, amount, currency, classification, kind, category, account, merchant, excluded, split_parent`. `amount` is the exact signed decimal as text; `kind`, `excluded` and `split_parent` tell you which rows to leave out of a sum. A JSON file is `{count, exported_at, transactions}`.
 
 ## Heuristics
 

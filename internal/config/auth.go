@@ -3,10 +3,13 @@ package config
 import (
 	"crypto/rand"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/viper"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/models"
 )
 
@@ -38,6 +41,51 @@ func SetRefreshToken(token string) {
 
 func SetTokenExpiresAt(t time.Time) {
 	Set("auth.token_expires_at", t.UTC().Format(time.RFC3339))
+}
+
+// RescueTokens reports a Save that failed after Sure issued new tokens. Sure
+// has already revoked the stored refresh token, so the new pair is written to
+// a new owner-only file under the user cache directory and only its path is
+// reported: the error envelope lands in logs and agent transcripts.
+func RescueTokens(saveErr error) *errs.CLIError {
+	file, err := writeRescueFile()
+	if err != nil {
+		return errs.Wrap(errs.CodeConfigSaveFailed, fmt.Sprintf(
+			"new tokens could not be saved to the config file (%v) nor to a rescue file (%v); log in again", saveErr, err), saveErr)
+	}
+	return errs.Wrap(errs.CodeConfigSaveFailed, fmt.Sprintf(
+		"new tokens could not be saved to the config file (%v); copy auth.token and auth.refresh_token from details.rescue_file into it with `sure-cli config set`, then delete that file, or log in again", saveErr), saveErr).
+		WithDetails(map[string]any{"rescue_file": file})
+}
+
+func writeRescueFile() (string, error) {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	dir = filepath.Join(dir, DefaultAppDir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	// CreateTemp opens a new 0600 file exclusively.
+	f, err := os.CreateTemp(dir, "rescued-tokens-*."+DefaultConfigType)
+	if err != nil {
+		return "", err
+	}
+	pair := viper.New()
+	pair.SetConfigType(DefaultConfigType)
+	for _, k := range []string{"auth.token", "auth.refresh_token", "auth.token_expires_at"} {
+		pair.Set(k, viper.GetString(k))
+	}
+	err = pair.WriteConfigTo(f)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
 }
 
 // LegacyDeviceID is the device_id every install shared before per-install

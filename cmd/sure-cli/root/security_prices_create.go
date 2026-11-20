@@ -83,16 +83,16 @@ dates, price > 0 with at most 4 decimals, one currency per request.`,
 
 func buildSecurityPricesCreatePayload(securityID, file string, stdin io.Reader) (map[string]any, error) {
 	if securityID == "" {
-		return nil, errors.New("security-id is required")
+		return nil, errors.New("--security-id is required")
 	}
 	if file == "" {
-		return nil, errors.New("file is required (use - for stdin)")
+		return nil, errors.New("--file is required (use - for stdin)")
 	}
 	in := stdin
 	if file != "-" {
 		f, err := os.Open(file)
 		if err != nil {
-			return nil, fmt.Errorf("file not accessible: %w", err)
+			return nil, fmt.Errorf("--file not accessible: %w", err)
 		}
 		defer f.Close()
 		in = f
@@ -264,6 +264,9 @@ func securityPriceDateError(date string) string {
 	return ""
 }
 
+// securityPriceError checks a row's price against moneyColumn, answering with
+// Security::ManualPriceImport's own messages word for word, so a row the CLI
+// rejects reads the same as one Sure rejects.
 func securityPriceError(price string) string {
 	switch {
 	case !models.IsDecimal(price):
