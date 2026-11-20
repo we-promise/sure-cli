@@ -156,3 +156,18 @@ func TestClassifyHTTPError_OmitsEmptyBody(t *testing.T) {
 		t.Fatalf("details.status = %v", ce.Details["status"])
 	}
 }
+
+func TestClassifyHTTPError_KeepsTheImportIDOfAFailedImport(t *testing.T) {
+	// Sure created the import before failing (imports_controller publish_failed,
+	// not_publishable, guest forbidden): repeating the POST would create another.
+	for _, status := range []int{http.StatusInternalServerError, http.StatusUnprocessableEntity, http.StatusForbidden} {
+		ce := ClassifyHTTPError(status,
+			[]byte(`{"error":"publish_failed","message":"Import was uploaded but could not be queued","import_id":"8c1d0b2e-1f1a-4c55-9a51-3d2f5e7b9a10"}`), nil)
+		if got := ce.Details["import_id"]; got != "8c1d0b2e-1f1a-4c55-9a51-3d2f5e7b9a10" {
+			t.Errorf("status %d: details.import_id = %v, want Sure's import id", status, got)
+		}
+	}
+	if _, ok := ClassifyHTTPError(http.StatusInternalServerError, []byte(`{"error":"internal_server_error"}`), nil).Details["import_id"]; ok {
+		t.Error("details.import_id set without one in the body")
+	}
+}
