@@ -23,20 +23,21 @@ const MaxPages = 1000
 // instead of held in memory (1M rows at MaxPerPage).
 const StreamMaxPages = 10000
 
-// walkPages GETs path, cancelled with ctx, one page at a time with q plus page/per_page, handing
-// each response body to visit, for at most maxPages pages. It walks up to
-// the total_pages the latest page reports, so rows pushed onto a new page by
-// an insert mid-walk are still read, and stops at a page with no rows. It
-// stops at the first transport error, HTTP status >= 400 or visit error and
-// returns that response so callers can report it as usual. It fails, as a
-// CLIError, on a page with more than perPage rows (invalid_response), on
-// more than maxPages pages (too_many_pages), when the pages left exceed
-// X-RateLimit-Remaining (rate_limited), and when rows may have been skipped
-// (list_changed): offset paging over a list that loses rows mid-walk skips
-// one, which shows as a total_count lower than the page before or, as Sure
-// serves its last page again for a page past the end (Pagy overflow
-// :last_page), fewer rows read, each id once, than the first total_count.
-// A row inserted mid-walk only makes a row repeat, which is dropped.
+// walkPages GETs path, cancelled with ctx, one page at a time with q plus
+// page/per_page, handing each response body to visit, for at most maxPages
+// pages. It walks up to the total_pages the latest page reports, so rows
+// pushed onto a new page by an insert mid-walk are still read, and stops at a
+// page with no rows. It stops at the first transport error, HTTP status >= 400
+// or visit error and returns that response so callers can report it as usual.
+// It fails, as a CLIError, on a page with more than perPage rows
+// (invalid_response), on more than maxPages pages (too_many_pages), when the
+// pages left exceed X-RateLimit-Remaining (rate_limited), and when rows may
+// have been skipped (list_changed): offset paging over a list that loses rows
+// mid-walk skips one, which shows as a total_count lower than the page before
+// or, as Sure serves its last page again for a page past the end (Pagy
+// overflow :last_page), fewer rows read, each id once, than the first
+// total_count. A row inserted mid-walk only makes a row repeat, which is
+// dropped.
 func walkPages(ctx context.Context, c *Client, path string, q url.Values, perPage, maxPages int, visit func(body []byte) error) (*resty.Response, error) {
 	query := url.Values{}
 	for k, v := range q {

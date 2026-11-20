@@ -3,6 +3,7 @@ package root
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 	// Family zones load on systems without a zoneinfo database (Windows).
 	_ "time/tzdata"
@@ -80,9 +81,7 @@ func familyClock(client *api.Client) func() time.Time {
 		loc, ce := familyLocation(client)
 		if ce != nil {
 			details := map[string]any{"time_zone": loc.String()}
-			for k, v := range ce.Details {
-				details[k] = v
-			}
+			maps.Copy(details, ce.Details)
 			warn(errs.New(ce.Code, fmt.Sprintf("cannot read the family's time zone (%s); dates use this machine's zone, %s", ce.Message, loc)).WithDetails(details))
 		}
 		return time.Now().In(loc)

@@ -59,14 +59,14 @@ func ReportableAccountIDs(accounts []map[string]any) map[string]bool {
 	return ids
 }
 
-// EachTransactionInWindow, cancelled with ctx, hands visit every transaction within [start,end],
-// split parents and excluded rows included (flagged), page by page at
-// MaxPerPage, so a caller that writes rows out need not hold them all. Each
-// id is visited once: offset paging over a list that gains rows mid-walk
-// serves a row twice. It stops at the first error. Every failure is a
+// EachTransactionInWindow, cancelled with ctx, hands visit every transaction
+// within [start,end], split parents and excluded rows included (flagged), page
+// by page at MaxPerPage, so a caller that writes rows out need not hold them
+// all. Each id is visited once: offset paging over a list that gains rows
+// mid-walk serves a row twice. It stops at the first error. Every failure is a
 // *errs.CLIError: a visit should return one, which comes back unchanged.
-// maxPages bounds the walk (too_many_pages past it); a caller that holds
-// every row passes MaxPages, one that streams them may allow more.
+// maxPages bounds the walk (too_many_pages past it); a caller that holds every
+// row passes MaxPages, one that streams them may allow more.
 func EachTransactionInWindow(ctx context.Context, client *Client, start, end time.Time, maxPages int, visit func(models.Transaction) error) error {
 	q := url.Values{}
 	q.Set("start_date", start.Format(time.DateOnly))
