@@ -694,3 +694,36 @@ func TestClient_PostMultipart_AnswerLostAfterTheUploadIsOutcomeUnknown(t *testin
 	_, err := c.PostMultipart("/api/v1/imports", nil, "file", uploadFile(t, 4<<20), "text/csv", nil)
 	assertCode(t, err, errs.CodeOutcomeUnknown)
 }
+
+func TestClient_InvalidConfigFailsEveryCallWithoutSendingIt(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1) }))
+	t.Cleanup(srv.Close)
+	c := testClient(t, srv.URL)
+	viper.Set("timeout", "soon")
+	c = New()
+	if ce := errs.From(c.Err()); ce.Code != errs.CodeValidation {
+		t.Fatalf("Err = %v, want validation_failed", ce)
+	}
+	dir := t.TempDir()
+	calls := map[string]func() error{
+		"get":  func() error { _, err := c.Get("/api/v1/accounts", nil); return err },
+		"post": func() error { _, err := c.Post("/api/v1/accounts", map[string]any{}, nil); return err },
+		"multipart": func() error {
+			_, err := c.PostMultipart("/api/v1/imports", map[string]string{"a": "b"}, "", "", "", nil)
+			return err
+		},
+		"download": func() error {
+			_, err := c.GetToFile(context.Background(), "/x", filepath.Join(dir, "out"), 0)
+			return err
+		},
+	}
+	for name, call := range calls {
+		if ce := errs.From(call()); ce.Code != errs.CodeValidation {
+			t.Errorf("%s: error = %v, want validation_failed", name, ce)
+		}
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("%d requests sent with an invalid config", hits.Load())
+	}
+}

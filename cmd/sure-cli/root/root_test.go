@@ -110,3 +110,23 @@ func TestPlainHTTPToARemoteHostNeedsOptIn(t *testing.T) {
 		}
 	}
 }
+
+func TestCommandsThatSendNothingIgnoreAnInvalidConfig(t *testing.T) {
+	cfg := writeConfig(t, "api_url: http://sure.invalid\ntimeout: soon\n")
+	for _, args := range [][]string{{"version"}, {"help"}, {"completion", "bash"}, {"accounts"}} {
+		if ce := cliError(t, append([]string{"--config", cfg}, args...)...); ce != nil {
+			t.Fatalf("%v: %v", args, ce)
+		}
+	}
+	if ce := cliError(t, "--config", cfg, "nope"); ce == nil || ce.Code != errs.CodeUnknownCommand {
+		t.Fatalf("unknown command: error = %v, want unknown_command", ce)
+	}
+}
+
+func TestLoginRejectsAnInvalidConfigBeforePrompting(t *testing.T) {
+	cfg := writeConfig(t, "api_url: http://sure.invalid\n")
+	// stdin is empty: a prompt would fail with password_read_failed.
+	if ce := cliError(t, "--config", cfg, "login", "--email", "a@b.c"); ce == nil || ce.Code != errs.CodeValidation {
+		t.Fatalf("error = %v, want validation_failed", ce)
+	}
+}

@@ -33,15 +33,9 @@ func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sure-cli",
 		Short: "Agent-first CLI for Sure (self-hosted personal finance)",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if err := config.Init(cfgFile); err != nil {
-				return err
-			}
-			if ce := config.Validate(); ce != nil {
-				fail(ce)
-			}
-			return nil
-		},
+		// The config is validated by the API client (api.New), so commands
+		// that never call Sure run with an invalid one.
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return config.Init(cfgFile) },
 	}
 
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.config/sure-cli/config.yaml)")

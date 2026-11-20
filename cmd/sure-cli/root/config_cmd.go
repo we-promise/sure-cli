@@ -12,9 +12,6 @@ func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Manage configuration",
-		// Skips the root's Validate: these commands must work to repair an
-		// invalid setting.
-		PersistentPreRunE: func(*cobra.Command, []string) error { return config.Init(cfgFile) },
 	}
 	cmd.AddCommand(&cobra.Command{
 		Use:   "get <key>",

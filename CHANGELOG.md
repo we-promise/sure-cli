@@ -87,7 +87,7 @@ The `heuristics.*` config keys are no longer read.
 - Paged reads follow the page count each page reports, so rows pushed onto a new page mid-read are no longer dropped. A list that changes mid-read is `list_changed`; one past 1000 pages (10,000 for `export transactions`, which now streams rows to the file) is `too_many_pages` (was `invalid_response`). When `X-RateLimit-Remaining` cannot cover the pages left, the command fails early with `rate_limited`.
 - `family-exports download` honors Ctrl-C while it looks the export up, and a second Ctrl-C kills it.
 - `login` stores a random per-install `auth.device.device_id`, so logging in on another machine no longer logs this one out.
-- A plain `http://` `api_url` on a host other than this machine fails with `validation_failed` unless `--allow-insecure-http` or the `allow_insecure_http` config key is set (SURE-SEC-002).
+- A plain `http://` `api_url` on a host other than this machine fails with `validation_failed` unless `--allow-insecure-http` or the `allow_insecure_http` config key is set (SURE-SEC-002). The check, like the timeout check, runs only for commands that call Sure: `version`, `help`, `completion`, `config` and a bare command group run with an invalid setting.
 
 #### Config and tokens
 

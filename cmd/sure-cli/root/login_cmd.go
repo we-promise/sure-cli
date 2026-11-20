@@ -24,6 +24,10 @@ func newLoginCmd() *cobra.Command {
 		Use:   "login",
 		Short: "Login via OAuth (email/password) and store access + refresh tokens",
 		Run: func(cmd *cobra.Command, args []string) {
+			client := api.New()
+			if err := client.Err(); err != nil {
+				fail(errs.From(err))
+			}
 			requireWritableConfig()
 			// Prompt for email if not provided
 			if email == "" {
@@ -53,8 +57,6 @@ func newLoginCmd() *cobra.Command {
 				}
 				password = strings.TrimRight(input, "\r\n")
 			}
-
-			client := api.New()
 
 			// Every login revokes the device's previous tokens upstream, so
 			// each install needs its own device_id (persisted below by Save).

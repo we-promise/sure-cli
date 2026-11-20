@@ -30,8 +30,14 @@ type Client struct {
 	http       *resty.Client
 	timeout    time.Duration
 	refreshing bool
+	// invalid is the config.Validate failure that keeps every call from
+	// being sent.
+	invalid *errs.CLIError
 }
 
+// New returns a client for the configured Sure. An invalid config does not
+// fail here, so commands that never call Sure still run; every call fails
+// with the validation error instead (see Err).
 func New() *Client {
 	timeout := config.Timeout()
 	c := resty.New().
@@ -68,7 +74,26 @@ func New() *Client {
 		}
 	}
 
-	return &Client{http: c, timeout: timeout}
+	return &Client{http: c, timeout: timeout, invalid: config.Validate()}
+}
+
+// Err is the validation_failed error every call fails with when the config
+// is invalid, nil otherwise. Commands that prompt or write locally before
+// calling Sure check it first.
+func (c *Client) Err() error {
+	if c.invalid != nil {
+		return c.invalid
+	}
+	return nil
+}
+
+// prepare runs before every call: it refuses an invalid config and
+// refreshes a bearer token about to expire.
+func (c *Client) prepare() error {
+	if err := c.Err(); err != nil {
+		return err
+	}
+	return c.ensureFreshToken()
 }
 
 func (c *Client) ensureFreshToken() error {
@@ -160,7 +185,7 @@ func (c *Client) setBearer(token string) {
 // decodes a 2xx body into out (when non-nil). Every failure to use the
 // response is a *errs.CLIError, so CheckResponse reports it unchanged.
 func (c *Client) do(ctx context.Context, method, path string, out any, build func(*resty.Request)) (*resty.Response, error) {
-	if err := c.ensureFreshToken(); err != nil {
+	if err := c.prepare(); err != nil {
 		return nil, err
 	}
 	if c.timeout > 0 {
@@ -268,7 +293,7 @@ func (c *Client) PostMultipart(path string, fields map[string]string, fileField,
 		defer f.Close()
 		file = f
 	}
-	if err := c.ensureFreshToken(); err != nil {
+	if err := c.prepare(); err != nil {
 		return nil, err
 	}
 	// A whole-call deadline would cut a large upload on a slow uplink that
@@ -314,7 +339,7 @@ var errStalled = errors.New("transfer stalled")
 // a body already flowing is never restarted. Cancelling ctx removes the temp
 // file. Every failure is a *errors.CLIError.
 func (c *Client) GetToFile(ctx context.Context, path, outputPath string, wantBytes int64) (*resty.Response, error) {
-	if err := c.ensureFreshToken(); err != nil {
+	if err := c.prepare(); err != nil {
 		return nil, err
 	}
 	ctx, stall, stop := c.stallContext(ctx)
