@@ -15,24 +15,33 @@ import (
 // MaxPerPage is the largest page Sure serves (Api::V1::BaseController#safe_per_page_param).
 const MaxPerPage = 100
 
-// MaxPages bounds a page walk: a total_pages beyond it (100k rows at
-// MaxPerPage) is taken as a broken pagination block, not a reason to loop.
+// MaxPages is the default bound on a page walk (100k rows at MaxPerPage).
 const MaxPages = 1000
 
+// StreamMaxPages bounds walks whose rows are written out as they arrive
+// instead of held in memory (1M rows at MaxPerPage).
+const StreamMaxPages = 10000
+
 // walkPages GETs path one page at a time with q plus page/per_page, handing
-// each response body to visit. It follows the total_pages Sure reports on the
-// first page (a list that grows mid-walk does not extend it) and stops early
-// at a page with no rows. It stops at the first transport error, HTTP status
-// >= 400 or visit error and returns that response so callers can report it
-// as usual.
-func walkPages(c *Client, path string, q url.Values, perPage int, visit func(body []byte) error) (*resty.Response, error) {
+// each response body to visit, for at most maxPages pages. It walks up to
+// the total_pages the latest page reports, so rows pushed onto a new page by
+// an insert mid-walk are still read, and stops at a page with no rows. It
+// stops at the first transport error, HTTP status >= 400 or visit error and
+// returns that response so callers can report it as usual. It fails, as a
+// CLIError, on a page with more than perPage rows (invalid_response), on
+// more than maxPages pages (too_many_pages), when the pages left exceed
+// X-RateLimit-Remaining (rate_limited), and when total_count changes between
+// pages or differs from the rows read, each id once (list_changed): offset
+// paging over a list that loses rows mid-walk skips rows.
+func walkPages(c *Client, path string, q url.Values, perPage, maxPages int, visit func(body []byte) error) (*resty.Response, error) {
 	query := url.Values{}
 	for k, v := range q {
 		query[k] = v
 	}
 	query.Set("per_page", strconv.Itoa(perPage))
 
-	totalPages := 0
+	seen := map[string]bool{}
+	read, totalCount := 0, -1
 	for page := 1; ; page++ {
 		query.Set("page", strconv.Itoa(page))
 		r, err := c.Get(path+"?"+query.Encode(), nil)
@@ -43,44 +52,96 @@ func walkPages(c *Client, path string, q url.Values, perPage int, visit func(bod
 		if err := json.Unmarshal(r.Body(), &body); err != nil {
 			return r, errs.InvalidResponse(r.StatusCode(), r.Body(), r.Header(), err)
 		}
+		rows := pageRows(body)
+		if len(rows) > perPage {
+			return r, errs.New(errs.CodeInvalidResponse, fmt.Sprintf("%s served %d rows on a page of %d", path, len(rows), perPage)).
+				WithDetails(map[string]any{"status": r.StatusCode(), "rows": len(rows), "per_page": perPage})
+		}
 		if err := visit(r.Body()); err != nil {
 			return r, err
 		}
 		var meta struct {
-			TotalPages int `json:"total_pages"`
+			TotalPages int  `json:"total_pages"`
+			TotalCount *int `json:"total_count"`
 		}
 		raw, paginated := body["pagination"]
-		if paginated {
-			if err := json.Unmarshal(raw, &meta); err != nil {
-				return r, errs.Wrap(errs.CodeInvalidResponse, "unreadable pagination in "+path, err)
-			}
-		}
-		if !paginated || !hasRows(body) {
+		if !paginated {
 			return r, nil
 		}
-		if page == 1 {
-			totalPages = meta.TotalPages
-			if totalPages > MaxPages {
-				return r, errs.New(errs.CodeInvalidResponse, fmt.Sprintf("%s reports %d pages, more than the %d the CLI walks", path, totalPages, MaxPages)).
-					WithDetails(map[string]any{"total_pages": totalPages})
-			}
+		if err := json.Unmarshal(raw, &meta); err != nil {
+			return r, errs.Wrap(errs.CodeInvalidResponse, "unreadable pagination in "+path, err)
 		}
-		if page >= totalPages {
+		for _, row := range rows {
+			if id := rowID(row); id != "" {
+				if seen[id] {
+					continue
+				}
+				seen[id] = true
+			}
+			read++
+		}
+		if meta.TotalCount != nil {
+			if totalCount >= 0 && *meta.TotalCount != totalCount {
+				return r, listChanged(path, read, *meta.TotalCount)
+			}
+			totalCount = *meta.TotalCount
+		}
+		if len(rows) == 0 || page >= meta.TotalPages {
+			if totalCount >= 0 && read != totalCount {
+				return r, listChanged(path, read, totalCount)
+			}
 			return r, nil
+		}
+		if meta.TotalPages > maxPages {
+			return r, errs.New(errs.CodeTooManyPages, fmt.Sprintf("%s has %d pages, more than the %d the CLI reads", path, meta.TotalPages, maxPages)).
+				WithDetails(map[string]any{"total_pages": meta.TotalPages, "max_pages": maxPages, "hint": "narrow the query (e.g. a shorter date window), or use family-exports for a full export"})
+		}
+		if err := checkRateBudget(r, path, meta.TotalPages-page); err != nil {
+			return r, err
 		}
 	}
 }
 
-// hasRows reports whether any top-level list in a Sure index body is
-// non-empty. Index bodies hold one list (e.g. "accounts") plus pagination.
-func hasRows(body map[string]json.RawMessage) bool {
+// pageRows returns the rows of a Sure index body: its top-level lists, of
+// which there is one (e.g. "accounts") beside pagination.
+func pageRows(body map[string]json.RawMessage) []json.RawMessage {
+	var all []json.RawMessage
 	for _, raw := range body {
 		var rows []json.RawMessage
-		if json.Unmarshal(raw, &rows) == nil && len(rows) > 0 {
-			return true
+		if json.Unmarshal(raw, &rows) == nil {
+			all = append(all, rows...)
 		}
 	}
-	return false
+	return all
+}
+
+// rowID returns a row's id as raw JSON, or "" when it has none.
+func rowID(row json.RawMessage) string {
+	var r struct {
+		ID json.RawMessage `json:"id"`
+	}
+	if json.Unmarshal(row, &r) != nil || len(r.ID) == 0 || string(r.ID) == "null" {
+		return ""
+	}
+	return string(r.ID)
+}
+
+func listChanged(path string, read, totalCount int) *errs.CLIError {
+	return errs.New(errs.CodeListChanged, fmt.Sprintf("%s changed while it was being read (%d rows read, Sure counts %d)", path, read, totalCount)).
+		WithDetails(map[string]any{"rows_read": read, "total_count": totalCount, "hint": "run the command again"})
+}
+
+// checkRateBudget fails before spending the API key's hourly budget on a
+// walk that cannot finish: Sure sends X-RateLimit-Remaining to API-key
+// callers on a rate-limited (not self-hosted) instance.
+func checkRateBudget(r *resty.Response, path string, pagesLeft int) *errs.CLIError {
+	remaining, err := strconv.Atoi(r.Header().Get("X-RateLimit-Remaining"))
+	if err != nil || pagesLeft <= remaining {
+		return nil
+	}
+	rl := errs.RateLimit(r.Header())
+	return errs.New(errs.CodeRateLimit, fmt.Sprintf("%s needs %d more requests but the API key has %d left before its hourly limit resets", path, pagesLeft, remaining)).
+		WithDetails(map[string]any{"needed_requests": pagesLeft, "rate_limit": rl, "hint": "wait for the reset, narrow the query, or use family-exports for a full export"})
 }
 
 // uniqueByID keeps the first item for each id. Offset paging over a list
@@ -111,7 +172,7 @@ func uniqueByID[T any](items []T, id func(T) string) []T {
 // CLIError, for bodies that cannot be decoded.
 func FetchAllPages(c *Client, path string, q url.Values, key string) ([]map[string]any, *resty.Response, error) {
 	all := []map[string]any{}
-	r, err := walkPages(c, path, q, MaxPerPage, func(body []byte) error {
+	r, err := walkPages(c, path, q, MaxPerPage, MaxPages, func(body []byte) error {
 		var page map[string]json.RawMessage
 		if err := json.Unmarshal(body, &page); err != nil {
 			return errs.Wrap(errs.CodeInvalidResponse, "unreadable response from "+path, err)

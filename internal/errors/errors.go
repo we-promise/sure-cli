@@ -52,6 +52,20 @@ const (
 	CodeUnknown      = "unknown_error"
 )
 
+// Transport and paging codes.
+const (
+	// CodeRedirectRefused means Sure (or a proxy in front of it) answered
+	// with a redirect, which the CLI never follows.
+	CodeRedirectRefused = "redirect_refused"
+	// CodeOutcomeUnknown means a POST, PATCH or DELETE reached Sure but its
+	// answer was lost, so the change may or may not have been applied.
+	CodeOutcomeUnknown = "outcome_unknown"
+	// CodeTooManyPages means a list has more pages than the CLI reads.
+	CodeTooManyPages = "too_many_pages"
+	// CodeListChanged means a list changed while its pages were being read.
+	CodeListChanged = "list_changed"
+)
+
 // CLIError is a structured error with code and details for agent consumption.
 type CLIError struct {
 	Code    string         `json:"code"`
@@ -207,15 +221,21 @@ func addRateLimitDetails(details map[string]any, header http.Header) {
 	if v := header.Get("Retry-After"); v != "" {
 		details["retry_after"] = v
 	}
+	if rl := RateLimit(header); len(rl) > 0 {
+		details["rate_limit"] = rl
+	}
+}
+
+// RateLimit returns Sure's X-RateLimit-* headers as limit, remaining and
+// reset (seconds until the hourly window resets), leaving out absent ones.
+func RateLimit(header http.Header) map[string]string {
 	rl := map[string]string{}
 	for key, h := range map[string]string{"limit": "X-RateLimit-Limit", "remaining": "X-RateLimit-Remaining", "reset": "X-RateLimit-Reset"} {
 		if v := header.Get(h); v != "" {
 			rl[key] = v
 		}
 	}
-	if len(rl) > 0 {
-		details["rate_limit"] = rl
-	}
+	return rl
 }
 
 // ClassifyNetworkError classifies network errors

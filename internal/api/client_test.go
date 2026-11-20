@@ -1,13 +1,16 @@
 package api
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -531,4 +534,163 @@ func TestClient_AdoptsTokensAnotherProcessRotated(t *testing.T) {
 	if refreshes != 1 || out["ok"] != true {
 		t.Fatalf("refreshes=%d out=%v", refreshes, out)
 	}
+}
+
+// Sure's API never redirects. Following one would hand the API key, bearer
+// token or login password to whatever host the Location names.
+func TestClient_RefusesRedirects(t *testing.T) {
+	var leaked atomic.Int32
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked.Add(1)
+	}))
+	t.Cleanup(other.Close)
+	otherURL := strings.Replace(other.URL, "127.0.0.1", "localhost", 1)
+
+	for name, tc := range map[string]struct {
+		status int
+		call   func(c *Client) error
+	}{
+		"GET": {http.StatusFound, func(c *Client) error {
+			var out any
+			_, err := c.Get("/api/v1/accounts", &out)
+			return err
+		}},
+		"login POST": {http.StatusTemporaryRedirect, func(c *Client) error {
+			_, err := c.Login(LoginRequest{Email: "a@b.c", Password: "pw"})
+			return err
+		}},
+		"download": {http.StatusFound, func(c *Client) error {
+			_, err := c.GetToFile(context.Background(), "/dl", filepath.Join(t.TempDir(), "e.zip"), 0)
+			return err
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			leaked.Store(0)
+			var hits atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				http.Redirect(w, r, otherURL+"/sso", tc.status)
+			}))
+			t.Cleanup(srv.Close)
+
+			ce := assertCode(t, tc.call(testClient(t, srv.URL)), errs.CodeRedirectRefused)
+			if leaked.Load() != 0 {
+				t.Fatal("the redirect target received the request")
+			}
+			if hits.Load() != 1 {
+				t.Fatalf("requests = %d, want 1 (a refused redirect is not retried)", hits.Load())
+			}
+			if ce.Details["status"] != tc.status || ce.Details["location"] != otherURL+"/sso" {
+				t.Fatalf("details = %v", ce.Details)
+			}
+		})
+	}
+}
+
+func TestClient_WriteWhoseAnswerIsLostIsOutcomeUnknown(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		select { // committed, but the answer comes after the timeout
+		case <-r.Context().Done():
+		case <-time.After(2 * time.Second):
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := timeoutClient(t, srv.URL, 100*time.Millisecond)
+
+	for method, call := range map[string]func() (*resty.Response, error){
+		http.MethodPost:   func() (*resty.Response, error) { return c.Post("/api/v1/transactions", map[string]any{}, nil) },
+		http.MethodPatch:  func() (*resty.Response, error) { return c.Patch("/api/v1/transactions/t1", map[string]any{}, nil) },
+		http.MethodDelete: func() (*resty.Response, error) { return c.Delete("/api/v1/transactions/t1", nil) },
+	} {
+		_, err := call()
+		ce := assertCode(t, err, errs.CodeOutcomeUnknown)
+		if ce.Details["method"] != method || ce.Details["may_have_applied"] != true || ce.Details["hint"] == nil {
+			t.Errorf("%s details = %v", method, ce.Details)
+		}
+	}
+	// A read that times out is just a timeout.
+	_, err := c.Get("/api/v1/transactions", nil)
+	assertCode(t, err, errs.CodeTimeout)
+}
+
+func TestClient_WriteThatNeverLeftIsNotOutcomeUnknown(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	url := srv.URL
+	srv.Close() // connection refused: nothing reached Sure
+	c := testClient(t, url)
+
+	_, err := c.Post("/api/v1/transactions", map[string]any{}, nil)
+	assertCode(t, err, errs.CodeNetwork)
+}
+
+// uploadServer reads each upload at about rate bytes per 10ms, or not at all
+// when rate is 0, then answers after reply.
+func uploadServer(t *testing.T, rate int, reply time.Duration) *httptest.Server {
+	t.Helper()
+	// A handler that never reads the body never learns the client left, so
+	// it is released when the test ends.
+	done := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rate == 0 {
+			<-done
+			return
+		}
+		buf := make([]byte, rate)
+		for {
+			if _, err := io.ReadFull(r.Body, buf); err != nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(reply):
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"data":{"id":"imp"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(done) }) // runs before srv.Close
+	return srv
+}
+
+func uploadFile(t *testing.T, size int) string {
+	t.Helper()
+	f := filepath.Join(t.TempDir(), "big.csv")
+	if err := os.WriteFile(f, []byte(strings.Repeat("a,b\n", size/4)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func TestClient_PostMultipart_SlowUploadOutlivesTheTimeout(t *testing.T) {
+	// The timeout bounds silence on the wire: a large statement on a slow
+	// uplink must finish however long it takes. 16 MiB at 256 KiB per 10ms
+	// takes over 640ms; draining what the kernel buffered after the last
+	// write (a few MiB at most) stays well within the timeout.
+	c := timeoutClient(t, uploadServer(t, 256<<10, 0).URL, 300*time.Millisecond)
+	var out map[string]any
+	if ce := CheckResponse(c.PostMultipart("/api/v1/imports", nil, "file", uploadFile(t, 16<<20), "text/csv", &out)); ce != nil {
+		t.Fatalf("upload failed: %v", ce)
+	}
+}
+
+func TestClient_PostMultipart_StalledUploadTimesOut(t *testing.T) {
+	c := timeoutClient(t, uploadServer(t, 0, 0).URL, 150*time.Millisecond)
+	start := time.Now()
+	_, err := c.PostMultipart("/api/v1/imports", nil, "file", uploadFile(t, 4<<20), "text/csv", nil)
+	// The body never reached Sure, so nothing can have been applied.
+	assertCode(t, err, errs.CodeTimeout)
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("stalled upload took %v", elapsed)
+	}
+}
+
+func TestClient_PostMultipart_AnswerLostAfterTheUploadIsOutcomeUnknown(t *testing.T) {
+	c := timeoutClient(t, uploadServer(t, 64<<10, 2*time.Second).URL, 200*time.Millisecond)
+	_, err := c.PostMultipart("/api/v1/imports", nil, "file", uploadFile(t, 4<<20), "text/csv", nil)
+	assertCode(t, err, errs.CodeOutcomeUnknown)
 }

@@ -52,7 +52,7 @@ func newExportTransactionsCmd() *cobra.Command {
 			// to the file page by page; a failed fetch leaves no file.
 			exported := 0
 			source := func(visit func(models.Transaction) error) error {
-				return api.EachTransactionInWindow(client, start, end, func(tx models.Transaction) error {
+				return api.EachTransactionInWindow(client, start, end, api.StreamMaxPages, func(tx models.Transaction) error {
 					if err := visit(tx); err != nil {
 						return exportFailed(err)
 					}
