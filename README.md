@@ -13,6 +13,8 @@ Agent-first CLI for **Sure** (we-promise/sure) — self-hosted personal finance 
 ## Agent-first contract
 
 - **Default output is JSON** (`--format=json`) wrapped in a stable **Envelope**: `{data, meta, error}`
+- **API errors** set `error.code` from a stable CLI set (`bad_request`, `auth_required`, `mfa_required`, `auth_invalid` for a missing scope, `forbidden`, `not_found`, `conflict`, `validation_failed`, `rate_limited`, `server_error`, `network_error`, ...) and `error.message` to Sure's own message. `error.details` holds `status`, the capped `body`, Sure's machine code as `api_error` (e.g. `insufficient_scope`, `feature_disabled`, `export_not_ready`), `import_id` when Sure created an import before failing (do not repeat the request: read that import), and on 429 `retry_after` and `rate_limit`
+- **Retries**: only idempotent requests (GET/HEAD/PUT/DELETE/OPTIONS) are retried, on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s. POST/PATCH are never retried, since Sure may have persisted the write before failing
 - **Write operations are safe by default**: `--dry-run` is the default; use `--apply` to execute
 - **Schemas are versioned** under `docs/schemas/v1/` and should remain backward compatible
 
@@ -244,7 +246,9 @@ sure-cli login
 sure-cli refresh
 ```
 
-Required device payload fields are stored under `auth.device.*` in config (defaults are provided).
+If the account has two-factor authentication, login fails with `error.code=mfa_required` until you pass `--otp`.
+
+Required device payload fields are stored under `auth.device.*` in config (defaults are provided; `device_type` accepts `ios`, `android` or `web`). Sure revokes a device's previous tokens on every login, so the first login stores a random per-install `auth.device.device_id`; logging in on another machine no longer logs this one out. A custom `device_id` you set is kept.
 
 ## Docs
 

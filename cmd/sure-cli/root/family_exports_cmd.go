@@ -67,8 +67,9 @@ func newFamilyExportsCmd() *cobra.Command {
 			client := api.New()
 			path := fmt.Sprintf("/api/v1/family_exports/%s/download", url.PathEscape(args[0]))
 			r, err := client.GetToFile(path, outFile)
-			// Download returns the file path as the data payload on success;
-			// error/status routing matches every other GET via respond.
+			// Download returns the file path as the data payload on success.
+			// On a non-2xx (e.g. 409 export_not_ready) GetToFile leaves --out
+			// untouched and returns the classified Sure error for respond.
 			respond(r, err, map[string]any{"file": outFile})
 		},
 	}
