@@ -34,7 +34,9 @@ func New() *cobra.Command {
 		Short: "Agent-first CLI for Sure (self-hosted personal finance)",
 		// The config is validated by the API client (api.New), so commands
 		// that never call Sure run with an invalid one.
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return config.Init(cfgFile) },
+		// An unreadable config fails here as validation_failed; returned
+		// to cobra, it would also print usage as if the command were wrong.
+		PersistentPreRun: func(cmd *cobra.Command, args []string) { failValidation(config.Init(cfgFile)) },
 	}
 
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.config/sure-cli/config.yaml)")

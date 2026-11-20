@@ -417,3 +417,28 @@ func writeFile(t *testing.T, path, body string) {
 		t.Fatal(err)
 	}
 }
+
+func TestInit_ReadsAConfigFileOfAnyName(t *testing.T) {
+	// The config is YAML whatever the file is called (~/.sure-cli, a file
+	// descriptor from a process substitution, ...).
+	for _, name := range []string{"sure-cli", ".sure-cli", "config.conf"} {
+		viper.Reset()
+		cfg := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(cfg, []byte("api_url: https://sure.example\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := Init(cfg); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got := APIURL(); got != "https://sure.example" {
+			t.Fatalf("%s: api_url = %q", name, got)
+		}
+		Set("timeout", "45s")
+		if err := Save(); err != nil {
+			t.Fatalf("%s: save: %v", name, err)
+		}
+		if b, _ := os.ReadFile(cfg); !strings.Contains(string(b), "https://sure.example") || !strings.Contains(string(b), "45s") {
+			t.Fatalf("%s: saved config = %s", name, b)
+		}
+	}
+}

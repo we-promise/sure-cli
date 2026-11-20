@@ -1,8 +1,10 @@
 package root
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -128,5 +130,28 @@ func TestLoginRejectsAnInvalidConfigBeforePrompting(t *testing.T) {
 	// stdin is empty: a prompt would fail with password_read_failed.
 	if ce := cliError(t, "--config", cfg, "login", "--email", "a@b.c"); ce == nil || ce.Code != errs.CodeValidation {
 		t.Fatalf("error = %v, want validation_failed", ce)
+	}
+}
+
+func TestUnreadableConfigIsOneErrorWithoutUsage(t *testing.T) {
+	cfg := writeConfig(t, "api_url: [unclosed\n")
+	child := exec.Command(os.Args[0], "-test.run=^$")
+	child.Env = append(os.Environ(), cliArgsEnv+"="+strings.Join([]string{"--config", cfg, "accounts", "list"}, "\n"))
+	var stdout, stderr bytes.Buffer
+	child.Stdout, child.Stderr = &stdout, &stderr
+	if err := child.Run(); err == nil {
+		t.Fatalf("exit 0: %s", stdout.String())
+	}
+	var env struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil || env.Error.Code != "validation_failed" || !strings.Contains(env.Error.Message, "read config") {
+		t.Fatalf("stdout = %s (%v), want a validation_failed envelope about the config", stdout.String(), err)
+	}
+	if strings.Contains(stderr.String(), "Usage:") {
+		t.Fatalf("stderr prints usage for a config error:\n%s", stderr.String())
 	}
 }

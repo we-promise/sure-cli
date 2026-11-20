@@ -119,3 +119,7 @@ The `heuristics.*` config keys are no longer read.
 - `imports create --rows-to-skip`.
 - `version --server`.
 - The global `--timeout` flag and `timeout` config key.
+
+### Fixed
+- A `--config` file of any name is read as YAML. One without a `.yaml` extension (`~/.sure-cli`, `--config <(...)`) failed with `Unsupported Config Type`. An unreadable config is one `validation_failed` error, without the usage text.
+- The HTTP library no longer prints its own `WARN RESTY` and `ERROR RESTY` lines to stderr on retries and refused redirects.

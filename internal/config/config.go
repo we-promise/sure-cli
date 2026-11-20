@@ -41,6 +41,10 @@ const DefaultTimeout = 30 * time.Second
 // this one loaded the config is not overwritten with stale values.
 var dirty = map[string]any{}
 
+// configType is the config file's format whatever its name: viper otherwise
+// guesses it from the extension and fails on ~/.sure-cli or a /dev/fd path.
+const configType = "yaml"
+
 func Init(cfgFile string) error {
 	dirty = map[string]any{}
 
@@ -69,6 +73,7 @@ func Init(cfgFile string) error {
 		}
 		viper.SetConfigFile(path)
 	}
+	viper.SetConfigType(configType)
 	if err := Reload(); err != nil {
 		return err
 	}
@@ -186,6 +191,7 @@ func resolveLinks(path string) (string, error) {
 func readDisk(path string) (*viper.Viper, error) {
 	disk := viper.New()
 	disk.SetConfigFile(path)
+	disk.SetConfigType(configType)
 	if err := disk.ReadInConfig(); err != nil && !isNotFound(err) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
