@@ -291,8 +291,8 @@ sure-cli users reset status
 sure-cli users delete-me
 sure-cli users delete-me --apply
 
-# Sync (trigger a one-shot sync)
-sure-cli sync
+# Sync (trigger a one-shot sync; dry-run unless --apply, like every write)
+sure-cli sync --apply
 
 # Transfers (categorized transfers, payments, loan payments)
 sure-cli transfers list --status pending --account-id <account_id> --start-date 2026-01-01

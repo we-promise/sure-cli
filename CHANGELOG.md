@@ -64,6 +64,7 @@ The `heuristics.*` config keys are no longer read.
 
 #### Stricter input
 
+- `sync` is a dry run unless `--apply` is given, like every other write; it triggered a sync straight away.
 - Decimal flags are plain decimal text: `3.` and `.5` are rejected. This covers `valuations create` and `update --amount` and the `recurring-transactions create` amounts, which were sent as typed: Sure read `1,234.56` as 1 and `abc` as 0.
 - `transactions create` and `update`: `--amount` must be a positive decimal with at most 4 decimals and 15 digits; `--nature` gives the sign. It was a float sent with two decimals. `update --nature` without `--amount` fails instead of being dropped.
 - `trades create` and `update`: `--date` must be `YYYY-MM-DD`; Rails read `05/01/2026` as 5 January.
