@@ -23,7 +23,8 @@ func newAccountsCmd() *cobra.Command {
 				if accounts == nil {
 					accounts = []map[string]any{} // render [], never null
 				}
-				respond(r, err, map[string]any{"accounts": accounts})
+				checkResponse(r, err)
+				printEnvelope(map[string]any{"accounts": accounts}, nil) // several pages: no meta.status
 				return
 			}
 			q := api.AccountsQuery(includeDisabled)

@@ -139,7 +139,7 @@ func newAnalyzeRunwayCmd() *cobra.Command {
 			checkResponse(r, err)
 			bal, ok := amountFromAPIOK(acc, "balance", "balance_cents")
 			if !ok {
-				output.Fail(errs.CodeValidation, "account has no usable balance", map[string]any{"account_id": accountID})
+				output.Fail(errs.CodeInvalidResponse, "account has no usable balance", map[string]any{"account_id": accountID, "status": r.StatusCode()})
 			}
 
 			txs, err := api.FetchTransactionsWindow(client, start, end)

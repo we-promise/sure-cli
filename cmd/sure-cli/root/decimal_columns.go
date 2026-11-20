@@ -42,3 +42,19 @@ func requirePositiveDecimal(name, value string, column decimalColumn) error {
 	}
 	return column.check(name, value)
 }
+
+// checkDecimal checks a signed decimal flag that lands in column.
+func checkDecimal(name, value string, column decimalColumn) error {
+	if !models.IsDecimal(value) {
+		return fmt.Errorf("%s must be a decimal number, got %q", name, value)
+	}
+	return column.check(name, value)
+}
+
+// checkOptionalDecimal is checkDecimal for a flag that may be left unset.
+func checkOptionalDecimal(name, value string, column decimalColumn) error {
+	if value == "" {
+		return nil
+	}
+	return checkDecimal(name, value, column)
+}

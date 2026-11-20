@@ -51,3 +51,14 @@ func TestAccountsListAll_EmptyIsAnEmptyList(t *testing.T) {
 		t.Fatalf("empty --all must render accounts: [], got %s", out)
 	}
 }
+
+func TestAccountsListAll_HasNoMetaStatus(t *testing.T) {
+	// Output read from several pages is not one Sure response.
+	accountsAllServer(t, `[{"id":"a1","name":"Checking","account_type":"depository","currency":"EUR","balance":"€1.00","classification":"asset"}]`)
+	cmd := newAccountsCmd()
+	cmd.SetArgs([]string{"list", "--all"})
+	out := captureStdout(t, func() { _ = cmd.Execute() })
+	if strings.Contains(out, `"status"`) || !strings.Contains(out, "Checking") {
+		t.Fatalf("--all output must list accounts without meta.status, got %s", out)
+	}
+}

@@ -173,7 +173,7 @@ func txJSON(id, date, name, kind, currency, amount string, splitParent bool) str
 // analyzeServer serves one page of transactions on the reportable account a1
 // (the accounts list FetchTransactionsWindow filters by) and, for runway, the
 // account itself.
-func analyzeServer(t *testing.T, account string, txs ...string) {
+func analyzeServer(t *testing.T, account string, txs ...string) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -191,6 +191,7 @@ func analyzeServer(t *testing.T, account string, txs ...string) {
 	}))
 	t.Cleanup(srv.Close)
 	apiClientFor(t, srv.URL)
+	return srv.URL
 }
 
 // runAnalyze runs `analyze args...` and decodes the envelope's data into out.
@@ -258,5 +259,27 @@ func TestAnalyzeRunway_BurnSkipsUnreportableRows(t *testing.T) {
 	runAnalyze(t, &s, "runway", "--account-id", "a1", "--days", "30")
 	if s.Balance != 300 || s.WindowDays != 30 || s.AvgMonthlyBurn != 30 || s.RunwayMonths != 10 {
 		t.Fatalf("runway = %+v, want balance 300, 30 days, burn 30 and 10 months", s)
+	}
+}
+
+func TestAnalyzeRunway_UnreadableBalanceIsAnInvalidResponse(t *testing.T) {
+	// A 2xx account body without a balance the CLI can read is Sure's answer
+	// the CLI cannot use, not bad input.
+	srvURL := analyzeServer(t, `{"id":"a1","currency":"EUR"}`)
+	child, stdout := startCLI(t, "--config", apiKeyConfig(t, t.TempDir(), srvURL), "analyze", "runway", "--account-id", "a1")
+	if err := child.Wait(); err == nil {
+		t.Fatalf("exited 0: %s", stdout)
+	}
+	var env struct {
+		Error struct {
+			Code    string         `json:"code"`
+			Details map[string]any `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("decode %s: %v", stdout, err)
+	}
+	if env.Error.Code != "invalid_response" || env.Error.Details["account_id"] != "a1" || env.Error.Details["status"] != float64(200) {
+		t.Fatalf("error = %+v, want invalid_response with account_id and status", env.Error)
 	}
 }

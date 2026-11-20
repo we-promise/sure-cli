@@ -108,6 +108,33 @@ func TestUnknownSubcommandsFailWithEnvelope(t *testing.T) {
 	}
 }
 
+func TestUnknownFlagOnACommandFailsValidation(t *testing.T) {
+	// The flag error of a real command is about the flag, not an unknown
+	// command named after its positional argument.
+	for _, c := range []struct{ args, flag string }{
+		{"transactions update abc --currency EUR", "--currency"},
+		{"transactions show abc --bogus", "--bogus"},
+		{"insights ack 8c1d0b2e-1f1a-4c55-9a51-3d2f5e7b9a10 --bogus", "--bogus"},
+		{"accounts list --bogus", "--bogus"},
+	} {
+		t.Run(c.args, func(t *testing.T) {
+			out, code := runCLI(t, c.args)
+			var env struct {
+				Error *struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal([]byte(out), &env); err != nil || env.Error == nil {
+				t.Fatalf("want an error envelope, got %q (%v)", out, err)
+			}
+			if code != 1 || env.Error.Code != "validation_failed" || !strings.Contains(env.Error.Message, c.flag) {
+				t.Fatalf("exit %d, error %+v; want validation_failed naming %s", code, env.Error, c.flag)
+			}
+		})
+	}
+}
+
 func TestUnknownCommandSuggestsNearNames(t *testing.T) {
 	ce := unknownCommandError(New(), []string{"insigts"})
 	if s, _ := ce.Details["suggestions"].([]string); len(s) != 1 || s[0] != "insights" {

@@ -17,7 +17,7 @@ import (
 )
 
 func newExportCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "export", Short: "Export data (transactions, accounts)"}
+	cmd := &cobra.Command{Use: "export", Short: "Export transactions"}
 	cmd.AddCommand(newExportTransactionsCmd())
 	return cmd
 }

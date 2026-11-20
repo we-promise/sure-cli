@@ -13,7 +13,7 @@ Agent-first CLI for **Sure** (we-promise/sure) — self-hosted personal finance 
 ## Agent-first contract
 
 - **Default output is JSON** (`--format=json`) wrapped in a stable **Envelope**: `{data, meta, error}`
-- **API errors** set `error.code` from a stable CLI set (`bad_request`, `auth_required`, `mfa_required`, `auth_invalid` for a missing scope, `forbidden`, `not_found`, `conflict`, `validation_failed`, `rate_limited`, `server_error`, `network_error`, `timeout`, `canceled`, `invalid_response`, `config_save_failed`, ...) and `error.message` to Sure's own message. `error.details` holds `status`, the capped `body`, Sure's machine code as `api_error` (e.g. `insufficient_scope`, `feature_disabled`, `export_not_ready`), and on 429 `retry_after` and `rate_limit`. Input the CLI rejects before sending a request fails with `validation_failed`. `internal/errors/errors.go` lists every code
+- **API errors** set `error.code` from a stable CLI set (`bad_request`, `auth_required`, `mfa_required`, `auth_invalid` for a missing scope, `forbidden`, `not_found`, `conflict`, `validation_failed`, `rate_limited`, `server_error`, `network_error`, `timeout`, `canceled`, `invalid_response`, `config_save_failed`, ...) and `error.message` to Sure's own message. `error.details` holds `status`, the capped `body`, Sure's machine code as `api_error` (e.g. `insufficient_scope`, `feature_disabled`, `export_not_ready`), `import_id` when Sure created an import before failing (do not repeat the request: read that import), and on 429 `retry_after` and `rate_limit`. Input the CLI rejects before sending a request fails with `validation_failed`. `internal/errors/errors.go` lists every code
 - **Unknown subcommands** exit 1 with `error.code` `unknown_command` and cobra's `suggestions`. For a command an earlier version had, `error.details.hint` names its replacement (see [CHANGELOG.md](CHANGELOG.md))
 - **`invalid_response`** means Sure (or something in front of it, such as a captive portal or an SSO proxy answering with HTML) returned a 2xx the CLI cannot read, a body over 64 MiB, a pagination block past 1000 pages, or a download shorter than the export's `byte_size`. `details.status` tells whether a write was accepted (e.g. `201`), so do not blindly repeat a POST that failed this way
 - **Retries**: only GET/HEAD/PUT/OPTIONS are retried, on network errors and 5xx, and on 429 when `Retry-After` is at most 5 s. POST/PATCH/DELETE are never retried, since Sure may have committed the change before the answer was lost. A 2xx body that cannot be decoded is never retried
@@ -250,8 +250,11 @@ sure-cli trades delete <trade_id> --apply
 
 # Recurring transactions
 sure-cli recurring-transactions list --status active
-sure-cli recurring-transactions create --name Rent --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01
-sure-cli recurring-transactions create --name Rent --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01 --apply
+# amount follows Sure's entry convention: positive is a bill, negative an income
+sure-cli recurring-transactions create --name Rent --amount 1200 --currency EUR --expected-day-of-month 1 \
+  --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01
+sure-cli recurring-transactions create --name Rent --amount 1200 --currency EUR --expected-day-of-month 1 \
+  --last-occurrence-date 2026-04-01 --next-expected-date 2026-05-01 --apply
 # --status accepts active|inactive (the API writes only these)
 sure-cli recurring-transactions update <id> --status inactive --autopay true \
   --payment-url https://example.com/pay --notes "paid by direct debit" --apply
