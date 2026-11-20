@@ -124,10 +124,7 @@ func (c *Client) ensureFreshToken() error {
 	}
 	c.setBearer(res.AccessToken)
 	if err := config.Save(); err != nil {
-		// rt is already revoked; the new refresh token is the only way back
-		// in without a new login.
-		return errs.Wrap(errs.CodeConfigSaveFailed, "token refreshed but the config file could not be saved; set auth.refresh_token to details.refresh_token or log in again", err).
-			WithDetails(map[string]any{"refresh_token": config.RefreshToken()})
+		return config.RescueTokens(err)
 	}
 	return nil
 }
