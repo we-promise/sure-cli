@@ -11,13 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestOrphanCommandsRegistered locks in registration for top-level commands
-// that previously had no test file at all. Deleting the AddCommand line for
-// any of these in root.go would silently still compile; this table makes
-// such regressions fail fast.
-//
-// Tracks the test-review finding: whoami / sync / refresh / transactions
-// delete / insights_* / analyze_* were orphans.
+// TestOrphanCommandsRegistered checks the registration of commands no other
+// test reaches: deleting their AddCommand line in root.go would still compile.
 func TestOrphanCommandsRegistered(t *testing.T) {
 	root := New()
 	cases := []struct {

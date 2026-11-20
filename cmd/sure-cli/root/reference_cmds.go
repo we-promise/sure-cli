@@ -394,6 +394,16 @@ func addPagingQuery(q url.Values, page, perPage int) {
 	}
 }
 
+// addRepeatedQuery appends q[key][]=v for each non-empty v, Rails' array
+// parameter form.
+func addRepeatedQuery(q url.Values, key string, values []string) {
+	for _, v := range values {
+		if v != "" {
+			q.Add(key+"[]", v)
+		}
+	}
+}
+
 func pathWithQuery(path string, q url.Values) string {
 	if encoded := q.Encode(); encoded != "" {
 		return path + "?" + encoded

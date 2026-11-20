@@ -25,10 +25,8 @@ func newExportCmd() *cobra.Command {
 func newExportTransactionsCmd() *cobra.Command {
 	var months int
 	var outFile string
-	// Local --out-format avoids colliding with the persistent --format
-	// (json|table) declared on the root command. Previously both flags were
-	// named --format and only worked because they happened to be read from
-	// different package-level variables.
+	// --out-format is the file's format; the persistent --format (json|table)
+	// is how the result envelope prints.
 	var exportFormat string
 
 	cmd := &cobra.Command{

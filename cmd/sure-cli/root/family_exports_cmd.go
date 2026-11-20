@@ -44,15 +44,8 @@ func newFamilyExportsCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Queue a family export (default dry-run; use --apply to execute)",
 		Run: func(cmd *cobra.Command, args []string) {
-			// Upstream Api::V1::FamilyExportsController#create ignores the body
-			// (it queues a job per current_resource_owner.family); send {} on
-			// apply and pass nil for dry-run to keep the previous envelope
-			// shape (no body key under request).
-			if !apply {
-				dispatchWrite(apply, "POST", "/api/v1/family_exports", nil)
-				return
-			}
-			dispatchWrite(true, "POST", "/api/v1/family_exports", map[string]any{})
+			// Sure ignores the body: it exports the caller's family.
+			dispatchWrite(apply, "POST", "/api/v1/family_exports", nil)
 		},
 	}
 	create.Flags().BoolVar(&apply, "apply", false, "execute the create (otherwise dry-run)")
