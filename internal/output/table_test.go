@@ -122,3 +122,40 @@ func TestPrintTable_Trades(t *testing.T) {
 		t.Fatalf("table must not print <nil>: %q", out)
 	}
 }
+
+// A name from Sure is user data: it must not reach the terminal as escape
+// sequences (OSC 52 writes the clipboard, CSI clears the screen).
+func TestPrintTable_StripsControlCharacters(t *testing.T) {
+	hostile := "\x1b]52;c;ZWNobyBwd24=\x07\x1b[2J\x1b[31mRED\u009b31m\r"
+	for _, key := range []string{"accounts", "transactions", "holdings", "trades"} {
+		row := map[string]any{"id": hostile, "name": hostile, "date": hostile,
+			"account": map[string]any{"name": hostile}, "security": map[string]any{"ticker": hostile, "name": hostile}}
+		out := captureStdout(t, func() {
+			if !PrintTable(Envelope{Data: map[string]any{key: []any{row}}}) {
+				t.Fatalf("%s: expected ok", key)
+			}
+		})
+		if strings.ContainsAny(out, "\x1b\x07\r\u009b") {
+			t.Fatalf("%s table carries control characters: %q", key, out)
+		}
+		if !strings.Contains(out, "RED") {
+			t.Fatalf("%s table lost the printable text: %q", key, out)
+		}
+	}
+}
+
+func TestPrintable(t *testing.T) {
+	cases := map[string]string{
+		"plain café":               "plain café",
+		"a\x1b[2Jb":                "a[2Jb",
+		"bell\x07 osc\x1b]0;x\x07": "bell osc]0;x",
+		"c1 \u009b31m csi":         "c1 31m csi",
+		"del\x7f":                  "del",
+		"line\nbreak\ttab\rreturn": "line break tab return",
+	}
+	for in, want := range cases {
+		if got := Printable(in); got != want {
+			t.Errorf("Printable(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

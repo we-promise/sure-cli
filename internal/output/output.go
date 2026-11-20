@@ -39,6 +39,6 @@ func Print(format string, env Envelope) error {
 
 func Fail(code, message string, details any) {
 	_ = PrintJSON(Envelope{Error: &Error{Code: code, Message: message, Details: details}})
-	fmt.Fprintln(os.Stderr, message)
+	fmt.Fprintln(os.Stderr, Printable(message))
 	os.Exit(1)
 }
