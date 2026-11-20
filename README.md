@@ -175,7 +175,9 @@ sure-cli analyze leaks --months 3            # or --start-date/--end-date; --cur
 sure-cli analyze runway --account-id <id> --days 90
 # runway: balance from balance_cents; burn is the whole family's reportable
 # expenses in the account currency, from every account, over the last --days
-# days (today included), extrapolated to 30-day months.
+# days (today included), extrapolated to 30-day months. Expenses are gross and
+# other currencies are left out, so the burn can differ from status, which
+# takes Sure's own spending (all currencies converted, refunds netted).
 
 # Propose automations
 sure-cli propose rules --months 3

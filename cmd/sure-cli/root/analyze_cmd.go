@@ -123,7 +123,9 @@ func newAnalyzeRunwayCmd() *cobra.Command {
 		Short: "Estimate runway months based on recent spending",
 		Long: "Divides the account's balance by the monthly burn: the whole family's reportable " +
 			"expenses in the account currency over the last --days days, from every account, " +
-			"extrapolated to 30-day months.",
+			"extrapolated to 30-day months. Expenses are gross and other currencies are left out, " +
+			"so the burn can differ from `status`, which takes Sure's own spending (all currencies " +
+			"converted, refunds netted per category).",
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			if accountID == "" {
