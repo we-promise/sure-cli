@@ -1,11 +1,10 @@
 package root
 
 import (
-	"github.com/we-promise/sure-cli/internal/config"
-	"github.com/we-promise/sure-cli/internal/insights"
-	"github.com/we-promise/sure-cli/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/we-promise/sure-cli/internal/config"
+	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newConfigCmd() *cobra.Command {
@@ -29,42 +28,6 @@ func newConfigCmd() *cobra.Command {
 				output.Fail("config_save_failed", err.Error(), nil)
 			}
 			_ = output.Print(format, output.Envelope{Data: map[string]any{"ok": true}})
-		},
-	})
-	cmd.AddCommand(&cobra.Command{
-		Use:   "heuristics",
-		Short: "Show current heuristics configuration",
-		Run: func(cmd *cobra.Command, args []string) {
-			h := config.GetHeuristics()
-			// If no custom keywords, show that defaults will be used
-			keywordsInfo := map[string]any{
-				"custom":        h.Fees.Keywords,
-				"using_default": len(h.Fees.Keywords) == 0,
-			}
-			if len(h.Fees.Keywords) == 0 {
-				keywordsInfo["default_count"] = len(insights.DefaultFeeKeywords)
-			}
-			_ = output.Print(format, output.Envelope{Data: map[string]any{
-				"fees": map[string]any{
-					"keywords": keywordsInfo,
-				},
-				"subscriptions": h.Subscriptions,
-				"leaks":         h.Leaks,
-				"rules":         h.Rules,
-			}})
-		},
-	})
-	cmd.AddCommand(&cobra.Command{
-		Use:   "fee-keywords",
-		Short: "Show all default fee keywords",
-		Run: func(cmd *cobra.Command, args []string) {
-			custom := config.GetFeeKeywords()
-			active := insights.GetFeeKeywords(custom)
-			_ = output.Print(format, output.Envelope{Data: map[string]any{
-				"active_keywords": active,
-				"count":           len(active),
-				"is_custom":       len(custom) > 0,
-			}})
 		},
 	})
 	return cmd

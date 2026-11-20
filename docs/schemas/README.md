@@ -15,14 +15,11 @@ Agent-first contracts for `sure-cli` outputs.
 - `dry_run_request.schema.json` — dry-run mode output
 
 ### Insights
-- `insights_subscriptions.schema.json` — `insights subscriptions`
-- `insights_fees.schema.json` — `insights fees`
-- `insights_leaks.schema.json` — `insights leaks`
+- `insights_list.schema.json` — `insights list` (Sure's server feed)
 
-### Plan
-- `plan_budget.schema.json` — `plan budget`
-- `plan_forecast.schema.json` — `plan forecast`
-- `plan_runway.schema.json` — `plan runway`
+### Analyze
+- `analyze_leaks.schema.json` — `analyze leaks`
+- `analyze_runway.schema.json` — `analyze runway`
 
 ### Automation
 - `propose_rules.schema.json` — `propose rules`

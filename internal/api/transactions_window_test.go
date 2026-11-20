@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/we-promise/sure-cli/internal/config"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/models"
 )
 
@@ -93,7 +95,7 @@ func TestFetchAllTransactionsWindow_DecodesEveryRow(t *testing.T) {
 		ID: "t-exact", EntryID: "e-exact", Name: "Coffee beans", Classification: "expense", Kind: "standard",
 		Amount: -12.3456, AmountDecimal: "-12.3456", AmountText: "€12.35", Currency: "EUR",
 		Date: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC), AccountName: "Main",
-		MerchantName: "Roaster", CategoryName: "Food", CategoryID: "c1",
+		MerchantID: "m1", MerchantName: "Roaster", CategoryName: "Food", CategoryID: "c1",
 		ExternalID: "bank-1", Source: "api", UserModified: true,
 	}
 	if txs[0] != wantExact {
@@ -140,5 +142,50 @@ func TestFetchTransactionsWindow_RejectsUnreadableAmount(t *testing.T) {
 	start, end := window()
 	if _, err := FetchTransactionsWindow(New(), start, end, 10); err == nil {
 		t.Fatal("expected an error for a transaction whose amount cannot be read")
+	}
+}
+
+func TestFetchTransactionsWindow_ReturnsTypedErrors(t *testing.T) {
+	start, end := window()
+	cases := []struct {
+		name     string
+		status   int
+		body     string
+		wantCode string
+		wantAPI  string
+	}{
+		{"forbidden keeps Sure's code", http.StatusForbidden, `{"error":"insufficient_scope","message":"needs read"}`, errs.CodeAuthInvalid, "insufficient_scope"},
+		{"server error", http.StatusInternalServerError, `{"error":"internal_server_error","message":"boom"}`, errs.CodeServerError, "internal_server_error"},
+		{"malformed body", http.StatusOK, `{"transactions":"nope"}`, errs.CodeInvalidResponse, ""},
+		{"unreadable amount", http.StatusOK, `{"transactions":[{"id":"bad","date":"2026-02-01","amount":"","classification":"expense"}]}`, errs.CodeInvalidResponse, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			viper.Reset()
+			_ = config.Init(t.TempDir() + "/config.yaml")
+			viper.Set("auth.mode", "api_key")
+			viper.Set("auth.api_key", "key")
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			t.Cleanup(srv.Close)
+			viper.Set("api_url", srv.URL)
+			c := New()
+			c.http.SetRetryCount(0)
+
+			_, err := FetchTransactionsWindow(c, start, end, 10)
+			var ce *errs.CLIError
+			if !errors.As(err, &ce) {
+				t.Fatalf("err = %v (%T), want *errs.CLIError", err, err)
+			}
+			if ce.Code != tc.wantCode {
+				t.Fatalf("code = %q, want %q", ce.Code, tc.wantCode)
+			}
+			if tc.wantAPI != "" && ce.Details["api_error"] != tc.wantAPI {
+				t.Fatalf("api_error = %v, want %q", ce.Details["api_error"], tc.wantAPI)
+			}
+		})
 	}
 }

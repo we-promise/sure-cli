@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/we-promise/sure-cli/internal/models"
 	"github.com/spf13/viper"
+	"github.com/we-promise/sure-cli/internal/models"
 )
 
 func RefreshToken() string { return viper.GetString("auth.refresh_token") }

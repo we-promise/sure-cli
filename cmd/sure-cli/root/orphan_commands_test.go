@@ -8,7 +8,7 @@ import "testing"
 // such regressions fail fast.
 //
 // Tracks the test-review finding: whoami / sync / refresh / transactions
-// delete / insights_* / plan_* were orphans.
+// delete / insights_* / analyze_* were orphans.
 func TestOrphanCommandsRegistered(t *testing.T) {
 	root := New()
 	cases := []struct {
@@ -24,13 +24,11 @@ func TestOrphanCommandsRegistered(t *testing.T) {
 		{[]string{"export", "transactions"}, "transactions"},
 		{[]string{"transactions", "delete"}, "delete"},
 		{[]string{"insights"}, "insights"},
-		{[]string{"insights", "subscriptions"}, "subscriptions"},
-		{[]string{"insights", "fees"}, "fees"},
-		{[]string{"insights", "leaks"}, "leaks"},
-		{[]string{"plan"}, "plan"},
-		{[]string{"plan", "budget"}, "budget"},
-		{[]string{"plan", "runway"}, "runway"},
-		{[]string{"plan", "forecast"}, "forecast"},
+		{[]string{"insights", "list"}, "list"},
+		{[]string{"insights", "ack"}, "ack"},
+		{[]string{"analyze"}, "analyze"},
+		{[]string{"analyze", "leaks"}, "leaks"},
+		{[]string{"analyze", "runway"}, "runway"},
 		{[]string{"propose"}, "propose"},
 		{[]string{"propose", "rules"}, "rules"},
 	}

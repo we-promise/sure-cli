@@ -26,8 +26,7 @@ sure-cli (cobra commands)
     |      sends: Bearer token or X-Api-Key header
     |      receives: JSON from Sure REST API
     |
-    +-- internal/insights (client-side heuristics on transaction data)
-    +-- internal/plan     (budget, runway, forecast calculations)
+    +-- internal/analyze  (client-side heuristics: spending leaks, runway)
     +-- internal/rules    (rule proposal engine)
     +-- internal/output   (JSON/table formatting)
     +-- internal/schema   (JSON schema validation, dev/tooling only)

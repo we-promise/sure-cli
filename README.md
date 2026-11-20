@@ -150,15 +150,17 @@ sure-cli budgets show <budget_id>
 sure-cli budget-categories list --budget-id <budget_id>
 sure-cli budget-categories show <budget_category_id>
 
-# Phase 4 (read-only heuristics)
-sure-cli insights subscriptions --days 120
-sure-cli insights fees --days 120
-sure-cli insights leaks --days 120
+# Insights: the feed Sure generates nightly (spending anomalies, cash flow
+# warnings, subscription audits, bank fees, budgets at risk, ...).
+# Needs Preview features on (Sure: Settings > Preferences); otherwise 403
+# forbidden with details.api_error feature_disabled. No filters or paging.
+sure-cli insights list
+sure-cli insights ack <insight_id>            # dry-run
+sure-cli insights ack <insight_id> --apply    # read_write scope; guests refused; idempotent
 
-# Plan (client-side budget/runway/forecast)
-sure-cli plan budget --month 2026-02
-sure-cli plan runway --account-id <id> --days 90   # balance from balance_cents; burn counts only expenses in the account currency
-sure-cli plan forecast --days 30 [--daily]
+# Analyze: client-side heuristics Sure does not compute
+sure-cli analyze leaks --months 3            # or --start-date/--end-date; --currency to keep one
+sure-cli analyze runway --account-id <id> --days 90   # balance from balance_cents; burn counts only expenses in the account currency
 
 # Propose automations
 sure-cli propose rules --months 3
@@ -184,6 +186,11 @@ sure-cli valuations create --account-id <account_id> --amount 123.45 --date 2026
 # excludes exclude_from_reports accounts). accounts.by_currency totals assets,
 # liabilities, net worth and cash per native currency with the same exclusions.
 # Runway uses depository cash in the family currency only.
+# monthly.subscriptions is Sure's active recurring outflows (no income, no
+# transfers, no one-offs) priced per month from each series' cadence, in the
+# family currency; subscriptions_by_currency lists every currency apart.
+# budget_pacing lists each current budget in its own currency (budgeted,
+# actual and available spending, percent spent vs percent of period elapsed).
 sure-cli status
 
 # Holdings (requires Sure investment API)
@@ -319,7 +326,7 @@ Required device payload fields are stored under `auth.device.*` in config (defau
 
 Sure stores transaction amounts in the entry convention: positive is an outflow (expense), negative an inflow (income). The `amount` field is a localized display string rounded to the currency's precision (`"-€2,000.00"`).
 
-`status`, `plan`, `insights`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against a server without `amount_decimal` they fall back to parsing `amount` and take the sign from `classification`.
+`status`, `analyze`, `propose` and `export` read `amount_decimal` instead: the stored decimal(19,4) value, exact and locale-independent (Sure #4422). They flip it to the CLI convention, **income positive, expense negative**. Against a server without `amount_decimal` they fall back to parsing `amount` and take the sign from `classification`.
 
 Totals count what Sure's own income statement counts. These rows are skipped:
 
@@ -329,34 +336,15 @@ Totals count what Sure's own income statement counts. These rows are skipped:
 
 `export transactions` writes every row. Its `amount` column is the exact signed decimal; `kind`, `excluded` and `split_parent` columns tell you which rows to leave out of a sum.
 
-## Heuristics Configuration
+## Heuristics
 
-All insight heuristics are configurable via `~/.config/sure-cli/config.yaml`:
+`analyze leaks` groups the window's expenses by the merchant Sure matched (by id, else by name), falling back to the transaction name, and keeps one group per currency: amounts in different currencies are never added. Thresholds are flags, in major units of each group's currency:
 
-```yaml
-heuristics:
-  fees:
-    keywords: []  # empty = use 60+ default keywords (EN/ES/DE/FR)
-  subscriptions:
-    period_min_days: 20
-    period_max_days: 40
-    weekly_min_days: 6
-    weekly_max_days: 9
-    stddev_max_days: 3.0
-    amount_stddev_ratio: 0.1
-  leaks:
-    min_count: 3
-    min_total: 15.0
-    max_avg: 10.0
-  rules:
-    min_consistency: 0.7
-    min_occurrences: 2
-```
-
-Inspect current config:
 ```bash
-sure-cli config heuristics      # show all heuristic settings
-sure-cli config fee-keywords    # show active fee keywords (60+ defaults)
+sure-cli analyze leaks --months 3 --min-count 3 --min-total 15 --max-avg 10
+sure-cli analyze leaks --start-date 2026-01-01 --end-date 2026-03-31 --currency EUR
 ```
+
+The output echoes the window (`start`, `end`, inclusive, and `days`) and the thresholds used.
 
 See `docs/ROADMAP.md` for planned features.

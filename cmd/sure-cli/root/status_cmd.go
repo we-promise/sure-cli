@@ -9,11 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
-	"github.com/we-promise/sure-cli/internal/insights"
 	"github.com/we-promise/sure-cli/internal/models"
 	"github.com/we-promise/sure-cli/internal/money"
 	"github.com/we-promise/sure-cli/internal/output"
-	"github.com/we-promise/sure-cli/internal/plan"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -56,10 +54,7 @@ func newStatusCmd() *cobra.Command {
 			end := time.Now().UTC()
 			start := end.AddDate(0, -1, 0) // last month
 			txs, err := api.FetchTransactionsWindow(client, start, end, 500)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-				return
-			}
+			checkResponse(nil, err)
 
 			monthlySpend, monthlyIncome := monthlyTotals(txs, primaryCurrency)
 
@@ -88,18 +83,23 @@ func newStatusCmd() *cobra.Command {
 				})
 			}
 
-			// 6. Get subscription count
-			subTxs, _ := api.FetchTransactionsWindow(client, end.AddDate(0, -6, 0), end, 500)
-			subs := insights.DetectSubscriptions(subTxs)
-			var monthlySubscriptions float64
-			for _, s := range subs {
-				if s.AvgPeriodDays > 0 {
-					monthlySubscriptions += s.AvgAmount * (30.0 / s.AvgPeriodDays)
-				}
+			// 6. Recurring outflows Sure tracks, per currency, as a monthly rate.
+			series, r, err := api.FetchActiveRecurringTransactions(client)
+			checkResponse(r, err)
+			subscriptions := recurringMonthlyOutflows(series)
+			subscriptionsByCurrency := make(map[string]any, len(subscriptions))
+			for cur, v := range subscriptions {
+				subscriptionsByCurrency[cur] = formatMoneyValue(v, cur)
 			}
 
-			// 7. Budget pacing for current month
-			budgetResult, _ := plan.ComputeMonthlyBudget(time.Now(), txs)
+			// 7. Pacing of each current budget, in that budget's currency.
+			today := time.Now()
+			budgets, r, err := api.FetchCurrentBudgets(client, today)
+			checkResponse(r, err)
+			pacing := make([]map[string]any, 0, len(budgets))
+			for _, b := range budgets {
+				pacing = append(pacing, budgetPacing(b, today))
+			}
 
 			status := map[string]any{
 				"as_of": time.Now().UTC().Format(time.RFC3339),
@@ -119,22 +119,18 @@ func newStatusCmd() *cobra.Command {
 					"income":        formatMoneyValue(monthlyIncome, primaryCurrency),
 					"expenses":      formatMoneyValue(monthlySpend, primaryCurrency),
 					"net":           formatMoneyValue(monthlyIncome-monthlySpend, primaryCurrency),
-					"subscriptions": formatMoneyValue(monthlySubscriptions, primaryCurrency),
+					"subscriptions": formatMoneyValue(subscriptions[primaryCurrency], primaryCurrency),
+					// Every currency, family currency included; never summed across.
+					"subscriptions_by_currency": subscriptionsByCurrency,
 				},
 				"runway": map[string]any{
 					"months":       runwayMonths,
 					"cash_balance": formatMoneyValue(cashBalance, primaryCurrency),
 					"burn_rate":    fmt.Sprintf("%s/month", formatMoneyValue(monthlySpend, primaryCurrency)),
 				},
-				"budget_pacing": map[string]any{
-					"month":        budgetResult.Month,
-					"days_elapsed": budgetResult.DaysElapsed,
-					"spent":        formatMoneyValue(budgetResult.Spent, primaryCurrency),
-					"projected":    formatMoneyValue(budgetResult.Projected, primaryCurrency),
-					"avg_per_day":  formatMoneyValue(budgetResult.AvgPerDay, primaryCurrency),
-				},
-				"alerts":      alerts,
-				"alert_count": len(alerts),
+				"budget_pacing": pacing,
+				"alerts":        alerts,
+				"alert_count":   len(alerts),
 			}
 
 			_ = output.Print(format, output.Envelope{Data: status, Meta: &output.Meta{Status: 200}})
@@ -238,6 +234,109 @@ func monthlyTotals(txs []models.Transaction, currency string) (spend, income flo
 	}
 	return spend, income
 }
+
+// recurringMonthlyOutflows totals active recurring outflows per currency as a
+// monthly rate, the way Sure's RecurringTransaction#monthly_equivalent_amount
+// prices them: amount × occurrences per year / 12, a one-off adding nothing.
+// Income (negative amounts) and transfers between the family's own accounts
+// are not spending (RecurringTransaction.outflows) and are skipped.
+func recurringMonthlyOutflows(series []map[string]any) map[string]float64 {
+	totals := map[string]float64{}
+	for _, s := range series {
+		amount, ok := amountFromAPIOK(s, "amount", "amount_cents")
+		if !ok || amount <= 0 || s["bill_type"] == "transfer" {
+			continue
+		}
+		rules, _ := s["recurrence_rules"].([]any)
+		if isOneOffSeries(s, rules) {
+			continue
+		}
+		currency := strings.ToUpper(fmt.Sprint(s["currency"]))
+		totals[currency] += amount * occurrencesPerYear(rules) / 12
+	}
+	return totals
+}
+
+// occurrencesPerYear mirrors RecurringTransaction::Schedule#occurrences_per_year.
+// A series without rules is Sure's legacy "monthly on expected_day_of_month".
+func occurrencesPerYear(rules []any) float64 {
+	if len(rules) == 0 {
+		return 12
+	}
+	var perYear float64
+	for _, raw := range rules {
+		rule, _ := raw.(map[string]any)
+		interval, ok := decimalValue(rule["interval"])
+		if !ok || interval <= 0 {
+			interval = 1
+		}
+		switch rule["frequency"] {
+		case "weekly":
+			perYear += 365.25 / (7 * interval)
+		case "monthly":
+			perYear += 12 / interval
+		case "yearly":
+			perYear += 1 / interval
+		}
+	}
+	return perYear
+}
+
+// isOneOffSeries mirrors FrequencyPreset.once_schedule?: a single payment is
+// stored as one yearly day-of-month rule that ends after one occurrence.
+func isOneOffSeries(s map[string]any, rules []any) bool {
+	if s["bill_type"] == "installment" || s["end_mode"] != "after_count" || len(rules) != 1 {
+		return false
+	}
+	if count, _ := decimalValue(s["end_after_count"]); count != 1 {
+		return false
+	}
+	rule, _ := rules[0].(map[string]any)
+	interval, _ := decimalValue(rule["interval"])
+	return rule["frequency"] == "yearly" && interval == 1 && rule["day_of_month"] != nil && rule["weekday"] == nil
+}
+
+// budgetPacing summarises a budget (GET /api/v1/budgets/{id}) in its own
+// currency: what was budgeted and spent, and how far through its period
+// today is. An uninitialized budget has no budgeted figures.
+func budgetPacing(b map[string]any, today time.Time) map[string]any {
+	currency := fmt.Sprint(b["currency"])
+	minor := func(key string) (float64, bool) {
+		v, ok := decimalValue(b[key+"_cents"])
+		return money.FromMinor(v, currency), ok
+	}
+	p := map[string]any{
+		"id":          b["id"],
+		"name":        b["name"],
+		"currency":    b["currency"],
+		"start_date":  b["start_date"],
+		"end_date":    b["end_date"],
+		"initialized": b["initialized"],
+	}
+	for _, key := range []string{"budgeted_spending", "actual_spending", "available_to_spend"} {
+		p[key] = nil
+		if v, ok := minor(key); ok {
+			p[key] = formatMoneyValue(v, currency)
+		}
+	}
+	p["percent_spent"] = nil
+	budgeted, okBudgeted := minor("budgeted_spending")
+	if actual, ok := minor("actual_spending"); ok && okBudgeted && budgeted > 0 {
+		p["percent_spent"] = roundTo1(actual / budgeted * 100)
+	}
+	p["percent_elapsed"] = nil
+	start, errStart := time.Parse(isoDateLayout, fmt.Sprint(b["start_date"]))
+	end, errEnd := time.Parse(isoDateLayout, fmt.Sprint(b["end_date"]))
+	if errStart == nil && errEnd == nil && !end.Before(start) {
+		day := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
+		days := end.Sub(start).Hours()/24 + 1
+		elapsed := math.Min(math.Max(day.Sub(start).Hours()/24+1, 0), days)
+		p["percent_elapsed"] = roundTo1(elapsed / days * 100)
+	}
+	return p
+}
+
+func roundTo1(v float64) float64 { return math.Round(v*10) / 10 }
 
 // amountFromAPIOK reads an amount in major units, preferring Sure's integer
 // minor-unit field (scaled by the currency's minor unit) over parsing the

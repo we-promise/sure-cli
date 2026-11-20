@@ -20,6 +20,7 @@ type Transaction struct {
 	Currency     string
 	Date         time.Time
 	AccountName  string
+	MerchantID   string
 	MerchantName string
 	CategoryName string
 	CategoryID   string

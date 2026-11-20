@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/go-resty/resty/v2"
+
+	errs "github.com/we-promise/sure-cli/internal/errors"
 )
 
 // MaxPerPage is the largest page Sure serves (Api::V1::BaseController#safe_per_page_param).
@@ -38,7 +41,7 @@ func walkPages(c *Client, path string, q url.Values, perPage int, visit func(bod
 			} `json:"pagination"`
 		}
 		if err := json.Unmarshal(r.Body(), &meta); err != nil {
-			return r, fmt.Errorf("decode pagination: %w", err)
+			return r, errs.Wrap(errs.CodeInvalidResponse, "unreadable pagination in "+path, err)
 		}
 		if meta.Pagination == nil || page >= meta.Pagination.TotalPages {
 			return r, nil
@@ -51,18 +54,19 @@ func walkPages(c *Client, path string, q url.Values, perPage int, visit func(bod
 //
 // The last response is always returned so callers can hand it to their usual
 // error reporting: on an HTTP status >= 400 paging stops, items is nil and
-// err is nil. err is set for transport and decoding failures.
+// err is nil. err is set for transport failures and, as an invalid_response
+// CLIError, for bodies that cannot be decoded.
 func FetchAllPages(c *Client, path string, q url.Values, key string) ([]map[string]any, *resty.Response, error) {
 	var all []map[string]any
 	r, err := walkPages(c, path, q, MaxPerPage, func(body []byte) error {
 		var page map[string]json.RawMessage
 		if err := json.Unmarshal(body, &page); err != nil {
-			return fmt.Errorf("decode %s: %w", path, err)
+			return errs.Wrap(errs.CodeInvalidResponse, "unreadable response from "+path, err)
 		}
 		var items []map[string]any
 		if raw, ok := page[key]; ok {
 			if err := json.Unmarshal(raw, &items); err != nil {
-				return fmt.Errorf("decode %s.%s: %w", path, key, err)
+				return errs.Wrap(errs.CodeInvalidResponse, fmt.Sprintf("unreadable %q list from %s", key, path), err)
 			}
 		}
 		all = append(all, items...)
@@ -87,4 +91,42 @@ func AccountsQuery(includeDisabled bool) url.Values {
 // FetchAllAccounts returns every account visible to the caller, across pages.
 func FetchAllAccounts(c *Client, includeDisabled bool) ([]map[string]any, *resty.Response, error) {
 	return FetchAllPages(c, "/api/v1/accounts", AccountsQuery(includeDisabled), "accounts")
+}
+
+// FetchActiveRecurringTransactions returns every active recurring series
+// (GET /api/v1/recurring_transactions?status=active), across pages.
+func FetchActiveRecurringTransactions(c *Client) ([]map[string]any, *resty.Response, error) {
+	q := url.Values{}
+	q.Set("status", "active")
+	return FetchAllPages(c, "/api/v1/recurring_transactions", q, "recurring_transactions")
+}
+
+// FetchCurrentBudgets returns every visible budget Sure flags `current` (the
+// household one and any personal or shared ones), each read through
+// GET /api/v1/budgets/{id}: the index leaves out the derived amounts
+// (actual_spending, available_to_spend). The index is bounded from the first
+// day of the previous month, as a custom month start can open the current
+// period there. Responses are handed back as FetchAllPages does.
+func FetchCurrentBudgets(c *Client, today time.Time) ([]map[string]any, *resty.Response, error) {
+	since := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -1, 0)
+	q := url.Values{}
+	q.Set("start_date", since.Format("2006-01-02"))
+	index, r, err := FetchAllPages(c, "/api/v1/budgets", q, "budgets")
+	if err != nil || r == nil || r.StatusCode() >= 400 {
+		return nil, r, err
+	}
+
+	var budgets []map[string]any
+	for _, b := range index {
+		if current, _ := b["current"].(bool); !current {
+			continue
+		}
+		var budget map[string]any
+		r, err = c.Get("/api/v1/budgets/"+url.PathEscape(fmt.Sprint(b["id"])), &budget)
+		if err != nil || r.StatusCode() >= 400 {
+			return nil, r, err
+		}
+		budgets = append(budgets, budget)
+	}
+	return budgets, r, nil
 }

@@ -35,10 +35,7 @@ func newProposeRulesCmd() *cobra.Command {
 			end := time.Now().UTC()
 			start := end.AddDate(0, -months, 0)
 			txs, err := api.FetchTransactionsWindow(client, start, end, 500)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-				return
-			}
+			checkResponse(nil, err)
 
 			result := rules.ProposeRules(txs)
 

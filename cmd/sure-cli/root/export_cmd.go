@@ -42,10 +42,7 @@ func newExportTransactionsCmd() *cobra.Command {
 			start := end.AddDate(0, -months, 0)
 			// Every row, flagged: an export is a dump, not a total.
 			txs, err := api.FetchAllTransactionsWindow(client, start, end, 1000)
-			if err != nil {
-				output.Fail("request_failed", err.Error(), nil)
-				return
-			}
+			checkResponse(nil, err)
 
 			if outFile == "" {
 				outFile = fmt.Sprintf("transactions_%s.%s", time.Now().Format("2006-01-02"), exportFormat)

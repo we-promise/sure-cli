@@ -10,6 +10,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - run: go test ./...
       - run: go vet ./...
       - run: chmod +x tools/validate-samples.sh && tools/validate-samples.sh

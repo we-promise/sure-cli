@@ -28,7 +28,9 @@ const (
 	CodeConfigMissing = "config_missing"
 	CodeConfigInvalid = "config_invalid"
 	CodeExportFailed  = "export_failed"
-	CodeUnknown       = "unknown_error"
+	// CodeInvalidResponse means Sure answered 2xx with a body the CLI cannot read.
+	CodeInvalidResponse = "invalid_response"
+	CodeUnknown         = "unknown_error"
 )
 
 // CLIError is a structured error with code and details for agent consumption.
@@ -207,18 +209,6 @@ func ClassifyNetworkError(err error) *CLIError {
 	}
 
 	return Wrap(CodeNetwork, "Network error", err)
-}
-
-// IsRetryable returns true if the error is likely temporary and retryable
-func IsRetryable(err error) bool {
-	var cliErr *CLIError
-	if errors.As(err, &cliErr) {
-		switch cliErr.Code {
-		case CodeNetwork, CodeTimeout, CodeRateLimit, CodeServerError:
-			return true
-		}
-	}
-	return false
 }
 
 func truncate(s string, max int) string {

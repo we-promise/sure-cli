@@ -1,4 +1,4 @@
-package plan
+package analyze
 
 import (
 	"testing"
@@ -60,25 +60,5 @@ func TestComputeRunway_SumsExpenseMagnitudes(t *testing.T) {
 	s := ComputeRunway(300, "EUR", txs, 30)
 	if s.AvgMonthlyBurn != 30 || s.RunwayMonths != 10 {
 		t.Fatalf("burn=%v runway=%v, want 30 and 10", s.AvgMonthlyBurn, s.RunwayMonths)
-	}
-}
-
-func TestComputeMonthlyBudget_SumsExpenseMagnitudes(t *testing.T) {
-	month := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	txs := []models.Transaction{
-		{Classification: "expense", Amount: -12.25, Currency: "USD", Date: month.AddDate(0, 0, 3)},
-		{Classification: "expense", Amount: -7.75, Currency: "USD", Date: month.AddDate(0, 0, 4)},
-		{Classification: "income", Amount: 500, Currency: "USD", Date: month.AddDate(0, 0, 4)},
-		{Classification: "expense", Amount: -99, Currency: "USD", Date: month.AddDate(0, 1, 0)}, // next month
-	}
-	b, err := ComputeMonthlyBudget(month, txs)
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
-	if b.Spent != 20 {
-		t.Fatalf("spent = %v, want 20", b.Spent)
-	}
-	if b.Currency != "USD" {
-		t.Fatalf("currency = %q, want the transactions' currency USD", b.Currency)
 	}
 }
