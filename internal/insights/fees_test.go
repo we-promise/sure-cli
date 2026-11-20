@@ -4,9 +4,9 @@ import "testing"
 
 func TestDetectFees_KeywordMatch(t *testing.T) {
 	txs := []Transaction{
-		{ID: "1", Name: "ATM Fee", Classification: "expense", AmountText: "€2.00", Date: mustDate("2026-01-01")},
-		{ID: "2", Name: "ATM Fee", Classification: "expense", AmountText: "€2.00", Date: mustDate("2026-02-01")},
-		{ID: "3", Name: "Salary", Classification: "income", AmountText: "-€100.00", Date: mustDate("2026-02-02")},
+		{ID: "1", Name: "ATM Fee", Classification: "expense", Amount: -2.00, Date: mustDate("2026-01-01")},
+		{ID: "2", Name: "ATM Fee", Classification: "expense", Amount: -2.00, Date: mustDate("2026-02-01")},
+		{ID: "3", Name: "Salary", Classification: "income", Amount: 100.00, Date: mustDate("2026-02-02")},
 	}
 	out := DetectFees(txs, []string{"fee"})
 	if len(out) != 1 {

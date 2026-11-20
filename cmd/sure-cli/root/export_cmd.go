@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/models"
 	"github.com/we-promise/sure-cli/internal/output"
-	"github.com/spf13/cobra"
 )
 
 func newExportCmd() *cobra.Command {
@@ -39,7 +40,8 @@ func newExportTransactionsCmd() *cobra.Command {
 			}
 			end := time.Now().UTC()
 			start := end.AddDate(0, -months, 0)
-			txs, err := api.FetchTransactionsWindow(client, start, end, 1000)
+			// Every row, flagged: an export is a dump, not a total.
+			txs, err := api.FetchAllTransactionsWindow(client, start, end, 1000)
 			if err != nil {
 				output.Fail("request_failed", err.Error(), nil)
 				return
@@ -90,23 +92,27 @@ func exportTransactionsCSV(txs []models.Transaction, path string) error {
 	defer w.Flush()
 
 	// Header
-	header := []string{"id", "date", "name", "amount", "currency", "classification", "category", "account", "merchant"}
+	// amount is exact and signed (income positive, expense negative).
+	// excluded/split_parent rows are exported but do not count in totals.
+	header := []string{"id", "date", "name", "amount", "currency", "classification", "kind", "category", "account", "merchant", "excluded", "split_parent"}
 	if err := w.Write(header); err != nil {
 		return err
 	}
 
-	// Rows
 	for _, tx := range txs {
 		row := []string{
 			tx.ID,
 			tx.Date.Format("2006-01-02"),
 			tx.Name,
-			tx.AmountText,
+			tx.AmountDecimal,
 			tx.Currency,
 			tx.Classification,
+			tx.Kind,
 			tx.CategoryName,
 			tx.AccountName,
 			tx.MerchantName,
+			strconv.FormatBool(tx.Excluded),
+			strconv.FormatBool(tx.SplitParent),
 		}
 		if err := w.Write(row); err != nil {
 			return err

@@ -53,10 +53,16 @@ func TestImportsCreate_Flags(t *testing.T) {
 	}
 
 	// Verify expected flags exist
-	expectedFlags := []string{"file", "raw-file-content", "type", "file-format", "source", "account-id", "publish", "date-col-label", "amount-col-label", "apply"}
+	expectedFlags := []string{"file", "raw-file-content", "type", "account-id", "publish", "date-col-label", "amount-col-label", "rows-to-skip", "apply"}
 	for _, name := range expectedFlags {
 		if create.Flags().Lookup(name) == nil {
 			t.Fatalf("expected flag %q to exist", name)
+		}
+	}
+	// Sure's imports controller neither permits nor reads format/source.
+	for _, name := range []string{"file-format", "source"} {
+		if create.Flags().Lookup(name) != nil {
+			t.Fatalf("flag %q must not exist: Sure ignores it", name)
 		}
 	}
 
@@ -74,12 +80,9 @@ func TestImportsCreate_NoFormatCollision(t *testing.T) {
 		t.Fatalf("find create subcommand: %v", err)
 	}
 
-	// Verify we use --file-format, not --format (to avoid collision with global output flag)
+	// A local --format would shadow the global output flag.
 	if create.Flags().Lookup("format") != nil {
-		t.Fatal("should not have --format flag (use --file-format to avoid collision with global output flag)")
-	}
-	if create.Flags().Lookup("file-format") == nil {
-		t.Fatal("expected --file-format flag to exist")
+		t.Fatal("should not have --format flag (collides with the global output flag)")
 	}
 }
 
@@ -113,7 +116,6 @@ func TestBuildImportCreatePayload_ValidFile(t *testing.T) {
 
 	opts := importCreateOpts{
 		File:      tmpFile,
-		Source:    "test-source",
 		AccountID: "acc-123",
 	}
 
@@ -128,37 +130,61 @@ func TestBuildImportCreatePayload_ValidFile(t *testing.T) {
 	if payload.FileField != "file" {
 		t.Errorf("expected FileField 'file', got %q", payload.FileField)
 	}
-	if payload.Fields["format"] != "csv" {
-		t.Errorf("expected auto-detected format 'csv', got %q", payload.Fields["format"])
-	}
-	if payload.Fields["source"] != "test-source" {
-		t.Errorf("expected source 'test-source', got %q", payload.Fields["source"])
+	for _, key := range []string{"format", "source", "type"} {
+		if _, has := payload.Fields[key]; has {
+			t.Errorf("field %q must not be sent for a CSV file: %#v", key, payload.Fields)
+		}
 	}
 	if payload.Fields["account_id"] != "acc-123" {
 		t.Errorf("expected account_id 'acc-123', got %q", payload.Fields["account_id"])
 	}
 }
 
-func TestBuildImportCreatePayload_ExplicitFormat(t *testing.T) {
+func TestBuildImportCreatePayload_InfersSureImportFromExtension(t *testing.T) {
 	tmpDir := t.TempDir()
-	tmpFile := filepath.Join(tmpDir, "data.txt")
-	if err := os.WriteFile(tmpFile, []byte("test"), 0644); err != nil {
+	for _, name := range []string{"backup.ndjson", "backup.JSON"} {
+		tmpFile := filepath.Join(tmpDir, name)
+		if err := os.WriteFile(tmpFile, []byte("{}"), 0644); err != nil {
+			t.Fatalf("create temp file: %v", err)
+		}
+		payload, err := buildImportCreatePayload(importCreateOpts{File: tmpFile})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if payload.Fields["type"] != "SureImport" {
+			t.Errorf("%s: expected inferred type SureImport, got %q", name, payload.Fields["type"])
+		}
+		if _, has := payload.Fields["format"]; has {
+			t.Errorf("%s: format must not be sent", name)
+		}
+	}
+
+	// An explicit --type wins over the extension.
+	tmpFile := filepath.Join(tmpDir, "rows.json")
+	if err := os.WriteFile(tmpFile, []byte("{}"), 0644); err != nil {
 		t.Fatalf("create temp file: %v", err)
 	}
-
-	opts := importCreateOpts{
-		File:       tmpFile,
-		FileFormat: "ofx",
-	}
-
-	payload, err := buildImportCreatePayload(opts)
+	payload, err := buildImportCreatePayload(importCreateOpts{File: tmpFile, Type: "TransactionImport"})
 	if err != nil {
-		t.Fatalf("buildImportCreatePayload: %v", err)
+		t.Fatal(err)
 	}
+	if payload.Fields["type"] != "TransactionImport" {
+		t.Errorf("expected explicit type to win, got %q", payload.Fields["type"])
+	}
+}
 
-	// Explicit format should override extension
-	if payload.Fields["format"] != "ofx" {
-		t.Errorf("expected explicit format 'ofx', got %q", payload.Fields["format"])
+func TestBuildImportCreatePayload_RowsToSkip(t *testing.T) {
+	payload, err := buildImportCreatePayload(importCreateOpts{RawFileContent: "a,b", RowsToSkip: "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.Fields["rows_to_skip"] != "2" {
+		t.Fatalf("rows_to_skip = %q, want \"2\"", payload.Fields["rows_to_skip"])
+	}
+	for _, bad := range []string{"-1", "x", "1.5"} {
+		if _, err := buildImportCreatePayload(importCreateOpts{RawFileContent: "a,b", RowsToSkip: bad}); err == nil {
+			t.Fatalf("expected err for rows-to-skip %q", bad)
+		}
 	}
 }
 

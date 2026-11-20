@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"math"
 	"time"
 
 	"github.com/we-promise/sure-cli/internal/insights"
@@ -56,11 +57,7 @@ func ComputeForecast(txs []models.Transaction, days int, includeDaily bool) Fore
 		if subNames[tx.Name] {
 			continue // skip recurring
 		}
-		amt, err := insights.ParseAmountEUR(tx.AmountText)
-		if err != nil {
-			continue
-		}
-		nonRecurringTotal += abs(amt)
+		nonRecurringTotal += math.Abs(tx.Amount)
 		daySet[tx.Date.Format("2006-01-02")] = true
 	}
 
@@ -152,11 +149,4 @@ func ComputeForecast(txs []models.Transaction, days int, includeDaily bool) Fore
 
 func round2(v float64) float64 {
 	return float64(int(v*100+0.5)) / 100
-}
-
-func abs(v float64) float64 {
-	if v < 0 {
-		return -v
-	}
-	return v
 }
