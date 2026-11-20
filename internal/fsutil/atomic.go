@@ -3,6 +3,7 @@
 package fsutil
 
 import (
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -10,33 +11,58 @@ import (
 )
 
 // WriteFileAtomic creates or replaces the file at path with what write
-// writes. The bytes land in a temp file in path's directory, which is renamed
-// over path once write, sync and close succeed. So a failure leaves any
-// previous file untouched and no temp file behind, and a symlink at path is
-// replaced rather than followed. The file is readable only by the user: a new
-// one is 0600, and one replaced keeps its mode as tightened by PrivatePerm.
-//
-// A path that names a stream (see IsStream), such as /dev/stdout, is written
-// to directly: there is no directory to put a temp file in, nor a file to
-// keep from being half written.
-func WriteFileAtomic(path string, write func(io.Writer) error) (err error) {
+// writes, through Replace. A path that names a stream (see IsStream), such as
+// /dev/stdout, is written to directly: there is no directory to put a temp
+// file in, nor a file to keep from being half written.
+func WriteFileAtomic(path string, write func(io.Writer) error) error {
 	if IsStream(path) {
 		return writeStream(path, write)
 	}
+	return Replace(path, ReplaceOptions{TempSuffix: ".part-"}, write)
+}
+
+// ReplaceOptions tunes Replace for a caller.
+type ReplaceOptions struct {
+	// TempSuffix names the temp file "." + base(path) + TempSuffix + random,
+	// so a caller can find the ones a crash left behind.
+	TempSuffix string
+	// Check, when set, vets the regular file about to be replaced (e.g. its
+	// owner) before anything is written.
+	Check func(fs.FileInfo) error
+}
+
+// Replace creates or replaces the file at path with what write writes. The
+// bytes land in a temp file in path's directory, which is renamed over path
+// once write, sync and close succeed. So a failure leaves any previous file
+// untouched and no temp file behind, and a symlink at path is replaced rather
+// than followed. The file is readable only by the user: a new one is 0600,
+// and one replaced keeps its mode as tightened by PrivatePerm. A nil write
+// only proves the directory accepts the temp file.
+func Replace(path string, opts ReplaceOptions, write func(io.Writer) error) (err error) {
 	perm := os.FileMode(0o600)
 	if fi, err := os.Lstat(path); err == nil && fi.Mode().IsRegular() {
+		if opts.Check != nil {
+			if err := opts.Check(fi); err != nil {
+				return err
+			}
+		}
 		perm = PrivatePerm(fi.Mode())
+	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".part-*")
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+opts.TempSuffix+"*")
 	if err != nil {
 		return err
 	}
 	defer func() {
-		if err != nil {
+		if err != nil || write == nil {
 			_ = tmp.Close()
 			_ = os.Remove(tmp.Name())
 		}
 	}()
+	if write == nil {
+		return nil
+	}
 	if err = write(tmp); err != nil {
 		return err
 	}
@@ -49,7 +75,7 @@ func WriteFileAtomic(path string, write func(io.Writer) error) (err error) {
 	if err = tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), path)
+	return rename(tmp.Name(), path)
 }
 
 // PrivatePerm is the mode a file that held mode gets when it is rewritten

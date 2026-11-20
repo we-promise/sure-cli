@@ -32,5 +32,3 @@ func checkOwner(fi fs.FileInfo) error {
 	}
 	return nil
 }
-
-func replaceFile(from, to string) error { return os.Rename(from, to) }

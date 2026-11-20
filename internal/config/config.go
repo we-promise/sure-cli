@@ -216,7 +216,7 @@ func withLock(path string, fn func() error) error {
 
 // tempFiles lists the temp files writeAtomic creates for path.
 func tempFiles(path string) []string {
-	dir, prefix := filepath.Dir(path), "."+filepath.Base(path)+".tmp-"
+	dir, prefix := filepath.Dir(path), "."+filepath.Base(path)+tempSuffix
 	entries, _ := os.ReadDir(dir)
 	var found []string
 	for _, e := range entries {
@@ -238,43 +238,15 @@ func removeStaleTemps() {
 	_ = withLock(path, func() error { return nil })
 }
 
-// writeAtomic writes path through a temp file in the same directory, synced
-// and renamed into place, so a crash never leaves a truncated config. The
-// file keeps its mode when that is stricter than owner-only 0600, and is
-// never loosened; a file owned by another user (e.g. under sudo) is refused.
-// A nil write only proves the directory accepts the temp file.
+// writeAtomic writes path through fsutil.Replace, so a crash never leaves a
+// truncated config, the file is never loosened beyond owner-only, and one
+// owned by another user (e.g. under sudo) is refused. A nil write only proves
+// the directory accepts the temp file. Temp files are named with tempSuffix,
+// which Init sweeps after a crash.
+const tempSuffix = ".tmp-"
+
 func writeAtomic(path string, write func(io.Writer) error) error {
-	perm := os.FileMode(0o600)
-	if fi, err := os.Stat(path); err == nil {
-		if err := checkOwner(fi); err != nil {
-			return err
-		}
-		perm = fsutil.PrivatePerm(fi.Mode())
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name()) // no-op once renamed
-	defer tmp.Close()
-	if write == nil {
-		return tmp.Close()
-	}
-	if err := write(tmp); err != nil {
-		return err
-	}
-	if err := tmp.Chmod(perm); err != nil {
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return replaceFile(tmp.Name(), path)
+	return fsutil.Replace(path, fsutil.ReplaceOptions{TempSuffix: tempSuffix, Check: checkOwner}, write)
 }
 
 func APIURL() string { return viper.GetString("api_url") }

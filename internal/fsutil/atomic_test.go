@@ -3,9 +3,11 @@ package fsutil
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -142,5 +144,54 @@ func TestPrivatePerm(t *testing.T) {
 		if got := PrivatePerm(in); got != want {
 			t.Errorf("PrivatePerm(%v) = %v, want %v", in, got, want)
 		}
+	}
+}
+
+func TestReplace_CheckVetsTheFileBeingReplaced(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	refused := errors.New("not yours")
+	err := Replace(path, ReplaceOptions{TempSuffix: ".tmp-", Check: func(fs.FileInfo) error { return refused }}, writeString("new"))
+	if !errors.Is(err, refused) {
+		t.Fatalf("err = %v, want the check's error", err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != "old" {
+		t.Fatalf("file = %q, want it untouched", b)
+	}
+	if got := entries(t, dir); len(got) != 1 {
+		t.Fatalf("dir = %v, want only the original file", got)
+	}
+}
+
+func TestReplace_NilWriteOnlyProbesTheDirectory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := Replace(path, ReplaceOptions{TempSuffix: ".tmp-"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := entries(t, dir); len(got) != 0 {
+		t.Fatalf("dir = %v, want nothing created", got)
+	}
+	if err := Replace(filepath.Join(dir, "missing", "config.yaml"), ReplaceOptions{}, nil); err == nil {
+		t.Fatal("probe of a missing directory passed")
+	}
+}
+
+func TestReplace_TempFileNamedAfterTheTarget(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	var seen []string
+	err := Replace(path, ReplaceOptions{TempSuffix: ".tmp-"}, func(w io.Writer) error {
+		seen = entries(t, dir)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 1 || !strings.HasPrefix(seen[0], ".config.yaml.tmp-") {
+		t.Fatalf("temp file = %v, want .config.yaml.tmp-*", seen)
 	}
 }
