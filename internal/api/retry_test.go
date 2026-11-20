@@ -10,6 +10,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/spf13/viper"
 	"github.com/we-promise/sure-cli/internal/config"
+	errs "github.com/we-promise/sure-cli/internal/errors"
 )
 
 // testClient returns an api_key Client against srvURL with retry waits shrunk
@@ -174,6 +175,49 @@ func TestShouldRetry_RateLimitAtMaxWaitBoundary(t *testing.T) {
 		}
 		if got := shouldRetry(r, nil, maxWait); got != want {
 			t.Errorf("Retry-After %s with max wait %v: retry = %v, want %v", header, maxWait, got, want)
+		}
+	}
+}
+
+func TestClient_RetryThatCannotFitTheTimeoutReturnsTheLastResponse(t *testing.T) {
+	srv, hits := countingServer(t, http.StatusServiceUnavailable, nil, `{"error":"maintenance","message":"Back soon"}`)
+	c := testClient(t, srv.URL)
+	c.http.SetRetryWaitTime(200 * time.Millisecond).SetRetryMaxWaitTime(time.Second)
+	c.timeout = 300 * time.Millisecond
+
+	var out any
+	ce := CheckResponse(c.Get("/x", &out))
+	// Attempt 1, a 200ms wait, attempt 2; the next 400ms wait would outlast
+	// the timeout, so Sure's 503 is reported instead of a timeout.
+	if ce == nil || ce.Code != errs.CodeServerError || ce.Message != "Back soon" {
+		t.Fatalf("got %v, want Sure's 503", ce)
+	}
+	if hits[http.MethodGet] != 2 {
+		t.Fatalf("GET hits = %d, want 2", hits[http.MethodGet])
+	}
+}
+
+func TestRetryWait(t *testing.T) {
+	base, ceiling := time.Second, 5*time.Second
+	for _, tc := range []struct {
+		attempt    int
+		retryAfter string
+		want       time.Duration
+	}{
+		{1, "", time.Second},
+		{2, "", 2 * time.Second},
+		{3, "", 4 * time.Second},
+		{4, "", 5 * time.Second},
+		{1, "3", 3 * time.Second},
+		{1, "0", time.Second},
+	} {
+		h := http.Header{}
+		if tc.retryAfter != "" {
+			h.Set("Retry-After", tc.retryAfter)
+		}
+		r := &resty.Response{Request: &resty.Request{Attempt: tc.attempt}, RawResponse: &http.Response{Header: h}}
+		if got := retryWait(r, base, ceiling); got != tc.want {
+			t.Errorf("attempt %d Retry-After %q: wait = %v, want %v", tc.attempt, tc.retryAfter, got, tc.want)
 		}
 	}
 }

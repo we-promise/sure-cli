@@ -55,3 +55,27 @@ func retryAfter(h http.Header) (time.Duration, bool) {
 	}
 	return time.Duration(secs) * time.Second, true
 }
+
+// retryWait is the wait before the retry that follows r: Sure's Retry-After
+// when it sends one, else min doubled per attempt made, capped at max. It is
+// deterministic (no jitter) so the retry condition can tell whether the
+// retry fits in what is left of the call's deadline.
+func retryWait(r *resty.Response, base, ceiling time.Duration) time.Duration {
+	wait, ok := retryAfter(r.Header())
+	if !ok {
+		wait = base
+		for i := 1; i < r.Request.Attempt && wait < ceiling; i++ {
+			wait *= 2
+		}
+	}
+	return max(base, min(wait, ceiling))
+}
+
+// fitsDeadline reports whether waiting wait before retrying r leaves time
+// before the call's deadline. Without it the deadline would expire during
+// the wait, and the call would end in a timeout instead of the answer Sure
+// last gave (e.g. a 503 with its maintenance message).
+func fitsDeadline(r *resty.Response, wait time.Duration) bool {
+	deadline, ok := r.Request.Context().Deadline()
+	return !ok || time.Until(deadline) > wait
+}

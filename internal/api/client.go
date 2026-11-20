@@ -46,11 +46,9 @@ func New() *Client {
 		t.ResponseHeaderTimeout = timeout
 	}
 	c.AddRetryCondition(func(r *resty.Response, err error) bool {
-		return shouldRetry(r, err, c.RetryMaxWaitTime)
-	}).SetRetryAfter(func(_ *resty.Client, r *resty.Response) (time.Duration, error) {
-		// 0 falls back to resty's jittered exponential backoff.
-		d, _ := retryAfter(r.Header())
-		return d, nil
+		return shouldRetry(r, err, c.RetryMaxWaitTime) && fitsDeadline(r, retryWait(r, c.RetryWaitTime, c.RetryMaxWaitTime))
+	}).SetRetryAfter(func(c *resty.Client, r *resty.Response) (time.Duration, error) {
+		return retryWait(r, c.RetryWaitTime, c.RetryMaxWaitTime), nil
 	})
 
 	// Auth
