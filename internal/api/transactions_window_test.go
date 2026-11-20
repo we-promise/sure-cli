@@ -260,6 +260,22 @@ func TestEachTransactionInWindow_DropsRowsRepeatedByOffsetPaging(t *testing.T) {
 	}
 }
 
+func TestFetchReportableTransactionsWindow_UsesTheGivenAccounts(t *testing.T) {
+	// The caller already holds the accounts: no second GET /api/v1/accounts.
+	hits := newWindowServer(t, windowPages)
+	start, end := window()
+	txs, err := FetchReportableTransactionsWindow(New(), start, end, map[string]bool{"a1": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := hits("/api/v1/accounts"); n != 0 {
+		t.Fatalf("read the accounts %d times, want 0", n)
+	}
+	if got, want := ids(txs), []string{"t-exact", "t-child-1", "t-child-2", "t-legacy", "t-cents"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ids = %v, want %v", got, want)
+	}
+}
+
 func TestEachTransactionInWindow_StopsAtTheVisitError(t *testing.T) {
 	hits := newWindowServer(t, windowPages)
 	start, end := window()

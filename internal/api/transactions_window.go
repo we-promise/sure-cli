@@ -25,10 +25,15 @@ func FetchTransactionsWindow(client *Client, start, end time.Time) ([]models.Tra
 	if ce := CheckResponse(r, err); ce != nil {
 		return nil, ce
 	}
-	reportableAccounts := ReportableAccountIDs(accounts)
+	return FetchReportableTransactionsWindow(client, start, end, ReportableAccountIDs(accounts))
+}
 
+// FetchReportableTransactionsWindow is FetchTransactionsWindow for a caller
+// that already holds the accounts: reportableAccounts is ReportableAccountIDs
+// of GET /api/v1/accounts without include_disabled.
+func FetchReportableTransactionsWindow(client *Client, start, end time.Time, reportableAccounts map[string]bool) ([]models.Transaction, error) {
 	var reportable []models.Transaction
-	err = EachTransactionInWindow(client, start, end, func(tx models.Transaction) error {
+	err := EachTransactionInWindow(client, start, end, func(tx models.Transaction) error {
 		if tx.Reportable() && reportableAccounts[tx.AccountID] {
 			reportable = append(reportable, tx)
 		}
