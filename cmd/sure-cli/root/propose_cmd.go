@@ -3,7 +3,6 @@ package root
 import (
 	"fmt"
 	"net/url"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -27,9 +26,9 @@ func newProposeRulesCmd() *cobra.Command {
 		Use:   "rules",
 		Short: "Propose categorization rules based on transaction patterns",
 		Run: func(cmd *cobra.Command, args []string) {
-			start, end, err := lookbackWindow("months", months, lookbackStart, time.Now())
-			failValidation(err)
 			client := api.New()
+			start, end, err := lookbackWindow("months", months, lookbackStart, familyClock(client))
+			failValidation(err)
 			txs, err := api.FetchTransactionsWindow(client, start, end)
 			checkResponse(nil, err)
 

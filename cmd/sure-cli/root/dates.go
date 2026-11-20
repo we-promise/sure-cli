@@ -4,6 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	// Family zones load on systems without a zoneinfo database (Windows).
+	_ "time/tzdata"
+
+	"github.com/we-promise/sure-cli/internal/api"
 )
 
 // parseISODate parses a required YYYY-MM-DD date given as flag.
@@ -57,20 +61,53 @@ func parsePairedDateRange(start, end string) (bool, error) {
 	return true, nil
 }
 
-// today is now's calendar date in UTC, the day Sure's date filters use.
+// today is now's calendar date where now is, as a midnight UTC date like
+// those parseISODate returns.
 func today(now time.Time) time.Time {
-	now = now.UTC()
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	y, m, d := now.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+// familyClock is the time now in the family's time zone. Sure dates entries
+// and resolves "today" in that zone (Localize#switch_timezone), so a window
+// that ends today must end on the family's date, not the UTC one. Each call
+// reads the zone with one request, so a command calls it once and only when
+// it needs today.
+func familyClock(client *api.Client) func() time.Time {
+	return func() time.Time { return time.Now().In(familyLocation(client)) }
+}
+
+// familyLocation is the zone GET /api/v1/family_settings reports. Sure falls
+// back to its default zone, UTC, when the family has none (Family#
+// resolved_time_zone), and so does this. When the settings cannot be read
+// (a server without the endpoint, a failed request) or name a zone Go does
+// not know, the local zone is the best guess left.
+func familyLocation(client *api.Client) *time.Location {
+	var settings struct {
+		Timezone *string `json:"timezone"`
+	}
+	if r, err := client.Get("/api/v1/family_settings", &settings); err != nil || r.StatusCode() >= 400 {
+		return time.Local
+	}
+	if settings.Timezone == nil || *settings.Timezone == "" {
+		return time.UTC
+	}
+	loc, err := time.LoadLocation(*settings.Timezone)
+	if err != nil {
+		return time.Local
+	}
+	return loc
 }
 
 // lookbackWindow is the window of n units up to today, today included;
 // back gives its first day (lookbackStart for months, daysBack for days).
-// n is the value of --flag and must be positive.
-func lookbackWindow(flag string, n int, back func(end time.Time, n int) time.Time, now time.Time) (time.Time, time.Time, error) {
+// n is the value of --flag and must be positive. now is read only once n is
+// valid, so an invalid flag fails before any request.
+func lookbackWindow(flag string, n int, back func(end time.Time, n int) time.Time, now func() time.Time) (time.Time, time.Time, error) {
 	if n <= 0 {
 		return time.Time{}, time.Time{}, fmt.Errorf("--%s must be positive", flag)
 	}
-	end := today(now)
+	end := today(now())
 	return back(end, n), end, nil
 }
 

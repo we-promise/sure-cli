@@ -40,9 +40,9 @@ func newExportTransactionsCmd() *cobra.Command {
 			if !ok {
 				failValidation(errors.New("--out-format must be csv or json"))
 			}
-			start, end, err := lookbackWindow("months", months, lookbackStart, time.Now())
-			failValidation(err)
 			client := api.New()
+			start, end, err := lookbackWindow("months", months, lookbackStart, familyClock(client))
+			failValidation(err)
 
 			if outFile == "" {
 				outFile = fmt.Sprintf("transactions_%s.%s", end.Format(time.DateOnly), exportFormat)

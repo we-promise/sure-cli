@@ -354,7 +354,7 @@ func TestBudgetPacing_UninitializedHasNoBudgetedFigures(t *testing.T) {
 	}
 }
 
-// statusServer mirrors the endpoints `status` reads.
+// statusServer mirrors the endpoints `status` reads, for a family in UTC.
 // Transactions are filtered by the requested window, as Sure filters them.
 // It returns how many requests each path got.
 func statusServer(t *testing.T, transactions []map[string]any, seen *url.Values) func(path string) int {
@@ -367,6 +367,8 @@ func statusServer(t *testing.T, transactions []map[string]any, seen *url.Values)
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
+		case "/api/v1/family_settings":
+			fmt.Fprint(w, `{"timezone":"UTC"}`)
 		case "/api/v1/balance_sheet":
 			fmt.Fprint(w, `{"currency":"EUR","net_worth":{"amount":"10000.0","currency":"EUR"},"assets":{"amount":"10000.0","currency":"EUR"},"liabilities":{"amount":"0.0","currency":"EUR"}}`)
 		case "/api/v1/accounts":
