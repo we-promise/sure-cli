@@ -145,3 +145,27 @@ func TestProposeApply_AllAppliedExitsZero(t *testing.T) {
 		t.Fatalf("data = %v, want 4 applied", d)
 	}
 }
+
+func TestProposeRules_NothingToProposeMatchesTheSchema(t *testing.T) {
+	// No transactions: proposals is an empty list, as its schema requires.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/family_settings":
+			_, _ = w.Write([]byte(`{"timezone":"UTC"}`))
+		case "/api/v1/accounts":
+			_, _ = w.Write([]byte(`{"accounts":[],"pagination":{"page":1,"per_page":100,"total_pages":1,"total_count":0}}`))
+		default:
+			_, _ = w.Write([]byte(`{"transactions":[],"pagination":{"page":1,"per_page":100,"total_pages":1,"total_count":0}}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	apiClientFor(t, srv.URL)
+	cmd := newProposeCmd()
+	cmd.SetArgs([]string{"rules"})
+	out := captureStdout(t, func() { _ = cmd.Execute() })
+	if !strings.Contains(out, `"proposals": []`) {
+		t.Errorf("no proposals must render as [], got %s", out)
+	}
+	assertMatchesItsSchema(t, out)
+}

@@ -26,6 +26,6 @@ Agent-first contracts for `sure-cli` outputs.
 
 ## Examples
 
-Each command schema has one example envelope in `docs/examples/<name>.json`. `tools/validate-samples.sh` checks that every schema has its example, that each example is a valid envelope, that its `data` matches `<name>.schema.json`, and that a `meta.schema` it declares names that file. CI runs the script, and `go test ./internal/schema` runs the same check.
+Each command schema has one example envelope in `docs/examples/<name>.json`. `go test ./internal/schema` (`TestValidateExamples`, part of CI's `go test`) checks that every schema has its example, that each example is a valid envelope, that its `data` matches `<name>.schema.json`, and that a `meta.schema` it declares names that file. Command tests also check real output against the schema it names (`assertMatchesItsSchema`).
 
 Add a schema and its example together; the check fails on either alone.

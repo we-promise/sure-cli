@@ -23,3 +23,7 @@ func rename(from, to string) error {
 	}
 	return err
 }
+
+// streamInfo is os.Stat: Windows has no pipe paths that stat apart from
+// their handle.
+func streamInfo(path string) (os.FileInfo, error) { return os.Stat(path) }

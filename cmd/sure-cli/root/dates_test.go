@@ -170,6 +170,7 @@ func warnedEnvelope(t *testing.T, fn func()) (data map[string]any, warnings []ma
 }
 
 func TestCreateDateDefaultsToTheFamilysToday(t *testing.T) {
+	pinClock(t, testNow)
 	kiritimati, _ := time.LoadLocation("Pacific/Kiritimati") // UTC+14
 	for _, c := range []struct {
 		cmd  func() *cobra.Command
@@ -191,7 +192,7 @@ func TestCreateDateDefaultsToTheFamilysToday(t *testing.T) {
 			cmd := c.cmd()
 			cmd.SetArgs(c.args)
 			data, warnings := warnedEnvelope(t, func() { format = "json"; _ = cmd.Execute() })
-			if got, want := c.date(data), time.Now().In(kiritimati).Format(time.DateOnly); got != want {
+			if got, want := c.date(data), testNow.In(kiritimati).Format(time.DateOnly); got != want {
 				t.Fatalf("date = %v, want %s", got, want)
 			}
 			if len(warnings) != 0 {
@@ -215,6 +216,7 @@ func TestCreateDateDefaultsToTheFamilysToday(t *testing.T) {
 }
 
 func TestFailedTimeZoneLookupIsAWarning(t *testing.T) {
+	pinClock(t, testNow)
 	familySettingsServer(t, http.StatusNotFound, `{"error":"not_found"}`)
 	cmd := newTransactionsCmd()
 	cmd.SetArgs([]string{"create", "--account-id", "a1", "--name", "x", "--amount", "1"})
@@ -223,7 +225,7 @@ func TestFailedTimeZoneLookupIsAWarning(t *testing.T) {
 		t.Fatalf("warnings = %v, want the failed lookup as not_found", warnings)
 	}
 	date := data["request"].(map[string]any)["body"].(map[string]any)["transaction"].(map[string]any)["date"]
-	if want := time.Now().Format(time.DateOnly); date != want {
+	if want := testNow.Local().Format(time.DateOnly); date != want {
 		t.Fatalf("date = %v, want the local %s", date, want)
 	}
 }

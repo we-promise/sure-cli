@@ -2,17 +2,20 @@ package root
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/we-promise/sure-cli/internal/api"
 	"github.com/we-promise/sure-cli/internal/config"
+	"github.com/we-promise/sure-cli/internal/schema"
 )
 
 // cliArgsEnv makes the test binary run as sure-cli with these
@@ -93,4 +96,44 @@ func captureStdout(t *testing.T, fn func()) string {
 	<-done
 	os.Stdout = orig
 	return buf.String()
+}
+
+// assertMatchesItsSchema checks a printed envelope against envelope.schema.json
+// and its data against the schema the envelope names in meta.schema, so a
+// command cannot drift from the contract it advertises.
+func assertMatchesItsSchema(t *testing.T, out string) {
+	t.Helper()
+	var env struct {
+		Data any `json:"data"`
+		Meta struct {
+			Schema string `json:"schema"`
+		} `json:"meta"`
+	}
+	var whole any
+	if err := json.Unmarshal([]byte(out), &whole); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out)
+	}
+	_ = json.Unmarshal([]byte(out), &env)
+	if err := schema.ValidateValue("../../../"+schema.SchemaDir+"/envelope.schema.json", whole); err != nil {
+		t.Errorf("envelope breaks envelope.schema.json: %v\n%s", err, out)
+	}
+	if env.Meta.Schema == "" {
+		return
+	}
+	if err := schema.ValidateValue("../../../"+env.Meta.Schema, env.Data); err != nil {
+		t.Errorf("data breaks %s: %v\n%s", env.Meta.Schema, err, out)
+	}
+}
+
+// testNow is 10:30 UTC: already the next day in Kiritimati (UTC+14) and
+// still the day before in Pago Pago (UTC-11).
+var testNow = time.Date(2026, 3, 10, 10, 30, 0, 0, time.UTC)
+
+// pinClock makes now return at for the rest of the test, so a test that
+// computes "today" cannot disagree with the code at midnight.
+func pinClock(t *testing.T, at time.Time) {
+	t.Helper()
+	orig := now
+	now = func() time.Time { return at }
+	t.Cleanup(func() { now = orig })
 }

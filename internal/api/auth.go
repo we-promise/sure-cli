@@ -34,7 +34,7 @@ type RefreshRequest struct {
 // Sure's own message (e.g. "Local login is disabled. Please use SSO.").
 func (c *Client) Login(req LoginRequest) (LoginResponse, error) {
 	var res LoginResponse
-	if ce := CheckResponse(c.Post("/api/v1/auth/login", req, &res)); ce != nil {
+	if ce := CheckResponse(c.postAuth("/api/v1/auth/login", req, &res)); ce != nil {
 		return res, ce
 	}
 	return res, nil
@@ -43,7 +43,7 @@ func (c *Client) Login(req LoginRequest) (LoginResponse, error) {
 // Refresh rotates the token pair. Failures are *errors.CLIError.
 func (c *Client) Refresh(req RefreshRequest) (TokenResponse, error) {
 	var res TokenResponse
-	if ce := CheckResponse(c.Post("/api/v1/auth/refresh", req, &res)); ce != nil {
+	if ce := CheckResponse(c.postAuth("/api/v1/auth/refresh", req, &res)); ce != nil {
 		return res, ce
 	}
 	return res, nil

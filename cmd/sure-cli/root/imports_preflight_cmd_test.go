@@ -42,8 +42,8 @@ func TestBuildImportPreflightPayload_RawContent(t *testing.T) {
 	if p.Fields["type"] != "TransactionImport" {
 		t.Fatalf("type field: %q", p.Fields["type"])
 	}
-	if p.jsonBody()["raw_file_content"] == "" {
-		t.Fatal("raw_file_content should be set")
+	if got := p.jsonBody()["raw_file_content"]; got != "Date,Name,Amount\n2026-01-01,Coffee,-3.50\n" {
+		t.Fatalf("raw_file_content = %#v, want the content given", got)
 	}
 	if p.Fields["date_col_label"] != "Date" || p.Fields["amount_col_label"] != "Amount" || p.Fields["name_col_label"] != "Name" {
 		t.Fatalf("col labels not propagated: %#v", p.Fields)

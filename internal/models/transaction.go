@@ -2,11 +2,10 @@ package models
 
 import "time"
 
-// Transaction is a minimal, agent-friendly view of a Sure transaction.
-// It is shared across packages (api, insights, commands) to avoid map[string]any plumbing.
+// Transaction is the part of a Sure transaction the CLI computes with
+// (totals, analyze, export), decoded by the api package.
 type Transaction struct {
 	ID             string
-	EntryID        string
 	Name           string
 	Classification string // income|expense
 	Kind           string // standard, funds_movement, cc_payment, loan_payment, one_time, investment_contribution, ...
@@ -15,19 +14,14 @@ type Transaction struct {
 	Amount float64
 	// AmountDecimal is Amount as exact decimal text (same sign), e.g. "-12.3456".
 	AmountDecimal string
-	// AmountText is Sure's localized, rounded display string, e.g. "€12.35".
-	AmountText   string
-	Currency     string
-	Date         time.Time
-	AccountID    string
-	AccountName  string
-	MerchantID   string
-	MerchantName string
-	CategoryName string
-	CategoryID   string
-	ExternalID   string
-	Source       string
-	UserModified bool
+	Currency      string
+	Date          time.Time
+	AccountID     string
+	AccountName   string
+	MerchantID    string
+	MerchantName  string
+	CategoryName  string
+	CategoryID    string
 	// Excluded rows are left out of Sure's budget and report totals.
 	Excluded bool
 	// SplitParent rows carry no amount of their own: their split children do.
@@ -69,4 +63,11 @@ func (t Transaction) ReportClassification() string {
 		return "expense"
 	}
 	return t.Classification
+}
+
+// CalendarDate is t's calendar date where t is, as midnight UTC: the form
+// every date the CLI compares (windows, entry dates, budget periods) takes.
+func CalendarDate(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }

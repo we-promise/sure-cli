@@ -10,6 +10,7 @@ import (
 
 	"github.com/we-promise/sure-cli/internal/api"
 	errs "github.com/we-promise/sure-cli/internal/errors"
+	"github.com/we-promise/sure-cli/internal/models"
 )
 
 // parseISODate parses a required YYYY-MM-DD date given as flag.
@@ -63,12 +64,9 @@ func parsePairedDateRange(start, end string) (bool, error) {
 	return true, nil
 }
 
-// today is now's calendar date where now is, as a midnight UTC date like
-// those parseISODate returns.
-func today(now time.Time) time.Time {
-	y, m, d := now.Date()
-	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
-}
+// today is t's calendar date where t is, as a midnight UTC date like those
+// parseISODate returns.
+func today(t time.Time) time.Time { return models.CalendarDate(t) }
 
 // familyClock is the time now in the family's time zone. Sure dates entries
 // and resolves "today" in that zone (Localize#switch_timezone), so a window
@@ -84,9 +82,12 @@ func familyClock(client *api.Client) func() time.Time {
 			maps.Copy(details, ce.Details)
 			warn(errs.New(ce.Code, fmt.Sprintf("cannot read the family's time zone (%s); dates use this machine's zone, %s", ce.Message, loc)).WithDetails(details))
 		}
-		return time.Now().In(loc)
+		return now().In(loc)
 	}
 }
+
+// now is the clock windows and default dates read; tests pin it.
+var now = time.Now
 
 // familyDateUsage describes a --date flag that defaults to familyToday.
 const familyDateUsage = "date YYYY-MM-DD (default: today in the family's time zone, read from Sure)"

@@ -2,7 +2,6 @@ package output
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"unicode"
 
@@ -21,12 +20,12 @@ func PrintTable(env Envelope) bool {
 	if accounts, ok := rows(m["accounts"]); ok {
 		render(table.Row{"id", "name", "type", "currency", "balance", "classification"}, accounts, func(rowm map[string]any) table.Row {
 			return table.Row{
-				fmt.Sprint(rowm["id"]),
-				fmt.Sprint(rowm["name"]),
-				fmt.Sprint(rowm["account_type"]),
-				fmt.Sprint(rowm["currency"]),
-				fmt.Sprint(rowm["balance"]),
-				fmt.Sprint(rowm["classification"]),
+				cell(rowm["id"]),
+				cell(rowm["name"]),
+				cell(rowm["account_type"]),
+				cell(rowm["currency"]),
+				cell(rowm["balance"]),
+				cell(rowm["classification"]),
 			}
 		})
 		return true
@@ -37,14 +36,14 @@ func PrintTable(env Envelope) bool {
 		render(table.Row{"id", "date", "name", "classification", "amount", "account"}, txs, func(rowm map[string]any) table.Row {
 			acct := ""
 			if am, ok := rowm["account"].(map[string]any); ok {
-				acct = fmt.Sprint(am["name"])
+				acct = cell(am["name"])
 			}
 			return table.Row{
-				fmt.Sprint(rowm["id"]),
-				fmt.Sprint(rowm["date"]),
-				fmt.Sprint(rowm["name"]),
-				fmt.Sprint(rowm["classification"]),
-				fmt.Sprint(rowm["amount"]),
+				cell(rowm["id"]),
+				cell(rowm["date"]),
+				cell(rowm["name"]),
+				cell(rowm["classification"]),
+				cell(rowm["amount"]),
 				acct,
 			}
 		})
@@ -91,11 +90,11 @@ func PrintTable(env Envelope) bool {
 	return false
 }
 
-// render prints one table row per item to stdout. Cells are Sure data, so
-// they are made Printable first.
+// render prints one table row per item where envelopes go. Cells are Sure
+// data, so they are made Printable first.
 func render(header table.Row, items []map[string]any, row func(map[string]any) table.Row) {
 	tw := table.NewWriter()
-	tw.SetOutputMirror(os.Stdout)
+	tw.SetOutputMirror(envelopes())
 	tw.AppendHeader(header)
 	for _, item := range items {
 		r := row(item)

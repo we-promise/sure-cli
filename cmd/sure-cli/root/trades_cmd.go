@@ -185,14 +185,15 @@ type tradeUpdateOpts struct {
 	Name                    string
 	Date                    string
 	Amount                  string
-	Currency                string
 	Notes                   string
 	Nature                  string
 	Type                    string
 	Qty                     string
 	Price                   string
 	InvestmentActivityLabel string
-	Apply                   bool
+	// Empty holds the flags given as "" (see emptyFlags).
+	Empty map[string]bool
+	Apply bool
 }
 
 func newTradesCreateCmd() *cobra.Command {
@@ -243,6 +244,7 @@ func newTradesUpdateCmd() *cobra.Command {
 		Short: "Update trade (default dry-run; use --apply to execute)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			o.Empty = emptyFlags(cmd, "notes")
 			payload, err := buildTradeUpdatePayload(o)
 			failValidation(err)
 			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/trades/%s", url.PathEscape(args[0])), payload)
@@ -251,7 +253,6 @@ func newTradesUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.Name, "name", "", "name")
 	cmd.Flags().StringVar(&o.Date, "date", "", "date YYYY-MM-DD")
 	cmd.Flags().StringVar(&o.Amount, "amount", "", "entry amount, signed as Sure stores it (positive = outflow); not with --qty/--price, from which Sure recomputes it")
-	cmd.Flags().StringVar(&o.Currency, "currency", "", "currency")
 	cmd.Flags().StringVar(&o.Notes, "notes", "", "notes")
 	cmd.Flags().StringVar(&o.Nature, "nature", "", "inflow (sell) or outflow (buy); needs --qty or --price, not with --type")
 	cmd.Flags().StringVar(&o.Type, "type", "", "trade type, needs --qty or --price: "+securityTradeTypeNames())
@@ -401,13 +402,13 @@ func buildTradeUpdatePayload(o tradeUpdateOpts) (map[string]any, error) {
 	addAny(trade, "name", o.Name)
 	addAny(trade, "date", o.Date)
 	addAny(trade, "amount", o.Amount)
-	addAny(trade, "currency", o.Currency)
 	addAny(trade, "notes", o.Notes)
 	addAny(trade, "nature", o.Nature)
 	addAny(trade, "type", typ)
 	addAny(trade, "qty", o.Qty)
 	addAny(trade, "price", o.Price)
 	addAny(trade, "investment_activity_label", o.InvestmentActivityLabel)
+	addCleared(trade, o.Empty, map[string]string{"notes": "notes"})
 	if len(trade) == 0 {
 		return nil, fmt.Errorf("no fields provided to update")
 	}
@@ -430,6 +431,8 @@ func checkTradeUpdateFields(o tradeUpdateOpts, typ string) error {
 		return fmt.Errorf("--type and --nature only apply with --qty or --price; Sure ignores them otherwise")
 	case o.Amount != "" && shares:
 		return fmt.Errorf("--amount cannot be combined with --qty or --price; Sure recomputes it as qty × price")
+	case o.Name != "" && shares:
+		return fmt.Errorf("--name cannot be combined with --qty or --price; Sure renames the trade (e.g. \"Buy 5 shares of AAPL\")")
 	}
 	if o.Qty != "" {
 		if err := requirePositiveDecimal("qty", o.Qty, tradeQtyColumn); err != nil {
@@ -445,10 +448,4 @@ func checkTradeUpdateFields(o tradeUpdateOpts, typ string) error {
 		return err
 	}
 	return checkOptionalDecimal("amount", o.Amount, moneyColumn)
-}
-
-func addAny(m map[string]any, key, value string) {
-	if value != "" {
-		m[key] = value
-	}
 }

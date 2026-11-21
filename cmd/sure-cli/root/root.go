@@ -90,6 +90,8 @@ func New() *cobra.Command {
 	cmd.AddCommand(newAuthCmd())
 	cmd.AddCommand(newVersionCmd())
 
+	// cobra adds completion when it executes; add it now so it is guarded.
+	cmd.InitDefaultCompletionCmd()
 	guardCommandGroups(cmd)
 	return cmd
 }
@@ -108,11 +110,28 @@ var removedCommands = map[string]string{
 	"config fee-keywords":    "Sure detects bank fees itself, see `insights list`",
 }
 
-// guardCommandGroups makes every command group (root included) fail with an
-// unknown_command envelope when given a subcommand it does not have, instead
-// of printing help and exiting 0. A group run bare still prints its help.
+// guardCommandGroups makes every command without Args refuse arguments, and
+// every command group (root included) fail with an unknown_command envelope
+// when given a subcommand it does not have, instead of printing help and
+// exiting 0. A group run bare still prints its help.
 func guardCommandGroups(cmd *cobra.Command) {
-	if cmd.HasSubCommands() && !cmd.Runnable() {
+	runnable, group := cmd.Runnable(), cmd.HasSubCommands()
+	switch {
+	case runnable && !group && cmd.Args == nil:
+		// A command that names no Args would take stray arguments and ignore
+		// them (`export transactions out.csv` wrote the default file).
+		cmd.Args = cobra.NoArgs
+	case runnable && group:
+		// A group that also runs on its own (users reset) sees an unknown
+		// subcommand as an argument: report it as one, not as bad arguments.
+		takes := cmd.Args
+		cmd.Args = func(c *cobra.Command, args []string) error {
+			if len(args) > 0 && (takes == nil || takes(c, args) != nil) {
+				failUnknownCommand(c, args)
+			}
+			return nil
+		}
+	case group:
 		cmd.Args = cobra.ArbitraryArgs
 		cmd.SuggestionsMinimumDistance = 2 // cobra's default, which SuggestionsFor does not apply
 		cmd.RunE = func(c *cobra.Command, args []string) error {

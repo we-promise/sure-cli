@@ -18,6 +18,7 @@ import (
 	errs "github.com/we-promise/sure-cli/internal/errors"
 	"github.com/we-promise/sure-cli/internal/fsutil"
 	"github.com/we-promise/sure-cli/internal/models"
+	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newExportCmd() *cobra.Command {
@@ -47,6 +48,9 @@ func newExportTransactionsCmd() *cobra.Command {
 
 			if outFile == "" {
 				outFile = fmt.Sprintf("transactions_%s.%s", end.Format(time.DateOnly), exportFormat)
+			}
+			if fsutil.IsStdout(outFile) {
+				output.EnvelopesToStderr() // stdout carries the file
 			}
 
 			// The JSON spool goes next to the file, on its disk and under its

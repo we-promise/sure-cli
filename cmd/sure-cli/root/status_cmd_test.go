@@ -380,7 +380,8 @@ func sankeyCashFlow(start, end, income, spending string) string {
 }
 
 func TestStatus_MonthlyTotalsComeFromSureCashFlow(t *testing.T) {
-	end := today(time.Now().UTC())
+	pinClock(t, testNow)
+	end := today(testNow)
 	start := lookbackStart(end, 1)
 	var seen url.Values
 	_, hits := statusServer(t, http.StatusOK,
@@ -515,4 +516,19 @@ func runStatus(t *testing.T) map[string]any {
 		t.Fatalf("decode %s: %v", out, err)
 	}
 	return env.Data
+}
+
+func TestDecimalValue_ReadsOnlyPlainDecimals(t *testing.T) {
+	// Sure renders BigDecimal as plain text ("1234.5"); ParseFloat alone
+	// would also take 1e5, NaN and Inf.
+	for in, want := range map[any]float64{"1234.5": 1234.5, "-0.25": -0.25, float64(3): 3, " 7 ": 7} {
+		if got, ok := decimalValue(in); !ok || got != want {
+			t.Errorf("decimalValue(%#v) = %v, %v; want %v", in, got, ok, want)
+		}
+	}
+	for _, in := range []any{"1e5", "NaN", "Inf", "", "abc", nil, true} {
+		if got, ok := decimalValue(in); ok {
+			t.Errorf("decimalValue(%#v) = %v, want not ok", in, got)
+		}
+	}
 }

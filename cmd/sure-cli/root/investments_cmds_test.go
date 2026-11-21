@@ -1,8 +1,11 @@
 package root
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestBuildRecurringCreatePayloadRequiresDates(t *testing.T) {
@@ -157,12 +160,67 @@ func TestBuildRecurringCreatePayload_RequiresWhatSureValidates(t *testing.T) {
 }
 
 func TestBuildRecurringUpdatePayload_ChecksDayAndDate(t *testing.T) {
-	for opts, want := range map[recurringUpdateOpts]string{
-		{ExpectedDayOfMonth: "40"}:       "--expected-day-of-month must be a whole number from 1 to 31",
-		{NextExpectedDate: "05/01/2026"}: "invalid date",
+	for _, c := range []struct {
+		opts recurringUpdateOpts
+		want string
+	}{
+		{recurringUpdateOpts{ExpectedDayOfMonth: "40"}, "--expected-day-of-month must be a whole number from 1 to 31"},
+		{recurringUpdateOpts{NextExpectedDate: "05/01/2026"}, "invalid date"},
 	} {
-		if _, err := buildRecurringUpdatePayload(opts); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%+v: err = %v, want %q", opts, err, want)
+		if _, err := buildRecurringUpdatePayload(c.opts); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%+v: err = %v, want %q", c.opts, err, c.want)
+		}
+	}
+}
+
+func TestUpdate_EmptyFlagClearsTheField(t *testing.T) {
+	// Sure stores an empty note as given (and a blank payment_url as nil),
+	// so an explicit empty flag is how a user clears a field. A flag left
+	// out is not sent.
+	for _, c := range []struct {
+		cmd       func() *cobra.Command
+		args      []string // update <id> plus whatever else is needed
+		bodyKey   string
+		flags     map[string]string // flag -> payload key
+		otherFlag []string
+	}{
+		{newRecurringTransactionsCmd, []string{"update", "r1"}, "recurring_transaction", map[string]string{"notes": "notes", "payment-url": "payment_url"}, []string{"--status", "active"}},
+		{newTransactionsCmd, []string{"update", "t1"}, "transaction", map[string]string{"notes": "notes"}, []string{"--name", "x"}},
+		{newTradesCmd, []string{"update", "t1"}, "trade", map[string]string{"notes": "notes"}, []string{"--name", "x"}},
+		{newValuationsCmd, []string{"update", "v1"}, "valuation", map[string]string{"notes": "notes"}, []string{"--amount", "1", "--date", "2026-01-02"}},
+	} {
+		body := func(args ...string) map[string]any {
+			t.Helper()
+			cmd := c.cmd()
+			cmd.SetArgs(append(append([]string{}, c.args...), args...))
+			out := captureStdout(t, func() { _ = cmd.Execute() })
+			var env struct {
+				Data struct {
+					Request struct {
+						Body map[string]map[string]any `json:"body"`
+					} `json:"request"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal([]byte(out), &env); err != nil {
+				t.Fatalf("%s %v: decode %s: %v", c.args[0], args, out, err)
+			}
+			return env.Data.Request.Body[c.bodyKey]
+		}
+		var clear []string
+		for flag := range c.flags {
+			clear = append(clear, "--"+flag+"=")
+		}
+		cleared := body(clear...)
+		for flag, key := range c.flags {
+			if v, ok := cleared[key]; !ok || v != "" {
+				t.Errorf("%s: --%s \"\" sent %s=%#v (present=%v), want \"\"", c.bodyKey, flag, key, v, ok)
+			}
+		}
+		kept := body(c.otherFlag...)
+		for _, key := range c.flags {
+			if _, ok := kept[key]; ok {
+				t.Errorf("%s: %s sent without its flag: %#v", c.bodyKey, key, kept)
+			}
 		}
 	}
 }
