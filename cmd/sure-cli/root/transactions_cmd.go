@@ -2,6 +2,7 @@ package root
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -27,11 +28,13 @@ func newTransactionsCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List transactions",
 		Run: func(cmd *cobra.Command, args []string) {
+			start, end := cmp.Or(startDate, from), cmp.Or(endDate, to)
+			failValidation(checkTransactionsListFilters(start, end, minAmount, maxAmount, typ))
 			q := url.Values{}
 			for key, value := range map[string]string{
-				"start_date": cmp.Or(startDate, from), "end_date": cmp.Or(endDate, to),
+				"start_date": start, "end_date": end,
 				"account_id": cmp.Or(accountID, account), "category_id": cmp.Or(categoryID, category), "merchant_id": cmp.Or(merchantID, merchant),
-				"min_amount": minAmount, "max_amount": maxAmount, "type": typ, "search": search,
+				"min_amount": minAmount, "max_amount": maxAmount, "type": strings.ToLower(typ), "search": search,
 			} {
 				if value != "" {
 					q.Set(key, value)
@@ -56,8 +59,8 @@ func newTransactionsCmd() *cobra.Command {
 	list.Flags().StringVar(&accountID, "account-id", "", "account id")
 	list.Flags().StringVar(&categoryID, "category-id", "", "category id")
 	list.Flags().StringVar(&merchantID, "merchant-id", "", "merchant id")
-	list.Flags().StringVar(&minAmount, "min-amount", "", "minimum amount")
-	list.Flags().StringVar(&maxAmount, "max-amount", "", "maximum amount")
+	list.Flags().StringVar(&minAmount, "min-amount", "", "minimum amount, in Sure's sign: an expense is positive, an income negative")
+	list.Flags().StringVar(&maxAmount, "max-amount", "", "maximum amount, in Sure's sign: an expense is positive, an income negative")
 	list.Flags().StringVar(&typ, "type", "", "transaction type: income|expense")
 	list.Flags().StringVar(&search, "search", "", "search name, notes, or merchant")
 	list.Flags().StringSliceVar(&accountIDs, "account-ids", nil, "account ids (repeat or comma-separated)")
@@ -85,6 +88,29 @@ func newTransactionsCmd() *cobra.Command {
 	cmd.AddCommand(newTransactionsDeleteCmd())
 
 	return cmd
+}
+
+// checkTransactionsListFilters rejects filters Sure would misread: its
+// apply_filters parses dates with Date.parse (a bad one is a 500, 05/01/2026
+// is 5 January), amounts with to_f (abc is 0) and ignores an unknown type.
+func checkTransactionsListFilters(start, end, minAmount, maxAmount, typ string) error {
+	s, e, err := parseOptionalDateRange(start, end)
+	if err != nil {
+		return err
+	}
+	if !s.IsZero() && !e.IsZero() && s.After(e) {
+		return errors.New("--start-date must be on or before --end-date")
+	}
+	if err := checkOptionalDecimal("min-amount", minAmount, moneyColumn); err != nil {
+		return err
+	}
+	if err := checkOptionalDecimal("max-amount", maxAmount, moneyColumn); err != nil {
+		return err
+	}
+	if t := strings.ToLower(typ); t != "" && t != "income" && t != "expense" {
+		return fmt.Errorf("--type must be income or expense, got %q", typ)
+	}
+	return nil
 }
 
 func splitFlagValues(values []string) []string {

@@ -74,6 +74,7 @@ The `heuristics.*` config keys are no longer read.
 - `propose rules --months` and `export transactions --months` of 0 or less fail with `validation_failed`; they fell back to 3 and 12. `analyze leaks --months` and `analyze runway --days` reject them too.
 - `export transactions` checks `--out-format` before fetching anything.
 - `insights ack` requires a UUID.
+- `transactions list`: `--start-date`/`--end-date` (and `--from`/`--to`) must be `YYYY-MM-DD` and in order, `--min-amount`/`--max-amount` plain decimals (Sure's sign: an expense is positive), `--type` `income` or `expense`. Sure answered a bad date with a 500, read `abc` as 0 and ignored an unknown type.
 - `recurring-transactions create` and `update`: `--status` accepts only `active` or `inactive`; `--expected-day-of-month` is a whole number from 1 to 31 and the dates are `YYYY-MM-DD`. `create` requires `--amount`, `--currency` and `--expected-day-of-month`, which Sure validates and does not fill in, so a create without them always failed with a 422.
 - A `--file` must be a regular file: devices, pipes and directories are rejected before any request. `merchants import` requires a `.csv` file.
 

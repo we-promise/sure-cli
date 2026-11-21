@@ -1,6 +1,7 @@
 package root
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -61,5 +62,39 @@ func TestTransactionsList_SendsSureQuery(t *testing.T) {
 	}
 	if got != want.Encode() {
 		t.Fatalf("query = %s\nwant   %s", got, want.Encode())
+	}
+}
+
+func TestTransactionsList_RejectsFiltersSureWouldMisread(t *testing.T) {
+	// Sure's apply_filters runs dates through Date.parse (a bad one is a 500,
+	// 05/01/2026 is 5 January), amounts through to_f (abc is 0) and ignores
+	// an unknown type, so each is checked before any request.
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++ }))
+	t.Cleanup(srv.Close)
+	cfg := apiKeyConfig(t, t.TempDir(), srv.URL)
+	for args, want := range map[string]string{
+		"--start-date 2026-02-30":                       "--start-date: invalid date",
+		"--from 05/01/2026":                             "--start-date: invalid date",
+		"--end-date 2026-13-01":                         "--end-date: invalid date",
+		"--start-date 2026-03-01 --end-date 2026-02-01": "--start-date must be on or before --end-date",
+		"--min-amount abc":                              "--min-amount must be a decimal number",
+		"--max-amount 1,5":                              "--max-amount must be a decimal number",
+		"--type incme":                                  "--type must be income or expense",
+	} {
+		child, stdout := startCLI(t, append([]string{"--config", cfg, "transactions", "list"}, strings.Fields(args)...)...)
+		_ = child.Wait()
+		var env struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &env); err != nil || env.Error.Code != "validation_failed" || !strings.Contains(env.Error.Message, want) {
+			t.Errorf("%s: got %s, want validation_failed %q", args, stdout, want)
+		}
+	}
+	if hits != 0 {
+		t.Errorf("sent %d requests for rejected filters", hits)
 	}
 }
