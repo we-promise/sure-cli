@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // WriteFileAtomic creates or replaces the file at path with what write
@@ -15,7 +16,12 @@ import (
 // /dev/stdout, is written to directly: there is no directory to put a temp
 // file in, nor a file to keep from being half written.
 func WriteFileAtomic(path string, write func(io.Writer) error) error {
-	if IsStream(path) {
+	switch {
+	case IsStdout(path):
+		// --out /dev/stdout, whatever stdout is (pipe, terminal, or the
+		// file a shell redirected it to): there is no temp file to make.
+		return write(os.Stdout)
+	case IsStream(path):
 		return writeStream(path, write)
 	}
 	return Replace(path, ReplaceOptions{TempSuffix: ".part-"}, write)
@@ -93,22 +99,30 @@ func IsStream(path string) bool {
 	return err == nil && fi.Mode()&(fs.ModeNamedPipe|fs.ModeCharDevice|fs.ModeSocket) != 0
 }
 
-// IsStdout reports whether path is this process's own stdout (/dev/stdout,
-// /dev/fd/1, or the file stdout is redirected to).
+// IsStdout reports whether path is this process's own stdout: /dev/stdout
+// or /dev/fd/1 (whatever stdout is), or the file, pipe or device stdout is
+// connected to.
 func IsStdout(path string) bool {
 	out, err := os.Stdout.Stat()
 	if err != nil {
 		return false
 	}
 	var fi os.FileInfo
-	if IsStream(path) {
-		// A pipe or device path can stat differently from the descriptor
-		// it names (macOS): compare what opening it gives.
+	if isDescriptorPath(path) {
+		// A descriptor alias can stat differently from the descriptor it
+		// names (macOS): compare what opening it gives. Opening one never
+		// ends a stream for its reader, unlike opening a named FIFO.
 		fi, err = streamInfo(path)
 	} else {
 		fi, err = os.Stat(path)
 	}
 	return err == nil && os.SameFile(fi, out)
+}
+
+// isDescriptorPath reports whether path names one of this process's open
+// descriptors rather than a file of its own.
+func isDescriptorPath(path string) bool {
+	return path == "/dev/stdout" || strings.HasPrefix(path, "/dev/fd/") || strings.HasPrefix(path, "/proc/self/fd/")
 }
 
 func writeStream(path string, write func(io.Writer) error) error {
