@@ -6,8 +6,6 @@ import (
 	stderrors "errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"os/exec"
 	"strings"
 	"testing"
 
@@ -127,8 +125,7 @@ func TestLogin_PipedCredentialsPromptOnStderr(t *testing.T) {
 	t.Cleanup(srv.Close)
 	cfg := writeConfig(t, "api_url: "+srv.URL+"\n")
 
-	child := exec.Command(os.Args[0], "-test.run=^$")
-	child.Env = append(os.Environ(), cliArgsEnv+"="+strings.Join([]string{"--config", cfg, "login"}, "\n"))
+	child := cliCommand("--config", cfg, "login")
 	child.Stdin = strings.NewReader("a@b.c\nsecret\n")
 	var stdout, stderr bytes.Buffer
 	child.Stdout, child.Stderr = &stdout, &stderr
