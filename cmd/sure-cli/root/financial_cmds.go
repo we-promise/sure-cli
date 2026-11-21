@@ -89,7 +89,9 @@ type valuationUpdateOpts struct {
 	Amount string
 	Date   string
 	Notes  string
-	Apply  bool
+	// Empty holds the flags given as "" (see emptyFlags).
+	Empty map[string]bool
+	Apply bool
 }
 
 func newValuationsCmd() *cobra.Command {
@@ -165,6 +167,7 @@ func newValuationsUpdateCmd() *cobra.Command {
 		Short: "Update valuation (default dry-run; use --apply to execute)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			o.Empty = emptyFlags(cmd, "notes")
 			payload, err := buildValuationUpdatePayload(o)
 			failValidation(err)
 			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/valuations/%s", url.PathEscape(args[0])), payload)
@@ -206,9 +209,6 @@ func buildValuationCreatePayload(o valuationCreateOpts) (map[string]any, error) 
 }
 
 func buildValuationUpdatePayload(o valuationUpdateOpts) (map[string]any, error) {
-	if o.Amount == "" && o.Date == "" && o.Notes == "" {
-		return nil, fmt.Errorf("no fields provided to update")
-	}
 	if (o.Amount == "") != (o.Date == "") {
 		return nil, fmt.Errorf("--amount and --date must both be given to change a valuation's amount")
 	}
@@ -223,8 +223,10 @@ func buildValuationUpdatePayload(o valuationUpdateOpts) (map[string]any, error) 
 		valuation["amount"] = o.Amount
 		valuation["date"] = o.Date
 	}
-	if o.Notes != "" {
-		valuation["notes"] = o.Notes
+	addAny(valuation, "notes", o.Notes)
+	addCleared(valuation, o.Empty, map[string]string{"notes": "notes"})
+	if len(valuation) == 0 {
+		return nil, fmt.Errorf("no fields provided to update")
 	}
 	return map[string]any{"valuation": valuation}, nil
 }

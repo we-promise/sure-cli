@@ -21,7 +21,9 @@ type txUpdateOpts struct {
 	TagIDs       []string
 	ClearTags    bool
 	UserModified bool
-	Apply        bool
+	// Empty holds the flags given as "" (see emptyFlags).
+	Empty map[string]bool
+	Apply bool
 }
 
 func newTransactionsUpdateCmd() *cobra.Command {
@@ -33,6 +35,7 @@ func newTransactionsUpdateCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			o.ID = args[0]
+			o.Empty = emptyFlags(cmd, "notes")
 			payload, err := buildTxUpdatePayload(o)
 			failValidation(err)
 			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/transactions/%s", url.PathEscape(o.ID)), payload)
@@ -85,6 +88,7 @@ func buildTxUpdatePayload(o txUpdateOpts) (map[string]any, error) {
 		// An explicit empty array clears tags; an absent key keeps them.
 		tx["tag_ids"] = []string{}
 	}
+	addCleared(tx, o.Empty, map[string]string{"notes": "notes"})
 	if len(tx) == 0 {
 		return nil, errors.New("no fields provided to update")
 	}

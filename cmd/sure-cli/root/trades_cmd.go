@@ -192,7 +192,9 @@ type tradeUpdateOpts struct {
 	Qty                     string
 	Price                   string
 	InvestmentActivityLabel string
-	Apply                   bool
+	// Empty holds the flags given as "" (see emptyFlags).
+	Empty map[string]bool
+	Apply bool
 }
 
 func newTradesCreateCmd() *cobra.Command {
@@ -243,6 +245,7 @@ func newTradesUpdateCmd() *cobra.Command {
 		Short: "Update trade (default dry-run; use --apply to execute)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			o.Empty = emptyFlags(cmd, "notes")
 			payload, err := buildTradeUpdatePayload(o)
 			failValidation(err)
 			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/trades/%s", url.PathEscape(args[0])), payload)
@@ -408,6 +411,7 @@ func buildTradeUpdatePayload(o tradeUpdateOpts) (map[string]any, error) {
 	addAny(trade, "qty", o.Qty)
 	addAny(trade, "price", o.Price)
 	addAny(trade, "investment_activity_label", o.InvestmentActivityLabel)
+	addCleared(trade, o.Empty, map[string]string{"notes": "notes"})
 	if len(trade) == 0 {
 		return nil, fmt.Errorf("no fields provided to update")
 	}
@@ -450,5 +454,27 @@ func checkTradeUpdateFields(o tradeUpdateOpts, typ string) error {
 func addAny(m map[string]any, key, value string) {
 	if value != "" {
 		m[key] = value
+	}
+}
+
+// emptyFlags returns which of the named flags were given as "". On an
+// update that is how a user clears a field: Sure stores the empty value
+// (and normalizes a blank payment_url to nil).
+func emptyFlags(cmd *cobra.Command, names ...string) map[string]bool {
+	empty := map[string]bool{}
+	for _, name := range names {
+		if f := cmd.Flags().Lookup(name); f != nil && f.Changed && f.Value.String() == "" {
+			empty[name] = true
+		}
+	}
+	return empty
+}
+
+// addCleared sends "" for each flag (flag name -> payload key) given empty.
+func addCleared(m map[string]any, empty map[string]bool, fields map[string]string) {
+	for flag, key := range fields {
+		if empty[flag] {
+			m[key] = ""
+		}
 	}
 }
