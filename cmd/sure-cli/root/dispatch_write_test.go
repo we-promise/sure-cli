@@ -106,16 +106,19 @@ func TestDispatchWrite_ApplySendsEachMethod(t *testing.T) {
 	}
 }
 
-// A delete Sure answers with 204 and no body (tags, chats) still prints data
-// naming what was deleted, so the envelope has data or error like every other.
-func TestPrintDelete_NoContentNamesTheDeletedID(t *testing.T) {
+// A delete Sure answers with 204 and no body (tags, chats, transaction
+// splits) still prints data naming what was deleted, so the envelope has data
+// or error like every other. The path names it: in a split's path the last
+// segment is "split", not an id.
+func TestPrintDelete_NoContentNamesTheDeletedPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	t.Cleanup(srv.Close)
 	apiClientFor(t, srv.URL)
 
-	out := captureStdout(t, func() { printDelete("/api/v1/tags/" + url.PathEscape("a/b c")) })
+	path := "/api/v1/transactions/" + url.PathEscape("a/b c") + "/split"
+	out := captureStdout(t, func() { printDelete(path) })
 	var env struct {
 		Data map[string]any `json:"data"`
 		Meta struct {
@@ -125,7 +128,7 @@ func TestPrintDelete_NoContentNamesTheDeletedID(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &env); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	if fmt.Sprint(env.Data) != fmt.Sprint(map[string]any{"id": "a/b c", "deleted": true}) || env.Meta.Status != http.StatusNoContent {
-		t.Fatalf("printed %s, want data {id: \"a/b c\", deleted: true} and meta.status 204", out)
+	if fmt.Sprint(env.Data) != fmt.Sprint(map[string]any{"path": path, "deleted": true}) || env.Meta.Status != http.StatusNoContent {
+		t.Fatalf("printed %s, want data {path: %q, deleted: true} and meta.status 204", out, path)
 	}
 }

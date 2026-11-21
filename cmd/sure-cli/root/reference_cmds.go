@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -436,16 +435,15 @@ func printPatch(path string, body any) {
 	respond(r, err, res)
 }
 
-// printDelete sends DELETE path. Sure answers some deletes (tags, chats)
-// with 204 and no body: data then names the id deleted, the last segment of
-// path.
+// printDelete sends DELETE path. Sure answers some deletes (tags, chats,
+// transaction splits) with 204 and no body: data then names the path
+// deleted, which in a nested route does not end in the id.
 func printDelete(path string) {
 	client := api.New()
 	var res any
 	r, err := client.Delete(path, &res)
 	if err == nil && r != nil && r.StatusCode() == http.StatusNoContent {
-		id, _ := url.PathUnescape(pathpkg.Base(path))
-		res = map[string]any{"id": id, "deleted": true}
+		res = map[string]any{"path": path, "deleted": true}
 	}
 	respond(r, err, res)
 }

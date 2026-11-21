@@ -63,7 +63,7 @@ The `heuristics.*` config keys are no longer read.
 - `export transactions` CSV: a text cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet reads it as text instead of running it as a formula. `amount` is unchanged.
 - `export transactions` writes the file readable only by you (0600), through a temp file renamed into place: a failed export leaves no file and keeps an earlier one, and a symlink at `--out` is replaced, not followed. The default file name carries the window's end date. A file it replaces keeps its mode tightened to the owner's bits: 0644 becomes 0600 and 0400 stays 0400 (financial data is never left readable by others). `--out` naming an existing pipe, terminal, socket or other character device, such as `/dev/stdout` or `/dev/fd/3`, is written directly. `family-exports download --out` follows the same rules.
 - `--format table` and the error line on stderr drop control characters from Sure's text, so a name or message cannot send terminal escape sequences.
-- A delete Sure answers with 204 and no body (`tags delete`, `chats delete`) prints `data: {"id": ..., "deleted": true}`; the envelope had neither `data` nor `error`.
+- A delete Sure answers with 204 and no body (`tags delete`, `chats delete`) prints `data: {"path": ..., "deleted": true}`, `path` being the request's; the envelope had neither `data` nor `error`.
 - `login` writes its `Email:` and `Password:` prompts to stderr, so stdout holds only the envelope.
 - The `imports create` dry run lists the request fields; it printed the internal Go struct. A raw `import-sessions add-chunk` dry run shows `sequence` as a string.
 
