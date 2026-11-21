@@ -28,6 +28,7 @@ The `heuristics.*` config keys are no longer read.
 - `merchants list --page` and `--per-page`: the endpoint returns every merchant.
 - `transactions update --currency`: Sure ignores it on update.
 - `trades create --category-id` and `--investment-activity-label`, `trades update --category-id`: Sure no longer permits a category, and it sets the activity label from `--type`.
+- `trades update --currency`: Sure changed only the entry's currency, not the trade's, leaving the two apart.
 
 #### Schemas
 
@@ -69,6 +70,7 @@ The `heuristics.*` config keys are no longer read.
 - Decimal flags are plain decimal text: `3.` and `.5` are rejected. This covers `valuations create` and `update --amount` and the `recurring-transactions create` amounts, which were sent as typed: Sure read `1,234.56` as 1 and `abc` as 0.
 - `transactions create` and `update`: `--amount` must be a positive decimal with at most 4 decimals and 15 digits; `--nature` gives the sign. It was a float sent with two decimals. `update --nature` without `--amount` fails instead of being dropped.
 - `trades create` and `update`: `--date` must be `YYYY-MM-DD`; Rails read `05/01/2026` as 5 January.
+- `trades update`: `--name` cannot be combined with `--qty` or `--price`; Sure renames the trade from its ticker (`Buy 5 shares of AAPL`).
 - `trades update`: `--type` or `--nature` needs `--qty` or `--price`; `--nature` is `inflow` or `outflow`; `--amount` cannot be combined with `--qty` or `--price`; qty, price and amount are checked against Sure's columns. `trades create --fee` must be 0 or more.
 - `analyze leaks --min-total` and `--max-avg` are major units of `--currency` and require it. Without them the defaults are 1500 and 1000 minor units of each group's currency (15.00 and 10.00 EUR, ¥1500 and ¥1000).
 - `propose rules --months` and `export transactions --months` of 0 or less fail with `validation_failed`; they fell back to 3 and 12. `analyze leaks --months` and `analyze runway --days` reject them too.

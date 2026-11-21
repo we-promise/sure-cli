@@ -281,6 +281,8 @@ func TestBuildTradeUpdatePayload_Rejects(t *testing.T) {
 		{"non-numeric amount", tradeUpdateOpts{Amount: "1,5"}, "amount must be a decimal number"},
 		{"amount beyond 4 decimals", tradeUpdateOpts{Amount: "1.00001"}, "amount has more than 4 decimal places"},
 		{"US-style date", tradeUpdateOpts{Date: "05/01/2026"}, "invalid date"},
+		{"name with qty", tradeUpdateOpts{Name: "My lot", Qty: "5"}, "--name cannot be combined with --qty or --price"},
+		{"name with price", tradeUpdateOpts{Name: "My lot", Price: "10"}, "--name cannot be combined with --qty or --price"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
