@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -147,8 +146,7 @@ func TestExportTransactions_DevStdoutRedirectedToAFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer out.Close()
-	child := exec.Command(os.Args[0], "-test.run=^$")
-	child.Env = append(os.Environ(), cliArgsEnv+"="+strings.Join([]string{"--config", apiKeyConfig(t, dir, url), "export", "transactions", "--out", "/dev/stdout"}, "\n"))
+	child := cliCommand("--config", apiKeyConfig(t, dir, url), "export", "transactions", "--out", "/dev/stdout")
 	child.Stdout = out
 	var stderr bytes.Buffer
 	child.Stderr = &stderr

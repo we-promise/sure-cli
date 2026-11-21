@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -147,8 +146,7 @@ func TestUsageErrorsAreOneErrorWithoutUsage(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			child := exec.Command(os.Args[0], "-test.run=^$")
-			child.Env = append(os.Environ(), cliArgsEnv+"="+strings.Join(c.args, "\n"))
+			child := cliCommand(c.args...)
 			var stdout, stderr bytes.Buffer
 			child.Stdout, child.Stderr = &stdout, &stderr
 			if err := child.Run(); err == nil {
