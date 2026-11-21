@@ -668,18 +668,19 @@ func uploadFile(t *testing.T, size int) string {
 
 func TestClient_PostMultipart_SlowUploadOutlivesTheTimeout(t *testing.T) {
 	// The timeout bounds silence on the wire: a large statement on a slow
-	// uplink must finish however long it takes. 16 MiB at 128 KiB per 10ms
-	// takes over 1.28s, more than twice the timeout. The timeout leaves room
-	// for building the multipart body and for draining what the kernel
-	// buffered after the last write, both slow under the race detector on
-	// a shared CI runner.
-	c := timeoutClient(t, uploadServer(t, 128<<10, 0).URL, 600*time.Millisecond)
+	// uplink must finish however long it takes. 20 MiB at 64 KiB per 10ms
+	// takes over 3.2s, more than twice the timeout. The 1.5s timeout leaves
+	// room for building the multipart body and for draining what the kernel
+	// buffered after the last write, both slow under the race detector on a
+	// loaded machine (600ms was not enough: a full -race run stalled once).
+	const timeout = 1500 * time.Millisecond
+	c := timeoutClient(t, uploadServer(t, 64<<10, 0).URL, timeout)
 	var out map[string]any
 	start := time.Now()
-	if ce := CheckResponse(c.PostMultipart("/api/v1/imports", nil, "file", uploadFile(t, 16<<20), "text/csv", &out)); ce != nil {
+	if ce := CheckResponse(c.PostMultipart("/api/v1/imports", nil, "file", uploadFile(t, 20<<20), "text/csv", &out)); ce != nil {
 		t.Fatalf("upload failed: %v", ce)
 	}
-	if elapsed := time.Since(start); elapsed < 1200*time.Millisecond {
+	if elapsed := time.Since(start); elapsed < 2*timeout {
 		t.Fatalf("upload took %v, want longer than twice the timeout for the test to prove anything", elapsed)
 	}
 }
