@@ -70,7 +70,7 @@ func newAccountStatementsCmd() *cobra.Command {
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show <id>",
-		Short: "Show a statement (meta.duplicate is always false here)",
+		Short: "Show a statement (data.meta.duplicate is always false here)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			printGet(fmt.Sprintf("%s/%s", accountStatementsPath, url.PathEscape(args[0])))
@@ -89,7 +89,7 @@ func newAccountStatementsUploadCmd() *cobra.Command {
 		Long: `Upload a .pdf, .csv or .xlsx statement (at most 25 MB) to the Statement Vault.
 Archives the document only; it never imports transactions (use imports for that).
 
-Responses: 201 stored; 200 the same file is already in the vault (meta.duplicate true);
+Responses: 201 stored; 200 the same file is already in the vault (data.meta.duplicate true);
 409 duplicate linked to an account you cannot see; 404 account-id not writable by you.`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {

@@ -137,7 +137,7 @@ sure-cli account-statements list --review-status unmatched --start-date 2026-01-
 sure-cli account-statements list --content-sha256 "$(shasum -a 256 march.pdf | cut -d' ' -f1)"
 sure-cli account-statements show <statement_id>
 sure-cli account-statements upload --file march.pdf --account-id <account_id>          # dry-run
-sure-cli account-statements upload --file march.pdf --account-id <account_id> --apply  # 200 + meta.duplicate if already stored
+sure-cli account-statements upload --file march.pdf --account-id <account_id> --apply  # 200 + data.meta.duplicate if already stored
 
 # Reference data and rules
 sure-cli categories list --roots-only
