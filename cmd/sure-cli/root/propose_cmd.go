@@ -29,7 +29,7 @@ func newProposeRulesCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			// Confidence is a share of the affected rows: 0 applies everything,
 			// above 1 nothing.
-			if minConfidence <= 0 || minConfidence > 1 {
+			if !(minConfidence > 0 && minConfidence <= 1) { // also rejects NaN
 				failValidation(fmt.Errorf("--min-confidence must be above 0 and at most 1, got %v", minConfidence))
 			}
 			client := api.New()

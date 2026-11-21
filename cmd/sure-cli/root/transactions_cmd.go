@@ -2,7 +2,6 @@ package root
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -29,7 +28,15 @@ func newTransactionsCmd() *cobra.Command {
 		Short: "List transactions",
 		Run: func(cmd *cobra.Command, args []string) {
 			start, end := cmp.Or(startDate, from), cmp.Or(endDate, to)
-			failValidation(checkTransactionsListFilters(start, end, minAmount, maxAmount, typ))
+			// Errors name the flag the user typed, --from/--to included.
+			startFlag, endFlag := "start-date", "end-date"
+			if startDate == "" && from != "" {
+				startFlag = "from"
+			}
+			if endDate == "" && to != "" {
+				endFlag = "to"
+			}
+			failValidation(checkTransactionsListFilters(startFlag, start, endFlag, end, minAmount, maxAmount, typ))
 			q := url.Values{}
 			for key, value := range map[string]string{
 				"start_date": start, "end_date": end,
@@ -93,13 +100,17 @@ func newTransactionsCmd() *cobra.Command {
 // checkTransactionsListFilters rejects filters Sure would misread: its
 // apply_filters parses dates with Date.parse (a bad one is a 500, 05/01/2026
 // is 5 January), amounts with to_f (abc is 0) and ignores an unknown type.
-func checkTransactionsListFilters(start, end, minAmount, maxAmount, typ string) error {
-	s, e, err := parseOptionalDateRange(start, end)
+func checkTransactionsListFilters(startFlag, start, endFlag, end, minAmount, maxAmount, typ string) error {
+	s, err := parseOptionalISODate(startFlag, start)
+	if err != nil {
+		return err
+	}
+	e, err := parseOptionalISODate(endFlag, end)
 	if err != nil {
 		return err
 	}
 	if !s.IsZero() && !e.IsZero() && s.After(e) {
-		return errors.New("--start-date must be on or before --end-date")
+		return fmt.Errorf("--%s must be on or before --%s", startFlag, endFlag)
 	}
 	if err := checkOptionalDecimal("min-amount", minAmount, moneyColumn); err != nil {
 		return err

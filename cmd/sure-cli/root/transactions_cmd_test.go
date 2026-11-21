@@ -75,7 +75,7 @@ func TestTransactionsList_RejectsFiltersSureWouldMisread(t *testing.T) {
 	cfg := apiKeyConfig(t, t.TempDir(), srv.URL)
 	for args, want := range map[string]string{
 		"--start-date 2026-02-30":                       "--start-date: invalid date",
-		"--from 05/01/2026":                             "--start-date: invalid date",
+		"--from 05/01/2026":                             "--from: invalid date",
 		"--end-date 2026-13-01":                         "--end-date: invalid date",
 		"--start-date 2026-03-01 --end-date 2026-02-01": "--start-date must be on or before --end-date",
 		"--min-amount abc":                              "--min-amount must be a decimal number",

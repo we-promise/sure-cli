@@ -68,6 +68,7 @@ func TestInputErrorsAreValidationFailed(t *testing.T) {
 		"propose rules --min-confidence 0",
 		"propose rules --min-confidence 1.5",
 		"propose rules --min-confidence -1",
+		"propose rules --min-confidence NaN",
 		"export transactions --months -1",
 	} {
 		out, code := runCLI(t, args)

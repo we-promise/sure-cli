@@ -126,6 +126,9 @@ The `heuristics.*` config keys are no longer read.
 - The global `--timeout` flag and `timeout` config key.
 
 ### Fixed
+- A list read across pages fails with `list_changed` when a later page comes back without its pagination block before every counted row was read; the read ended as a success, short of rows.
+- `--format table` leaves null cells blank in the accounts and transactions tables; they printed `<nil>`.
+- `--out` naming a named pipe writes to it again (this release's stdout check had opened and closed it, ending the reader's stream), and `--out /dev/stdout` works when the shell redirects stdout to a file.
 - `propose rules` with nothing to propose prints `"proposals": []`; it printed `null`, which its schema rejects. `analyze runway` gives an overdrawn account 0 months of runway, not a negative number, which its schema rejected.
 - `export transactions --out /dev/stdout` and `family-exports download --out /dev/stdout` write only the file to stdout; the result envelope, success or failure, goes to stderr. It was appended after the data, so a CSV gained JSON lines and a JSON export became two documents.
 - `login` no longer refreshes the session it replaces: with an expired token and a refresh token Sure had revoked, it failed with `login_failed: Invalid refresh token` before sending the password, and kept failing until the config was edited by hand. `refresh` sends one refresh; near expiry it refreshed automatically first and then sent the revoked token, reporting failure after the pair had already been rotated and saved.
