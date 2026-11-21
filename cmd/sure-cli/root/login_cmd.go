@@ -30,11 +30,13 @@ func newLoginCmd() *cobra.Command {
 				fail(errs.From(err))
 			}
 			requireWritableConfig()
-			// Prompt for email if not provided
+			// Prompts go to stderr: stdout holds only the envelope. One
+			// reader serves both lines, or the first would buffer the
+			// password line when stdin is piped.
+			stdin := bufio.NewReader(os.Stdin)
 			if email == "" {
-				fmt.Print("Email: ")
-				reader := bufio.NewReader(os.Stdin)
-				input, _ := reader.ReadString('\n')
+				fmt.Fprint(os.Stderr, "Email: ")
+				input, _ := stdin.ReadString('\n')
 				email = strings.TrimSpace(input)
 			}
 
@@ -43,16 +45,15 @@ func newLoginCmd() *cobra.Command {
 			// piped path never echoes the password back to argv/ps/history.
 			var password string
 			if term.IsTerminal(int(syscall.Stdin)) {
-				fmt.Print("Password: ")
+				fmt.Fprint(os.Stderr, "Password: ")
 				passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
-				fmt.Println() // newline after hidden input
+				fmt.Fprintln(os.Stderr) // newline after hidden input
 				if err != nil {
 					output.Fail(errs.CodePasswordReadFailed, err.Error(), nil)
 				}
 				password = string(passwordBytes)
 			} else {
-				reader := bufio.NewReader(os.Stdin)
-				input, err := reader.ReadString('\n')
+				input, err := stdin.ReadString('\n')
 				if err != nil && input == "" {
 					output.Fail(errs.CodePasswordReadFailed, err.Error(), nil)
 				}

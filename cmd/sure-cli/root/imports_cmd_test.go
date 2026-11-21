@@ -1,6 +1,8 @@
 package root
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -239,5 +241,34 @@ func TestBuildImportCreatePayload_Directory(t *testing.T) {
 	_, err := buildImportCreatePayload(opts)
 	if err == nil {
 		t.Fatal("expected error for directory")
+	}
+}
+
+// Sure turns a type it does not know into a TransactionImport, so a typo
+// would import the file as transactions. The CLI refuses it instead.
+func TestBuildImportCreatePayload_UnknownTypeFails(t *testing.T) {
+	_, err := buildImportCreatePayload(importCreateOpts{RawFileContent: "a,b", Type: "TradeImprot"})
+	if err == nil || !strings.Contains(err.Error(), "--type") || !strings.Contains(err.Error(), "TradeImport") {
+		t.Fatalf("error = %v, want one naming --type and the valid types", err)
+	}
+	for _, typ := range importTypes {
+		if _, err := buildImportCreatePayload(importCreateOpts{RawFileContent: "a,b", Type: typ}); err != nil {
+			t.Errorf("type %s: %v", typ, err)
+		}
+	}
+}
+
+func TestImportsList_UnknownTypeFailsValidation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	cfg := apiKeyConfig(t, t.TempDir(), srv.URL)
+	if ce := cliError(t, "--config", cfg, "imports", "list", "--type", "Transaction"); ce == nil || ce.Code != "validation_failed" || !strings.Contains(ce.Message, "--type") {
+		t.Fatalf("error = %v, want validation_failed naming --type", ce)
+	}
+	if ce := cliError(t, "--config", cfg, "imports", "list", "--type", "TradeImport"); ce != nil {
+		t.Fatalf("TradeImport: %v", ce)
 	}
 }

@@ -1,9 +1,13 @@
 package root
 
 import (
+	"bytes"
+	"encoding/json"
 	stderrors "errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -106,5 +110,40 @@ func TestLogin_RedirectIsRedirectRefused(t *testing.T) {
 	_, err := apiClientFor(t, srv.URL).Login(api.LoginRequest{Email: "a", Password: "b"})
 	if got := loginError(err, ""); got.Code != errs.CodeRedirectRefused {
 		t.Fatalf("code = %s, want redirect_refused", got.Code)
+	}
+}
+
+// Piped into login, an email and a password on two lines both reach Sure, and
+// the prompt goes to stderr: stdout holds only the envelope.
+func TestLogin_PipedCredentialsPromptOnStderr(t *testing.T) {
+	requests := make(chan api.LoginRequest, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req api.LoginRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		requests <- req
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"at","refresh_token":"rt","token_type":"Bearer","expires_in":3600,"created_at":1}`))
+	}))
+	t.Cleanup(srv.Close)
+	cfg := writeConfig(t, "api_url: "+srv.URL+"\n")
+
+	child := exec.Command(os.Args[0], "-test.run=^$")
+	child.Env = append(os.Environ(), cliArgsEnv+"="+strings.Join([]string{"--config", cfg, "login"}, "\n"))
+	child.Stdin = strings.NewReader("a@b.c\nsecret\n")
+	var stdout, stderr bytes.Buffer
+	child.Stdout, child.Stderr = &stdout, &stderr
+	if err := child.Run(); err != nil {
+		t.Fatalf("login: %v\nstdout %s\nstderr %s", err, stdout.String(), stderr.String())
+	}
+	sent := <-requests
+	if sent.Email != "a@b.c" || sent.Password != "secret" {
+		t.Fatalf("sent email %q password %q, want a@b.c and secret", sent.Email, sent.Password)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil || env["data"] == nil {
+		t.Fatalf("stdout = %q (%v), want only the envelope", stdout.String(), err)
+	}
+	if !strings.Contains(stderr.String(), "Email: ") {
+		t.Fatalf("stderr = %q, want the email prompt", stderr.String())
 	}
 }
