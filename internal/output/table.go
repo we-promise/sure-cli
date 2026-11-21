@@ -2,7 +2,6 @@ package output
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"unicode"
 
@@ -91,11 +90,11 @@ func PrintTable(env Envelope) bool {
 	return false
 }
 
-// render prints one table row per item to stdout. Cells are Sure data, so
+// render prints one table row per item where envelopes go. Cells are Sure data, so
 // they are made Printable first.
 func render(header table.Row, items []map[string]any, row func(map[string]any) table.Row) {
 	tw := table.NewWriter()
-	tw.SetOutputMirror(os.Stdout)
+	tw.SetOutputMirror(envelopes())
 	tw.AppendHeader(header)
 	for _, item := range items {
 		r := row(item)

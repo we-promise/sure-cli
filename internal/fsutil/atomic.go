@@ -93,6 +93,24 @@ func IsStream(path string) bool {
 	return err == nil && fi.Mode()&(fs.ModeNamedPipe|fs.ModeCharDevice|fs.ModeSocket) != 0
 }
 
+// IsStdout reports whether path is this process's own stdout (/dev/stdout,
+// /dev/fd/1, or the file stdout is redirected to).
+func IsStdout(path string) bool {
+	out, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	var fi os.FileInfo
+	if IsStream(path) {
+		// A pipe or device path can stat differently from the descriptor
+		// it names (macOS): compare what opening it gives.
+		fi, err = streamInfo(path)
+	} else {
+		fi, err = os.Stat(path)
+	}
+	return err == nil && os.SameFile(fi, out)
+}
+
 func writeStream(path string, write func(io.Writer) error) error {
 	f, err := os.OpenFile(path, os.O_WRONLY, 0)
 	if err != nil {

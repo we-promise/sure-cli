@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/we-promise/sure-cli/internal/api"
+	"github.com/we-promise/sure-cli/internal/fsutil"
+	"github.com/we-promise/sure-cli/internal/output"
 )
 
 func newFamilyExportsCmd() *cobra.Command {
@@ -55,6 +57,9 @@ func newFamilyExportsCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			if outFile == "" {
 				failValidation(errors.New("--out is required"))
+			}
+			if fsutil.IsStdout(outFile) {
+				output.EnvelopesToStderr() // stdout carries the archive
 			}
 			ctx, stop := interruptContext()
 			defer stop()

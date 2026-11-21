@@ -3,6 +3,7 @@
 package root
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -21,8 +22,21 @@ func TestExportTransactions_WritesToStdout(t *testing.T) {
 		if err := child.Wait(); err != nil {
 			t.Fatalf("%s: %v\n%s", outFormat, err, stdout)
 		}
-		if !strings.Contains(stdout.String(), `"t1"`) && !strings.Contains(stdout.String(), "t1,2026-02-01") {
-			t.Fatalf("%s: stdout = %s, want the exported row", outFormat, stdout)
+		// stdout is the file: exactly one document, the envelope goes to stderr.
+		switch outFormat {
+		case "csv":
+			if got := stdout.String(); got != "id,date,name,amount,currency,classification,kind,category,account,merchant,excluded,split_parent\nt1,2026-02-01,a,-1.0,EUR,expense,standard,,Main,,false,false\n" {
+				t.Fatalf("csv: stdout = %q, want only the CSV", got)
+			}
+		case "json":
+			var doc struct {
+				Count        int              `json:"count"`
+				Transactions []map[string]any `json:"transactions"`
+			}
+			dec := json.NewDecoder(stdout)
+			if err := dec.Decode(&doc); err != nil || doc.Count != 1 || dec.More() {
+				t.Fatalf("json: stdout is not one export document (err %v, count %d, more %v)", err, doc.Count, dec.More())
+			}
 		}
 	}
 }
@@ -73,5 +87,19 @@ func TestExportTransactions_InterruptRemovesThePartialFileAndTheSpool(t *testing
 				t.Errorf("left behind %s", filepath.Join(d, e.Name()))
 			}
 		}
+	}
+}
+
+func TestFamilyExportsDownload_ToStdoutIsOnlyTheArchive(t *testing.T) {
+	srv := exportServer(t, len("PK-export"), func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write([]byte("PK-export"))
+	})
+	child, stdout := startCLI(t, "--config", apiKeyConfig(t, t.TempDir(), srv.URL), "family-exports", "download", "abc", "--out", "/dev/stdout")
+	if err := child.Wait(); err != nil {
+		t.Fatalf("%v\n%s", err, stdout)
+	}
+	if got := stdout.String(); got != "PK-export" {
+		t.Fatalf("stdout = %q, want only the archive bytes", got)
 	}
 }
