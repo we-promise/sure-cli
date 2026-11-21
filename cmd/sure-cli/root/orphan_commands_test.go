@@ -79,6 +79,9 @@ func TestUnknownSubcommandsFailWithEnvelope(t *testing.T) {
 		{"config fee-keywords", "config fee-keywords", "insights list"},
 		{"analyze nope", "analyze nope", ""},
 		{"insigts list", "insigts", ""},
+		// A group that also runs on its own, and cobra's completion group.
+		{"users reset statsu", "users reset statsu", ""},
+		{"completion bogus", "completion bogus", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.args, func(t *testing.T) {
@@ -165,4 +168,23 @@ func TestEveryCommandGroupIsGuarded(t *testing.T) {
 		}
 	}
 	walk(New())
+}
+
+func TestEveryCommandDeclaresItsArguments(t *testing.T) {
+	// A command without Args takes any positional argument and ignores it:
+	// `export transactions out.csv` wrote the default file instead.
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if c.Runnable() && !c.HasSubCommands() && c.Args == nil && c.Name() != "help" {
+			t.Errorf("%q accepts and ignores stray arguments; set Args", c.CommandPath())
+		}
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(New())
+	out, code := runCLI(t, "export transactions out.csv")
+	if code != 1 || !strings.Contains(out, "validation_failed") {
+		t.Fatalf("stray argument: exit %d, out %s", code, out)
+	}
 }

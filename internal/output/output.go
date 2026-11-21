@@ -3,8 +3,26 @@ package output
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 )
+
+// toStderr is set when the command's output file is stdout itself (see
+// EnvelopesToStderr).
+var toStderr bool
+
+// EnvelopesToStderr sends every later envelope, success or failure, to
+// stderr. A command writing its data to stdout (--out /dev/stdout) calls it
+// so the data stays one document.
+func EnvelopesToStderr() { toStderr = true }
+
+// envelopes is where envelopes and tables go, looked up on each write.
+func envelopes() io.Writer {
+	if toStderr {
+		return os.Stderr
+	}
+	return os.Stdout
+}
 
 type Envelope struct {
 	Data  any    `json:"data,omitempty"`
@@ -19,7 +37,7 @@ type Error struct {
 }
 
 func PrintJSON(v any) error {
-	enc := json.NewEncoder(os.Stdout)
+	enc := json.NewEncoder(envelopes())
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
 }

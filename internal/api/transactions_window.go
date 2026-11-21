@@ -92,7 +92,6 @@ func EachTransactionInWindow(ctx context.Context, client *Client, start, end tim
 // reads, as rendered by Sure's api/v1/transactions/_transaction.json.jbuilder.
 type apiTransaction struct {
 	ID                string       `json:"id"`
-	EntryID           string       `json:"entry_id"`
 	Date              string       `json:"date"`
 	Amount            string       `json:"amount"`
 	AmountDecimal     *string      `json:"amount_decimal"`
@@ -101,9 +100,6 @@ type apiTransaction struct {
 	Name              string       `json:"name"`
 	Classification    string       `json:"classification"`
 	Kind              string       `json:"kind"`
-	ExternalID        string       `json:"external_id"`
-	Source            string       `json:"source"`
-	UserModified      bool         `json:"user_modified"`
 	Excluded          bool         `json:"excluded"`
 	SplitParent       bool         `json:"split_parent"`
 	Account           *struct {
@@ -133,17 +129,12 @@ func (a apiTransaction) toModel() (models.Transaction, error) {
 	}
 	tx := models.Transaction{
 		ID:             a.ID,
-		EntryID:        a.EntryID,
 		Name:           a.Name,
 		Classification: a.Classification,
 		Kind:           a.Kind,
 		Amount:         amount,
 		AmountDecimal:  amountDecimal,
-		AmountText:     a.Amount,
 		Currency:       a.Currency,
-		ExternalID:     a.ExternalID,
-		Source:         a.Source,
-		UserModified:   a.UserModified,
 		Excluded:       a.Excluded,
 		SplitParent:    a.SplitParent,
 	}

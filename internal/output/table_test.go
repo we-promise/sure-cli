@@ -159,3 +159,15 @@ func TestPrintable(t *testing.T) {
 		}
 	}
 }
+
+func TestPrintTable_NullCellsAreBlank(t *testing.T) {
+	for name, data := range map[string]map[string]any{
+		"accounts":     {"accounts": []any{map[string]any{"id": "a1", "name": "Main", "account_type": nil, "currency": "EUR", "balance": nil, "classification": "asset"}}},
+		"transactions": {"transactions": []any{map[string]any{"id": "t1", "date": "2026-01-01", "name": nil, "classification": "expense", "amount": "€1.00", "account": nil}}},
+	} {
+		out := captureStdout(t, func() { PrintTable(Envelope{Data: data}) })
+		if strings.Contains(out, "<nil>") {
+			t.Errorf("%s table prints <nil>:\n%s", name, out)
+		}
+	}
+}

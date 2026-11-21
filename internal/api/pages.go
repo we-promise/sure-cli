@@ -89,6 +89,11 @@ func walkPages(ctx context.Context, c *Client, path, key string, q url.Values, p
 		}
 		raw, paginated := body["pagination"]
 		if !paginated {
+			// An unpaginated index ends here, unless an earlier page
+			// counted rows this walk has not read.
+			if read < firstTotal {
+				return r, listChanged(path, read, firstTotal)
+			}
 			return r, nil
 		}
 		if err := json.Unmarshal(raw, &meta); err != nil {

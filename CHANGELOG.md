@@ -28,6 +28,7 @@ The `heuristics.*` config keys are no longer read.
 - `merchants list --page` and `--per-page`: the endpoint returns every merchant.
 - `transactions update --currency`: Sure ignores it on update.
 - `trades create --category-id` and `--investment-activity-label`, `trades update --category-id`: Sure no longer permits a category, and it sets the activity label from `--type`.
+- `trades update --currency`: Sure changed only the entry's currency, not the trade's, leaving the two apart.
 
 #### Schemas
 
@@ -65,15 +66,19 @@ The `heuristics.*` config keys are no longer read.
 
 #### Stricter input
 
+- Commands that take no arguments refuse them with `validation_failed`. `export transactions out.csv` ignored `out.csv` and wrote the default file; `transactions create Coffee ...` dropped `Coffee`.
 - `sync` is a dry run unless `--apply` is given, like every other write; it triggered a sync straight away.
 - Decimal flags are plain decimal text: `3.` and `.5` are rejected. This covers `valuations create` and `update --amount` and the `recurring-transactions create` amounts, which were sent as typed: Sure read `1,234.56` as 1 and `abc` as 0.
 - `transactions create` and `update`: `--amount` must be a positive decimal with at most 4 decimals and 15 digits; `--nature` gives the sign. It was a float sent with two decimals. `update --nature` without `--amount` fails instead of being dropped.
 - `trades create` and `update`: `--date` must be `YYYY-MM-DD`; Rails read `05/01/2026` as 5 January.
+- `trades update`: `--name` cannot be combined with `--qty` or `--price`; Sure renames the trade from its ticker (`Buy 5 shares of AAPL`).
 - `trades update`: `--type` or `--nature` needs `--qty` or `--price`; `--nature` is `inflow` or `outflow`; `--amount` cannot be combined with `--qty` or `--price`; qty, price and amount are checked against Sure's columns. `trades create --fee` must be 0 or more.
 - `analyze leaks --min-total` and `--max-avg` are major units of `--currency` and require it. Without them the defaults are 1500 and 1000 minor units of each group's currency (15.00 and 10.00 EUR, ¥1500 and ¥1000).
+- `propose rules --min-confidence` must be above 0 and at most 1; 0 or less became 0.8 and a value above 1 applied nothing.
 - `propose rules --months` and `export transactions --months` of 0 or less fail with `validation_failed`; they fell back to 3 and 12. `analyze leaks --months` and `analyze runway --days` reject them too.
 - `export transactions` checks `--out-format` before fetching anything.
 - `insights ack` requires a UUID.
+- `transactions list`: `--start-date`/`--end-date` (and `--from`/`--to`) must be `YYYY-MM-DD` and in order, `--min-amount`/`--max-amount` plain decimals (Sure's sign: an expense is positive), `--type` `income` or `expense`. Sure answered a bad date with a 500, read `abc` as 0 and ignored an unknown type.
 - `recurring-transactions create` and `update`: `--status` accepts only `active` or `inactive`; `--expected-day-of-month` is a whole number from 1 to 31 and the dates are `YYYY-MM-DD`. `create` requires `--amount`, `--currency` and `--expected-day-of-month`, which Sure validates and does not fill in, so a create without them always failed with a 422.
 - A `--file` must be a regular file: devices, pipes and directories are rejected before any request. `merchants import` requires a `.csv` file.
 
@@ -121,5 +126,12 @@ The `heuristics.*` config keys are no longer read.
 - The global `--timeout` flag and `timeout` config key.
 
 ### Fixed
+- A list read across pages fails with `list_changed` when a later page comes back without its pagination block before every counted row was read; the read ended as a success, short of rows.
+- `--format table` leaves null cells blank in the accounts and transactions tables; they printed `<nil>`.
+- `--out` naming a named pipe writes to it again (this release's stdout check had opened and closed it, ending the reader's stream), and `--out /dev/stdout` works when the shell redirects stdout to a file.
+- `propose rules` with nothing to propose prints `"proposals": []`; it printed `null`, which its schema rejects. `analyze runway` gives an overdrawn account 0 months of runway, not a negative number, which its schema rejected.
+- `export transactions --out /dev/stdout` and `family-exports download --out /dev/stdout` write only the file to stdout; the result envelope, success or failure, goes to stderr. It was appended after the data, so a CSV gained JSON lines and a JSON export became two documents.
+- `login` no longer refreshes the session it replaces: with an expired token and a refresh token Sure had revoked, it failed with `login_failed: Invalid refresh token` before sending the password, and kept failing until the config was edited by hand. `refresh` sends one refresh; near expiry it refreshed automatically first and then sent the revoked token, reporting failure after the pair had already been rotated and saved.
+- `--notes ""` on `transactions update`, `trades update`, `valuations update` and `recurring-transactions update`, and `--payment-url ""` on `recurring-transactions update`, clear the field. The empty value was dropped, so the command failed with "no fields provided to update", or left the stored value unchanged when another flag was given.
 - A `--config` file of any name is read as YAML. One without a `.yaml` extension (`~/.sure-cli`, `--config <(...)`) failed with `Unsupported Config Type`. An unreadable config is one `validation_failed` error, without the usage text.
 - The HTTP library no longer prints its own `WARN RESTY` and `ERROR RESTY` lines to stderr on retries and refused redirects.

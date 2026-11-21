@@ -2,6 +2,10 @@ package root
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -54,5 +58,49 @@ func TestDispatchWrite_DryRun_DELETE_OmitsNilBody(t *testing.T) {
 	}
 	if _, hasBody := req["body"]; hasBody {
 		t.Fatalf("nil body should be omitted from dry-run output, got %#v", req)
+	}
+}
+
+func TestDispatchWrite_ApplySendsEachMethod(t *testing.T) {
+	// --apply must send the method the command names, to its path, with its
+	// body, and print Sure's answer.
+	type call struct {
+		method, path string
+		body         map[string]any
+	}
+	var got []call
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		got = append(got, call{r.Method, r.URL.Path, body})
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"t1","name":"renamed"}`))
+	}))
+	t.Cleanup(srv.Close)
+	apiClientFor(t, srv.URL)
+
+	for _, c := range []struct {
+		args []string
+		want call
+		out  string
+	}{
+		{[]string{"create", "--name", "renamed", "--apply"}, call{"POST", "/api/v1/tags", map[string]any{"tag": map[string]any{"name": "renamed"}}}, `"renamed"`},
+		{[]string{"update", "t1", "--name", "renamed", "--apply"}, call{"PATCH", "/api/v1/tags/t1", map[string]any{"tag": map[string]any{"name": "renamed"}}}, `"renamed"`},
+		{[]string{"delete", "t1", "--apply"}, call{"DELETE", "/api/v1/tags/t1", nil}, `"status": 204`},
+	} {
+		got = nil
+		cmd := newTagsCmd()
+		cmd.SetArgs(c.args)
+		out := captureStdout(t, func() { _ = cmd.Execute() })
+		if len(got) != 1 || got[0].method != c.want.method || got[0].path != c.want.path || fmt.Sprint(got[0].body) != fmt.Sprint(c.want.body) {
+			t.Errorf("%v: sent %+v, want %+v", c.args, got, c.want)
+		}
+		if !strings.Contains(out, c.out) {
+			t.Errorf("%v: printed %s, want it to contain %s", c.args, out, c.out)
+		}
 	}
 }

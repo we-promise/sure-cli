@@ -131,7 +131,9 @@ type recurringUpdateOpts struct {
 	PaymentURL         string
 	Autopay            string
 	Notes              string
-	Apply              bool
+	// Empty holds the flags given as "" (see emptyFlags).
+	Empty map[string]bool
+	Apply bool
 }
 
 func newRecurringTransactionsCmd() *cobra.Command {
@@ -210,6 +212,7 @@ func newRecurringTransactionsUpdateCmd() *cobra.Command {
 		Short: "Update recurring transaction (default dry-run; use --apply to execute)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			o.Empty = emptyFlags(cmd, "notes", "payment-url")
 			payload, err := buildRecurringUpdatePayload(o)
 			failValidation(err)
 			dispatchWrite(o.Apply, "PATCH", fmt.Sprintf("/api/v1/recurring_transactions/%s", url.PathEscape(args[0])), payload)
@@ -299,6 +302,7 @@ func buildRecurringUpdatePayload(o recurringUpdateOpts) (map[string]any, error) 
 	if err := addRecurringBillFields(recurring, o.PaymentURL, o.Autopay, o.Notes); err != nil {
 		return nil, err
 	}
+	addCleared(recurring, o.Empty, map[string]string{"notes": "notes", "payment-url": "payment_url"})
 	if len(recurring) == 0 {
 		return nil, fmt.Errorf("no fields provided to update")
 	}

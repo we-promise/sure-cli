@@ -360,7 +360,7 @@ func budgetPacing(b map[string]any, today time.Time) map[string]any {
 	start, errStart := time.Parse(time.DateOnly, fmt.Sprint(b["start_date"]))
 	end, errEnd := time.Parse(time.DateOnly, fmt.Sprint(b["end_date"]))
 	if errStart == nil && errEnd == nil && !end.Before(start) {
-		day := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
+		day := models.CalendarDate(today)
 		days := end.Sub(start).Hours()/24 + 1
 		elapsed := math.Min(math.Max(day.Sub(start).Hours()/24+1, 0), days)
 		p["percent_elapsed"] = roundTo1(elapsed / days * 100)
@@ -391,8 +391,9 @@ func amountFromAPIOK(m map[string]any, formattedKey, centsKey string) (float64, 
 	return amount, err == nil
 }
 
-// decimalValue reads a JSON number, or a decimal string as Rails renders
-// BigDecimal.
+// decimalValue reads a number, or plain decimal text as Rails renders
+// BigDecimal ("1234.5").
+// Text the decimal grammar rejects (1e5, NaN, Inf) is not a value.
 func decimalValue(v any) (float64, bool) {
 	switch n := v.(type) {
 	case float64:
@@ -402,7 +403,11 @@ func decimalValue(v any) (float64, bool) {
 	case int64:
 		return float64(n), true
 	case string:
-		f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
+		n = strings.TrimSpace(n)
+		if !models.IsDecimal(n) {
+			return 0, false
+		}
+		f, err := strconv.ParseFloat(n, 64)
 		return f, err == nil
 	}
 	return 0, false

@@ -3,12 +3,16 @@
 package root
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -21,8 +25,21 @@ func TestExportTransactions_WritesToStdout(t *testing.T) {
 		if err := child.Wait(); err != nil {
 			t.Fatalf("%s: %v\n%s", outFormat, err, stdout)
 		}
-		if !strings.Contains(stdout.String(), `"t1"`) && !strings.Contains(stdout.String(), "t1,2026-02-01") {
-			t.Fatalf("%s: stdout = %s, want the exported row", outFormat, stdout)
+		// stdout is the file: exactly one document, the envelope goes to stderr.
+		switch outFormat {
+		case "csv":
+			if got := stdout.String(); got != "id,date,name,amount,currency,classification,kind,category,account,merchant,excluded,split_parent\nt1,2026-02-01,a,-1.0,EUR,expense,standard,,Main,,false,false\n" {
+				t.Fatalf("csv: stdout = %q, want only the CSV", got)
+			}
+		case "json":
+			var doc struct {
+				Count        int              `json:"count"`
+				Transactions []map[string]any `json:"transactions"`
+			}
+			dec := json.NewDecoder(stdout)
+			if err := dec.Decode(&doc); err != nil || doc.Count != 1 || dec.More() {
+				t.Fatalf("json: stdout is not one export document (err %v, count %d, more %v)", err, doc.Count, dec.More())
+			}
 		}
 	}
 }
@@ -73,5 +90,76 @@ func TestExportTransactions_InterruptRemovesThePartialFileAndTheSpool(t *testing
 				t.Errorf("left behind %s", filepath.Join(d, e.Name()))
 			}
 		}
+	}
+}
+
+func TestFamilyExportsDownload_ToStdoutIsOnlyTheArchive(t *testing.T) {
+	srv := exportServer(t, len("PK-export"), func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write([]byte("PK-export"))
+	})
+	child, stdout := startCLI(t, "--config", apiKeyConfig(t, t.TempDir(), srv.URL), "family-exports", "download", "abc", "--out", "/dev/stdout")
+	if err := child.Wait(); err != nil {
+		t.Fatalf("%v\n%s", err, stdout)
+	}
+	if got := stdout.String(); got != "PK-export" {
+		t.Fatalf("stdout = %q, want only the archive bytes", got)
+	}
+}
+
+func TestExportTransactions_WritesToANamedPipe(t *testing.T) {
+	// The stdout check must not open the FIFO: an open and close is an
+	// end-of-stream for the reader waiting on it.
+	url := exportTxServer(t, txJSON("t1", "2026-02-01", "a", "standard", "EUR", "1.0", false))
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "tx.fifo")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skip("no mkfifo here:", err)
+	}
+	got := make(chan string, 1)
+	go func() {
+		b, _ := os.ReadFile(fifo) // blocks until the writer opens, reads to EOF
+		got <- string(b)
+	}()
+	child, stdout := startCLI(t, "--config", apiKeyConfig(t, dir, url), "export", "transactions", "--out", fifo)
+	done := make(chan error, 1)
+	go func() { done <- child.Wait() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("export: %v\n%s", err, stdout)
+		}
+	case <-time.After(10 * time.Second):
+		_ = child.Process.Kill()
+		t.Fatal("export to a named pipe hung")
+	}
+	if data := <-got; !strings.Contains(data, "t1,2026-02-01") {
+		t.Fatalf("reader got %q, want the CSV", data)
+	}
+}
+
+func TestExportTransactions_DevStdoutRedirectedToAFile(t *testing.T) {
+	// `--out /dev/stdout > tx.csv`: stdout is a regular file, not a stream.
+	url := exportTxServer(t, txJSON("t1", "2026-02-01", "a", "standard", "EUR", "1.0", false))
+	dir := t.TempDir()
+	out, err := os.Create(filepath.Join(dir, "tx.csv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	child := exec.Command(os.Args[0], "-test.run=^$")
+	child.Env = append(os.Environ(), cliArgsEnv+"="+strings.Join([]string{"--config", apiKeyConfig(t, dir, url), "export", "transactions", "--out", "/dev/stdout"}, "\n"))
+	child.Stdout = out
+	var stderr bytes.Buffer
+	child.Stderr = &stderr
+	if err := child.Run(); err != nil {
+		t.Fatalf("export: %v\nstderr %s", err, stderr.String())
+	}
+	b, _ := os.ReadFile(out.Name())
+	if !strings.HasPrefix(string(b), "id,date,") || strings.Contains(string(b), `"data"`) {
+		t.Fatalf("tx.csv = %q, want only the CSV", b)
+	}
+	if !strings.Contains(stderr.String(), `"exported": 1`) {
+		t.Fatalf("stderr = %q, want the envelope", stderr.String())
 	}
 }

@@ -24,12 +24,12 @@ type RunwaySummary struct {
 // skipped; transactions with no currency are kept.
 func ComputeRunway(balance float64, currency string, txs []models.Transaction, start, end time.Time) RunwaySummary {
 	currency = strings.ToUpper(currency)
-	first, last := day(start), day(end)
+	first, last := models.CalendarDate(start), models.CalendarDate(end)
 	windowDays := InclusiveDays(first, last)
 
 	spent := 0.0
 	for _, tx := range txs {
-		if d := day(tx.Date); d.Before(first) || d.After(last) {
+		if d := models.CalendarDate(tx.Date); d.Before(first) || d.After(last) {
 			continue
 		}
 		if tx.ReportClassification() != "expense" {
@@ -42,8 +42,9 @@ func ComputeRunway(balance float64, currency string, txs []models.Transaction, s
 	}
 
 	avgMonthly := spent / float64(windowDays) * 30.0
+	// An overdrawn account has no runway, not a negative one.
 	runway := 0.0
-	if avgMonthly > 0 {
+	if avgMonthly > 0 && balance > 0 {
 		runway = balance / avgMonthly
 	}
 

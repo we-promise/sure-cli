@@ -137,18 +137,17 @@ func TestEachTransactionInWindow_DecodesEveryRow(t *testing.T) {
 	}
 
 	wantExact := models.Transaction{
-		ID: "t-exact", EntryID: "e-exact", Name: "Coffee beans", Classification: "expense", Kind: "standard",
-		Amount: -12.3456, AmountDecimal: "-12.3456", AmountText: "€12.35", Currency: "EUR",
+		ID: "t-exact", Name: "Coffee beans", Classification: "expense", Kind: "standard",
+		Amount: -12.3456, AmountDecimal: "-12.3456", Currency: "EUR",
 		Date: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC), AccountID: "a1", AccountName: "Main",
 		MerchantID: "m1", MerchantName: "Roaster", CategoryName: "Food", CategoryID: "c1",
-		ExternalID: "bank-1", Source: "api", UserModified: true,
 	}
 	if txs[0] != wantExact {
 		t.Fatalf("decoded\n got %+v\nwant %+v", txs[0], wantExact)
 	}
 
 	parent := txs[1]
-	if !parent.SplitParent || !parent.Excluded || parent.CategoryName != "" || parent.MerchantName != "" || parent.ExternalID != "" {
+	if !parent.SplitParent || !parent.Excluded || parent.CategoryName != "" || parent.MerchantName != "" {
 		t.Fatalf("split parent flags/nulls not decoded: %+v", parent)
 	}
 
