@@ -108,10 +108,16 @@ var removedCommands = map[string]string{
 	"config fee-keywords":    "Sure detects bank fees itself, see `insights list`",
 }
 
-// guardCommandGroups makes every command group (root included) fail with an
-// unknown_command envelope when given a subcommand it does not have, instead
-// of printing help and exiting 0. A group run bare still prints its help.
+// guardCommandGroups makes every command without Args refuse arguments, and
+// every command group (root included) fail with an unknown_command envelope
+// when given a subcommand it does not have, instead of printing help and
+// exiting 0. A group run bare still prints its help.
 func guardCommandGroups(cmd *cobra.Command) {
+	// A command that names no Args would take stray arguments and ignore
+	// them (`export transactions out.csv` wrote the default file).
+	if cmd.Runnable() && !cmd.HasSubCommands() && cmd.Args == nil {
+		cmd.Args = cobra.NoArgs
+	}
 	if cmd.HasSubCommands() && !cmd.Runnable() {
 		cmd.Args = cobra.ArbitraryArgs
 		cmd.SuggestionsMinimumDistance = 2 // cobra's default, which SuggestionsFor does not apply
