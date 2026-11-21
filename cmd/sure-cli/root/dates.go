@@ -82,9 +82,12 @@ func familyClock(client *api.Client) func() time.Time {
 			maps.Copy(details, ce.Details)
 			warn(errs.New(ce.Code, fmt.Sprintf("cannot read the family's time zone (%s); dates use this machine's zone, %s", ce.Message, loc)).WithDetails(details))
 		}
-		return time.Now().In(loc)
+		return now().In(loc)
 	}
 }
+
+// now is the clock windows and default dates read; tests pin it.
+var now = time.Now
 
 // familyDateUsage describes a --date flag that defaults to familyToday.
 const familyDateUsage = "date YYYY-MM-DD (default: today in the family's time zone, read from Sure)"

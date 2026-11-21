@@ -380,7 +380,8 @@ func sankeyCashFlow(start, end, income, spending string) string {
 }
 
 func TestStatus_MonthlyTotalsComeFromSureCashFlow(t *testing.T) {
-	end := today(time.Now().UTC())
+	pinClock(t, testNow)
+	end := today(testNow)
 	start := lookbackStart(end, 1)
 	var seen url.Values
 	_, hits := statusServer(t, http.StatusOK,

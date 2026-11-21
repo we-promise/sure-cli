@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -122,4 +123,17 @@ func assertMatchesItsSchema(t *testing.T, out string) {
 	if err := schema.ValidateValue("../../../"+env.Meta.Schema, env.Data); err != nil {
 		t.Errorf("data breaks %s: %v\n%s", env.Meta.Schema, err, out)
 	}
+}
+
+// testNow is 10:30 UTC: already the next day in Kiritimati (UTC+14) and
+// still the day before in Pago Pago (UTC-11).
+var testNow = time.Date(2026, 3, 10, 10, 30, 0, 0, time.UTC)
+
+// pinClock makes now return at for the rest of the test, so a test that
+// computes "today" cannot disagree with the code at midnight.
+func pinClock(t *testing.T, at time.Time) {
+	t.Helper()
+	orig := now
+	now = func() time.Time { return at }
+	t.Cleanup(func() { now = orig })
 }

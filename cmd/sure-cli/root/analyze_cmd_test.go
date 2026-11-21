@@ -273,7 +273,8 @@ func TestAnalyzeLeaks_EchoesAppliedParamsAndSkipsUnreportableRows(t *testing.T) 
 }
 
 func TestAnalyzeRunway_BurnSkipsUnreportableRows(t *testing.T) {
-	today := time.Now().UTC().Format(time.DateOnly)
+	pinClock(t, testNow)
+	today := testNow.Format(time.DateOnly)
 	analyzeServer(t, "UTC", `{"id":"a1","balance":"€300.00","balance_cents":30000,"currency":"EUR"}`,
 		txJSON("rent", today, "Rent", "standard", "EUR", "30.0", false),
 		txJSON("split", today, "Groceries", "standard", "EUR", "1000.0", true),
@@ -289,6 +290,7 @@ func TestAnalyzeRunway_BurnSkipsUnreportableRows(t *testing.T) {
 // The default window ends on the family's today, which is a day ahead of UTC
 // all morning in Kiritimati (UTC+14) and a day behind all evening in Pago Pago.
 func TestAnalyze_DefaultWindowEndsOnTheFamilysToday(t *testing.T) {
+	pinClock(t, testNow)
 	for _, zone := range []string{"Pacific/Kiritimati", "Pacific/Pago_Pago"} {
 		loc, err := time.LoadLocation(zone)
 		if err != nil {
@@ -297,14 +299,14 @@ func TestAnalyze_DefaultWindowEndsOnTheFamilysToday(t *testing.T) {
 		lastQuery := analyzeServer(t, zone, `{"id":"a1","balance_cents":30000,"currency":"EUR"}`)
 		var s analyze.RunwaySummary
 		runAnalyze(t, &s, "runway", "--account-id", "a1", "--days", "30")
-		if got, want := lastQuery().Get("end_date"), time.Now().In(loc).Format(time.DateOnly); got != want {
+		if got, want := lastQuery().Get("end_date"), testNow.In(loc).Format(time.DateOnly); got != want {
 			t.Errorf("%s: runway end_date = %s, want the family's today %s", zone, got, want)
 		}
 
 		lastQuery = analyzeServer(t, zone, "")
 		var leaks map[string]any
 		runAnalyze(t, &leaks, "leaks", "--months", "1")
-		if got, want := lastQuery().Get("end_date"), time.Now().In(loc).Format(time.DateOnly); got != want {
+		if got, want := lastQuery().Get("end_date"), testNow.In(loc).Format(time.DateOnly); got != want {
 			t.Errorf("%s: leaks end_date = %s, want the family's today %s", zone, got, want)
 		}
 	}
@@ -333,7 +335,8 @@ func TestAnalyzeRunway_UnreadableBalanceIsAnInvalidResponse(t *testing.T) {
 }
 
 func TestAnalyzeRunway_AnOverdrawnAccountHasNoRunway(t *testing.T) {
-	today := time.Now().UTC().Format(time.DateOnly)
+	pinClock(t, testNow)
+	today := testNow.Format(time.DateOnly)
 	analyzeServer(t, "UTC", `{"id":"a1","balance_cents":-50000,"currency":"EUR"}`,
 		txJSON("rent", today, "Rent", "standard", "EUR", "100.0", false))
 	var s analyze.RunwaySummary
