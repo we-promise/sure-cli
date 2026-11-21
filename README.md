@@ -42,7 +42,7 @@ sure-cli transactions create --account-id <id> --name Coffee --amount 3.50 --nat
 
 ## Output
 
-Commands print one JSON envelope on stdout (`help`, `completion` and `version` without `--server` print text):
+Commands print one JSON envelope on stdout. `help`, `completion` and `version` without `--server` print text, and `export transactions` and `family-exports download` with `--out /dev/stdout` write the file there and the envelope to stderr:
 
 ```json
 { "data": { ... }, "meta": { "status": 200 } }
@@ -111,7 +111,7 @@ sure-cli propose rules --months 3
 
 ## Amounts
 
-Sure stores an expense as a positive amount and income as a negative one. `analyze`, `propose` and `export` flip that: **income positive, expense negative**. They read the exact stored decimal, not the localized display string.
+Sure stores an expense as a positive amount and income as a negative one. `analyze`, `propose` and `export` flip that: **income positive, expense negative**. They read the exact stored decimal (`amount_decimal`); a Sure server without it gives minor units or, older still, the localized display string, which can lose precision.
 
 Their totals skip split parents, excluded rows, transfers between your own accounts and card payments, as Sure does. Some rows Sure also skips cannot be detected through the API, so the CLI's totals can differ from Sure's. `status` takes its income and spending from Sure itself. See [docs/behavior.md](docs/behavior.md#amounts-and-totals).
 

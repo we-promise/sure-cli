@@ -2,6 +2,7 @@ package root
 
 import (
 	"bufio"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -49,9 +50,10 @@ split_parent mark the rows to leave out of a sum. A JSON file is
 The file is readable only by you (0600) and appears only once complete, so a
 failed export leaves an earlier file as it was. --out naming a named pipe or
 a device is written directly. With --out /dev/stdout the result envelope goes
-to stderr, so stdout holds only the file. Ctrl-C removes the partial file; a second Ctrl-C kills the process.
-CSV text cells starting with = + - @ get a leading ' so a spreadsheet does
-not run them as formulas.`,
+to stderr, so stdout holds only the file. Ctrl-C until the file is in place
+cancels the export and removes the partial file; a second Ctrl-C kills the
+process. CSV text cells starting with = + - @ get a leading ' so a
+spreadsheet does not run them as formulas.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			write, ok := transactionWriters[exportFormat]
 			if !ok {
@@ -89,7 +91,7 @@ not run them as formulas.`,
 					return nil
 				})
 			}
-			if err := fsutil.WriteFileAtomic(outFile, func(w io.Writer) error { return write(w, spoolDir, source) }); err != nil {
+			if err := fsutil.WriteFileAtomic(outFile, commitUnlessCanceled(ctx, func(w io.Writer) error { return write(w, spoolDir, source) })); err != nil {
 				var ce *errs.CLIError
 				if !errors.As(err, &ce) {
 					ce = exportFailed(err)
@@ -109,6 +111,21 @@ not run them as formulas.`,
 	cmd.Flags().StringVar(&outFile, "out", "", "output file (default: transactions_DATE.FORMAT)")
 	cmd.Flags().StringVar(&exportFormat, "out-format", "csv", "output file format (csv|json)")
 	return cmd
+}
+
+// commitUnlessCanceled fails a write that ctx was cancelled during, so the
+// file is not put in place. The page walk sees a Ctrl-C itself; this catches
+// one after the last page, while the JSON spool is copied into the file.
+func commitUnlessCanceled(ctx context.Context, write func(io.Writer) error) func(io.Writer) error {
+	return func(w io.Writer) error {
+		if err := write(w); err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return errs.Wrap(errs.CodeCanceled, "Interrupted", err)
+		}
+		return nil
+	}
 }
 
 func exportFailed(err error) *errs.CLIError {

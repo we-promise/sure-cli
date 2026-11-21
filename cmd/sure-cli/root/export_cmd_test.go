@@ -2,6 +2,7 @@ package root
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	errs "github.com/we-promise/sure-cli/internal/errors"
+	"github.com/we-promise/sure-cli/internal/fsutil"
 	"github.com/we-promise/sure-cli/internal/models"
 )
 
@@ -348,5 +351,24 @@ func TestExportTransactionsJSON_RowsCarryTheCSVColumns(t *testing.T) {
 		if row[k] != v {
 			t.Errorf("%s = %#v, want %#v", k, row[k], v)
 		}
+	}
+}
+
+// A Ctrl-C after the last page, while the JSON spool is copied into the file,
+// still cancels the export: the file is not put in place.
+func TestCommitUnlessCanceled_CtrlCDuringTheFinalCopyCommitsNothing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	dir := t.TempDir()
+	err := fsutil.WriteFileAtomic(filepath.Join(dir, "tx.json"), commitUnlessCanceled(ctx, func(w io.Writer) error {
+		_, _ = io.WriteString(w, `{"count": 1}`)
+		cancel()
+		return nil
+	}))
+	var ce *errs.CLIError
+	if !errors.As(err, &ce) || ce.Code != errs.CodeCanceled {
+		t.Fatalf("error = %v, want canceled", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("left %v, want nothing", entries)
 	}
 }
