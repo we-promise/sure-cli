@@ -24,7 +24,12 @@ import (
 // session for processing. All params are top-level (the controller reads
 // params[:type], params[:sequence], ... directly — no wrapping key).
 func newImportSessionsCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "import-sessions", Short: "Import sessions (chunked Sure NDJSON import)"}
+	cmd := &cobra.Command{
+		Use:   "import-sessions",
+		Short: "Import sessions (chunked Sure NDJSON import)",
+		Long: `Import a Sure NDJSON file in chunks: create a session with --expected-chunks,
+add-chunk each part with its --sequence, then publish the session.`,
+	}
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show <id>",

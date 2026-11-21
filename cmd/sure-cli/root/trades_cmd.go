@@ -211,7 +211,10 @@ Required flags depend on --type:
 
 Sure stores the activity label from the type. The response shape depends on the
 type: share types, dividend, interest and fee return a trade; deposit and
-withdrawal return a transaction, or a transfer when --transfer-account-id is set.`,
+withdrawal return a transaction, or a transfer when --transfer-account-id is set.
+
+qty takes up to 18 decimals, price up to 10 decimals and 9 integer digits,
+fee and amount up to 4 decimals: the precision of Sure's columns.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if o.Date == "" {
 				o.Date = familyToday(api.New())
@@ -242,7 +245,16 @@ func newTradesUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <id>",
 		Short: "Update trade (default dry-run; use --apply to execute)",
-		Args:  cobra.ExactArgs(1),
+		Long: `Update trade (default dry-run; use --apply to execute).
+
+--type and --nature only sign a --qty or --price change, so they need one of
+them. --amount is the signed entry amount; Sure recomputes it from --qty and
+--price, so it cannot be combined with them. --name cannot be combined with
+--qty or --price either: Sure renames the trade from its ticker.
+
+qty takes up to 18 decimals, price up to 10 decimals and 9 integer digits,
+fee and amount up to 4 decimals: the precision of Sure's columns.`,
+		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			o.Empty = emptyFlags(cmd, "notes")
 			payload, err := buildTradeUpdatePayload(o)

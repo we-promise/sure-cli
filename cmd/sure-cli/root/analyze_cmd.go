@@ -41,7 +41,7 @@ func newAnalyzeLeaksCmd() *cobra.Command {
 		Long: "Groups the window's expenses by merchant (falling back to the transaction name), " +
 			"one group per currency, and keeps the small, frequent ones. By default a group " +
 			"needs a total of at least 1500 and an average of at most 1000 minor units of its " +
-			"currency (15.00 and 10.00 EUR, ¥1500 and ¥1000). --min-total and --max-avg are " +
+			"currency (15.00 and 10.00 EUR, ¥1500 and ¥1000). For a currency with a tiny minor unit (BTC, ETH) those defaults are close to zero, so pass your own thresholds. --min-total and --max-avg are " +
 			"major units of --currency, which they require. The output echoes the window and " +
 			"the thresholds applied, in minor units." + jsonOnly,
 		Args: cobra.NoArgs,

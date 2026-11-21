@@ -19,7 +19,11 @@ func newVersionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print version information (--server adds the Sure server version)",
-		Args:  cobra.NoArgs,
+		Long: `Print the local build's version, commit and date as plain text, without
+contacting Sure. --server prints a JSON envelope that adds the Sure server's
+{version, commit_sha}; an unreachable server is reported under
+data.server_error and does not fail the command.`,
+		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			if !server {
 				fmt.Printf("sure-cli %s\n", version)
