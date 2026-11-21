@@ -132,32 +132,48 @@ func TestExportTransactions_WritesToANamedPipe(t *testing.T) {
 		_ = child.Process.Kill()
 		t.Fatal("export to a named pipe hung")
 	}
-	if data := <-got; !strings.Contains(data, "t1,2026-02-01") {
-		t.Fatalf("reader got %q, want the CSV", data)
+	// A child that exits without writing to the FIFO leaves the reader
+	// blocked on it: fail here instead of at the suite timeout.
+	select {
+	case data := <-got:
+		if !strings.Contains(data, "t1,2026-02-01") {
+			t.Fatalf("reader got %q, want the CSV", data)
+		}
+	case <-time.After(10 * time.Second):
+		// Open and close the write end so the reader goroutine ends.
+		if f, err := os.OpenFile(fifo, os.O_WRONLY|syscall.O_NONBLOCK, 0); err == nil {
+			_ = f.Close()
+		}
+		t.Fatal("export exited but the FIFO reader never reached end of file")
 	}
 }
 
 func TestExportTransactions_DevStdoutRedirectedToAFile(t *testing.T) {
 	// `--out /dev/stdout > tx.csv`: stdout is a regular file, not a stream.
+	// The JSON spool must not go next to /dev/stdout, in /dev.
 	url := exportTxServer(t, txJSON("t1", "2026-02-01", "a", "standard", "EUR", "1.0", false))
-	dir := t.TempDir()
-	out, err := os.Create(filepath.Join(dir, "tx.csv"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer out.Close()
-	child := cliCommand("--config", apiKeyConfig(t, dir, url), "export", "transactions", "--out", "/dev/stdout")
-	child.Stdout = out
-	var stderr bytes.Buffer
-	child.Stderr = &stderr
-	if err := child.Run(); err != nil {
-		t.Fatalf("export: %v\nstderr %s", err, stderr.String())
-	}
-	b, _ := os.ReadFile(out.Name())
-	if !strings.HasPrefix(string(b), "id,date,") || strings.Contains(string(b), `"data"`) {
-		t.Fatalf("tx.csv = %q, want only the CSV", b)
-	}
-	if !strings.Contains(stderr.String(), `"exported": 1`) {
-		t.Fatalf("stderr = %q, want the envelope", stderr.String())
+	for format, prefix := range map[string]string{"csv": "id,date,", "json": "{\n  \"count\": 1,"} {
+		t.Run(format, func(t *testing.T) {
+			dir := t.TempDir()
+			out, err := os.Create(filepath.Join(dir, "tx."+format))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer out.Close()
+			child := cliCommand("--config", apiKeyConfig(t, dir, url), "export", "transactions", "--out", "/dev/stdout", "--out-format", format)
+			child.Stdout = out
+			var stderr bytes.Buffer
+			child.Stderr = &stderr
+			if err := child.Run(); err != nil {
+				t.Fatalf("export: %v\nstderr %s", err, stderr.String())
+			}
+			b, _ := os.ReadFile(out.Name())
+			if !strings.HasPrefix(string(b), prefix) || !strings.Contains(string(b), "t1") || strings.Contains(string(b), `"data"`) {
+				t.Fatalf("tx.%s = %q, want only the export", format, b)
+			}
+			if !strings.Contains(stderr.String(), `"exported": 1`) {
+				t.Fatalf("stderr = %q, want the envelope", stderr.String())
+			}
+		})
 	}
 }

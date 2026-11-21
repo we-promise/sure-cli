@@ -131,6 +131,7 @@ The `heuristics.*` config keys are no longer read.
 - The global `--timeout` flag and `timeout` config key.
 
 ### Fixed
+- `export transactions --out-format json --out /dev/stdout` works when the shell redirects stdout to a file: the JSON spool went next to `/dev/stdout`, in `/dev`, and the export failed for a normal user.
 - `login` with both the email and the password piped on stdin reads both lines; the email prompt's reader could take the password line with it, and login failed with `password_read_failed`.
 - A list read across pages fails with `list_changed` when a later page comes back without its pagination block before every counted row was read; the read ended as a success, short of rows.
 - `--format table` leaves null cells blank in the accounts and transactions tables; they printed `<nil>`.

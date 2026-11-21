@@ -54,9 +54,11 @@ func newExportTransactionsCmd() *cobra.Command {
 			}
 
 			// The JSON spool goes next to the file, on its disk and under its
-			// permissions; a pipe or device has no directory to share.
+			// permissions; a pipe, a device or stdout (/dev/stdout redirected
+			// to a file is not a stream, and /dev is not writable) has no
+			// directory to share.
 			spoolDir := filepath.Dir(outFile)
-			if fsutil.IsStream(outFile) {
+			if fsutil.IsStream(outFile) || fsutil.IsStdout(outFile) {
 				spoolDir = ""
 			}
 			ctx, stop := interruptContext()
