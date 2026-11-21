@@ -283,6 +283,8 @@ sure-cli recurring-transactions create --name Rent --amount 1200 --currency EUR 
 # --status accepts active|inactive (the API writes only these)
 sure-cli recurring-transactions update <id> --status inactive --autopay true \
   --payment-url https://example.com/pay --notes "paid by direct debit" --apply
+# an empty value clears the field
+sure-cli recurring-transactions update <id> --notes "" --payment-url "" --apply
 
 # Account reset and deletion
 sure-cli users reset

@@ -1,6 +1,7 @@
 package root
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -164,5 +165,42 @@ func TestBuildRecurringUpdatePayload_ChecksDayAndDate(t *testing.T) {
 		if _, err := buildRecurringUpdatePayload(opts); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%+v: err = %v, want %q", opts, err, want)
 		}
+	}
+}
+
+func TestRecurringUpdate_EmptyNotesAndPaymentURLClearThem(t *testing.T) {
+	// Sure stores notes as given and normalizes a blank payment_url to nil,
+	// so an explicit empty flag is how a user clears either. A flag left out
+	// is not sent.
+	body := func(args ...string) map[string]any {
+		t.Helper()
+		cmd := newRecurringTransactionsCmd()
+		cmd.SetArgs(append([]string{"update", "r1"}, args...))
+		out := captureStdout(t, func() { _ = cmd.Execute() })
+		var env struct {
+			Data struct {
+				Request struct {
+					Body map[string]map[string]any `json:"body"`
+				} `json:"request"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(out), &env); err != nil {
+			t.Fatalf("decode %s: %v", out, err)
+		}
+		return env.Data.Request.Body["recurring_transaction"]
+	}
+	cleared := body("--notes", "", "--payment-url", "")
+	if v, ok := cleared["notes"]; !ok || v != "" {
+		t.Errorf("--notes \"\" sent notes=%#v (present=%v), want \"\"", v, ok)
+	}
+	if v, ok := cleared["payment_url"]; !ok || v != "" {
+		t.Errorf("--payment-url \"\" sent payment_url=%#v (present=%v), want \"\"", v, ok)
+	}
+	kept := body("--status", "active")
+	if _, ok := kept["notes"]; ok {
+		t.Errorf("notes sent without --notes: %#v", kept)
+	}
+	if _, ok := kept["payment_url"]; ok {
+		t.Errorf("payment_url sent without --payment-url: %#v", kept)
 	}
 }

@@ -121,5 +121,6 @@ The `heuristics.*` config keys are no longer read.
 - The global `--timeout` flag and `timeout` config key.
 
 ### Fixed
+- `recurring-transactions update --notes ""` and `--payment-url ""` clear the field. The empty value was dropped, so the command failed with "no fields provided to update", or left the stored value unchanged when another flag was given.
 - A `--config` file of any name is read as YAML. One without a `.yaml` extension (`~/.sure-cli`, `--config <(...)`) failed with `Unsupported Config Type`. An unreadable config is one `validation_failed` error, without the usage text.
 - The HTTP library no longer prints its own `WARN RESTY` and `ERROR RESTY` lines to stderr on retries and refused redirects.
