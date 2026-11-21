@@ -27,6 +27,11 @@ func newProposeRulesCmd() *cobra.Command {
 		Use:   "rules",
 		Short: "Propose categorization rules based on transaction patterns",
 		Run: func(cmd *cobra.Command, args []string) {
+			// Confidence is a share of the affected rows: 0 applies everything,
+			// above 1 nothing.
+			if minConfidence <= 0 || minConfidence > 1 {
+				failValidation(fmt.Errorf("--min-confidence must be above 0 and at most 1, got %v", minConfidence))
+			}
 			client := api.New()
 			start, end, err := lookbackWindow("months", months, lookbackStart, familyClock(client))
 			failValidation(err)
@@ -41,9 +46,6 @@ func newProposeRulesCmd() *cobra.Command {
 				return
 			}
 
-			if minConfidence <= 0 {
-				minConfidence = 0.8 // default safety threshold
-			}
 			report, failures := applyProposals(client, result.Proposals, minConfidence)
 			if failures > 0 {
 				fail(errs.New(errs.CodeApplyIncomplete, fmt.Sprintf("%d of the proposed updates failed", failures)).WithDetails(report))
@@ -53,7 +55,7 @@ func newProposeRulesCmd() *cobra.Command {
 	}
 	cmd.Flags().IntVar(&months, "months", 3, "lookback months")
 	cmd.Flags().BoolVar(&apply, "apply", false, "execute the proposed rules (otherwise dry-run)")
-	cmd.Flags().Float64Var(&minConfidence, "min-confidence", 0.8, "minimum confidence to apply (with --apply)")
+	cmd.Flags().Float64Var(&minConfidence, "min-confidence", 0.8, "minimum confidence to apply, above 0 and at most 1 (with --apply)")
 	return cmd
 }
 

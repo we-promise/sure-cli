@@ -74,6 +74,7 @@ The `heuristics.*` config keys are no longer read.
 - `trades update`: `--name` cannot be combined with `--qty` or `--price`; Sure renames the trade from its ticker (`Buy 5 shares of AAPL`).
 - `trades update`: `--type` or `--nature` needs `--qty` or `--price`; `--nature` is `inflow` or `outflow`; `--amount` cannot be combined with `--qty` or `--price`; qty, price and amount are checked against Sure's columns. `trades create --fee` must be 0 or more.
 - `analyze leaks --min-total` and `--max-avg` are major units of `--currency` and require it. Without them the defaults are 1500 and 1000 minor units of each group's currency (15.00 and 10.00 EUR, ¥1500 and ¥1000).
+- `propose rules --min-confidence` must be above 0 and at most 1; 0 or less became 0.8 and a value above 1 applied nothing.
 - `propose rules --months` and `export transactions --months` of 0 or less fail with `validation_failed`; they fell back to 3 and 12. `analyze leaks --months` and `analyze runway --days` reject them too.
 - `export transactions` checks `--out-format` before fetching anything.
 - `insights ack` requires a UUID.

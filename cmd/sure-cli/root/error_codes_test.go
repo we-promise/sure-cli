@@ -65,6 +65,9 @@ func TestInputErrorsAreValidationFailed(t *testing.T) {
 		"analyze leaks --months 0",
 		"analyze runway --account-id a1 --days 0",
 		"propose rules --months 0",
+		"propose rules --min-confidence 0",
+		"propose rules --min-confidence 1.5",
+		"propose rules --min-confidence -1",
 		"export transactions --months -1",
 	} {
 		out, code := runCLI(t, args)
