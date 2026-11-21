@@ -115,6 +115,15 @@ sure-cli transactions update <tx_id> --merchant-id <merchant_id> --tag-id <tag_i
 sure-cli transactions update <tx_id> --clear-tags --apply   # without --tag-id/--clear-tags tags are kept
 sure-cli transactions delete <tx_id> --apply
 
+# Transaction splits (children must sum exactly to the parent; requires a Sure server with the split API)
+sure-cli transactions split show <tx_id>
+sure-cli transactions split create <tx_id> --splits '[{"amount":"60.00","name":"Groceries","category_id":"<id>"},{"amount":"40.00"}]' --apply
+# Edit a split: save it, edit amount_decimal/name/excluded (or add category_id/merchant_id/tag_ids), send it back.
+# update recreates every child, keeping category, merchant and tags; children carrying notes are refused, since those would be lost.
+sure-cli transactions split show <tx_id> > split.json
+sure-cli transactions split update <tx_id> --splits-file split.json --apply
+sure-cli transactions split delete <tx_id> --apply
+
 # Imports and family exports
 sure-cli imports list --type TransactionImport
 sure-cli imports rows <import_id>
