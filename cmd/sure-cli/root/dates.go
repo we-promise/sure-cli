@@ -10,6 +10,7 @@ import (
 
 	"github.com/we-promise/sure-cli/internal/api"
 	errs "github.com/we-promise/sure-cli/internal/errors"
+	"github.com/we-promise/sure-cli/internal/models"
 )
 
 // parseISODate parses a required YYYY-MM-DD date given as flag.
@@ -65,10 +66,7 @@ func parsePairedDateRange(start, end string) (bool, error) {
 
 // today is now's calendar date where now is, as a midnight UTC date like
 // those parseISODate returns.
-func today(now time.Time) time.Time {
-	y, m, d := now.Date()
-	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
-}
+func today(now time.Time) time.Time { return models.CalendarDate(now) }
 
 // familyClock is the time now in the family's time zone. Sure dates entries
 // and resolves "today" in that zone (Localize#switch_timezone), so a window

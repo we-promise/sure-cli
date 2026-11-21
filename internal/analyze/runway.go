@@ -24,12 +24,12 @@ type RunwaySummary struct {
 // skipped; transactions with no currency are kept.
 func ComputeRunway(balance float64, currency string, txs []models.Transaction, start, end time.Time) RunwaySummary {
 	currency = strings.ToUpper(currency)
-	first, last := day(start), day(end)
+	first, last := models.CalendarDate(start), models.CalendarDate(end)
 	windowDays := InclusiveDays(first, last)
 
 	spent := 0.0
 	for _, tx := range txs {
-		if d := day(tx.Date); d.Before(first) || d.After(last) {
+		if d := models.CalendarDate(tx.Date); d.Before(first) || d.After(last) {
 			continue
 		}
 		if tx.ReportClassification() != "expense" {

@@ -64,3 +64,10 @@ func (t Transaction) ReportClassification() string {
 	}
 	return t.Classification
 }
+
+// CalendarDate is t's calendar date where t is, as midnight UTC: the form
+// every date the CLI compares (windows, entry dates, budget periods) takes.
+func CalendarDate(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}

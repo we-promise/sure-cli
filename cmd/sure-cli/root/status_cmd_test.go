@@ -516,3 +516,18 @@ func runStatus(t *testing.T) map[string]any {
 	}
 	return env.Data
 }
+
+func TestDecimalValue_ReadsOnlyPlainDecimals(t *testing.T) {
+	// Sure renders BigDecimal as plain text ("1234.5"); ParseFloat alone
+	// would also take 1e5, NaN and Inf.
+	for in, want := range map[any]float64{"1234.5": 1234.5, "-0.25": -0.25, float64(3): 3, " 7 ": 7} {
+		if got, ok := decimalValue(in); !ok || got != want {
+			t.Errorf("decimalValue(%#v) = %v, %v; want %v", in, got, ok, want)
+		}
+	}
+	for _, in := range []any{"1e5", "NaN", "Inf", "", "abc", nil, true} {
+		if got, ok := decimalValue(in); ok {
+			t.Errorf("decimalValue(%#v) = %v, want not ok", in, got)
+		}
+	}
+}

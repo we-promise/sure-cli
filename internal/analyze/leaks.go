@@ -92,7 +92,7 @@ func groupOf(tx models.Transaction) leakGroup {
 // MinCount occurrences, a total of at least MinTotalMinor and an average of
 // at most MaxAvgMinor.
 func DetectLeaks(txs []models.Transaction, start, end time.Time, p LeakParams) []LeakCandidate {
-	first, last := day(start), day(end)
+	first, last := models.CalendarDate(start), models.CalendarDate(end)
 
 	groups := map[leakGroup][]models.Transaction{}
 	for _, tx := range txs {
@@ -101,7 +101,7 @@ func DetectLeaks(txs []models.Transaction, start, end time.Time, p LeakParams) [
 		if tx.Classification != "expense" || tx.Kind == "loan_payment" || tx.Kind == "investment_contribution" {
 			continue
 		}
-		if d := day(tx.Date); d.Before(first) || d.After(last) {
+		if d := models.CalendarDate(tx.Date); d.Before(first) || d.After(last) {
 			continue
 		}
 		g := groupOf(tx)
@@ -184,10 +184,7 @@ func DetectLeaks(txs []models.Transaction, start, end time.Time, p LeakParams) [
 
 // InclusiveDays counts the calendar days in [start, end], both ends included.
 func InclusiveDays(start, end time.Time) int {
-	return int(day(end).Sub(day(start)).Hours()/24) + 1
+	return int(models.CalendarDate(end).Sub(models.CalendarDate(start)).Hours()/24) + 1
 }
 
 // day truncates t to its calendar date in UTC, as Sure's dates are parsed.
-func day(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
-}
