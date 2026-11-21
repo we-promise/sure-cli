@@ -481,3 +481,18 @@ func TestWalkPages_VisitsEachIDOnceAndKeepsRowsWithoutID(t *testing.T) {
 		t.Fatalf("visited %v, want %s", visited, want)
 	}
 }
+
+func TestWalkPages_ALaterPageWithoutPaginationCannotHideMissingRows(t *testing.T) {
+	// Page 1 counts 3 rows; page 2 arrives without its pagination block (a
+	// proxy, a broken server). Ending there would drop the third row.
+	c := pagesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("page") == "1" {
+			_, _ = w.Write([]byte(`{"accounts":[{"id":"a1"}],"pagination":{"total_pages":3,"total_count":3}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"accounts":[{"id":"a2"}]}`))
+	})
+	_, _, err := FetchAllPages(c, "/api/v1/accounts", nil, "accounts")
+	assertCode(t, err, errs.CodeListChanged)
+}
