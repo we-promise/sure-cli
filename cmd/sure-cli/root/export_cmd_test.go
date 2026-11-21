@@ -36,9 +36,9 @@ func rowsOf(txs []models.Transaction) transactionSource {
 
 func TestExportTransactionsCSV_ExactAmountsAndReportingFlags(t *testing.T) {
 	txs := []models.Transaction{
-		{ID: "t1", Date: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC), Name: "Beans", Amount: -12.3456, AmountDecimal: "-12.3456", AmountText: "€12.35",
+		{ID: "t1", Date: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC), Name: "Beans", Amount: -12.3456, AmountDecimal: "-12.3456",
 			Currency: "EUR", Classification: "expense", Kind: "standard", CategoryName: "Food", AccountName: "Main", MerchantName: "Roaster"},
-		{ID: "t2", Date: time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC), Name: "Groceries", Amount: -100, AmountDecimal: "-100.0", AmountText: "€100.00",
+		{ID: "t2", Date: time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC), Name: "Groceries", Amount: -100, AmountDecimal: "-100.0",
 			Currency: "EUR", Classification: "expense", Kind: "standard", AccountName: "Main", Excluded: true, SplitParent: true},
 	}
 	var buf bytes.Buffer
@@ -87,9 +87,9 @@ func TestExportTransactionsCSV_TextCannotBeAFormula(t *testing.T) {
 // characters, non-ASCII text, quotes and separators, zero values.
 func exportFixture() []models.Transaction {
 	return []models.Transaction{
-		{ID: "t1", EntryID: "e1", Date: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC), Name: `Café "Le <Bon> & Co", Paris`, Amount: -12.3456, AmountDecimal: "-12.3456", AmountText: "€12.35",
-			Currency: "EUR", Classification: "expense", Kind: "standard", CategoryName: "Food\nand drink", CategoryID: "c1", AccountID: "a1", AccountName: "Main", MerchantID: "m1", MerchantName: "Roaster", UserModified: true},
-		{ID: "t2", Date: time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC), Name: "日本", Amount: 1000, AmountDecimal: "1000", AmountText: "¥1,000",
+		{ID: "t1", Date: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC), Name: `Café "Le <Bon> & Co", Paris`, Amount: -12.3456, AmountDecimal: "-12.3456",
+			Currency: "EUR", Classification: "expense", Kind: "standard", CategoryName: "Food\nand drink", CategoryID: "c1", AccountID: "a1", AccountName: "Main", MerchantID: "m1", MerchantName: "Roaster"},
+		{ID: "t2", Date: time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC), Name: "日本", Amount: 1000, AmountDecimal: "1000",
 			Currency: "JPY", Classification: "income", Kind: "standard", AccountName: "Yen", Excluded: true, SplitParent: true},
 		{ID: "t3"},
 	}
@@ -315,7 +315,7 @@ func TestExportTransactionsJSON_RowsCarryTheCSVColumns(t *testing.T) {
 	// Both formats describe a row the same way: the CSV header names the JSON
 	// keys, amount is the exact signed decimal and date is the entry's date.
 	tx := models.Transaction{ID: "t1", Date: time.Date(2026, 11, 19, 0, 0, 0, 0, time.UTC), Name: "Bakery",
-		Amount: -1.6, AmountDecimal: "-1.6000", AmountText: "€1.60", Currency: "EUR", Classification: "expense",
+		Amount: -1.6, AmountDecimal: "-1.6000", Currency: "EUR", Classification: "expense",
 		Kind: "standard", CategoryName: "Food", AccountName: "Checking", MerchantName: "Bakery", SplitParent: true}
 	var js, cs bytes.Buffer
 	if err := writeTransactionsJSON(&js, "", rowsOf([]models.Transaction{tx})); err != nil {
