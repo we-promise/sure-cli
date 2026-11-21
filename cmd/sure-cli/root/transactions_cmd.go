@@ -112,10 +112,10 @@ func checkTransactionsListFilters(startFlag, start, endFlag, end, minAmount, max
 	if !s.IsZero() && !e.IsZero() && s.After(e) {
 		return fmt.Errorf("--%s must be on or before --%s", startFlag, endFlag)
 	}
-	if err := checkOptionalDecimal("min-amount", minAmount, moneyColumn); err != nil {
+	if err := checkOptionalDecimal("min-amount", minAmount, queryBound); err != nil {
 		return err
 	}
-	if err := checkOptionalDecimal("max-amount", maxAmount, moneyColumn); err != nil {
+	if err := checkOptionalDecimal("max-amount", maxAmount, queryBound); err != nil {
 		return err
 	}
 	if t := strings.ToLower(typ); t != "" && t != "income" && t != "expense" {

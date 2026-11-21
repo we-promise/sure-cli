@@ -2,6 +2,7 @@ package root
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/we-promise/sure-cli/internal/models"
 )
@@ -18,6 +19,9 @@ var (
 	tradeQtyColumn = decimalColumn{Scale: 18, IntegerDigits: 16}
 	// trades.price is decimal(19,10).
 	tradePriceColumn = decimalColumn{Scale: 10, IntegerDigits: 9}
+	// queryBound is a filter value Sure compares as a number (to_f) and does
+	// not store, so any decimal fits.
+	queryBound = decimalColumn{Scale: math.MaxInt, IntegerDigits: math.MaxInt}
 )
 
 // check reports why the decimal s, the value of flag name, does not fit.

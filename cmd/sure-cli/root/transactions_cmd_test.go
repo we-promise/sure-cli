@@ -98,3 +98,13 @@ func TestTransactionsList_RejectsFiltersSureWouldMisread(t *testing.T) {
 		t.Errorf("sent %d requests for rejected filters", hits)
 	}
 }
+
+// The amount filters are bounds Sure compares as numbers, not values it
+// stores: any plain decimal is sent, whatever its scale or size.
+func TestTransactionsList_AmountBoundsTakeAnyDecimal(t *testing.T) {
+	for _, bound := range []string{"0.00001", "-12.123456789", "12345678901234567890"} {
+		if err := checkTransactionsListFilters("start-date", "", "end-date", "", bound, bound, ""); err != nil {
+			t.Errorf("%s: %v", bound, err)
+		}
+	}
+}
