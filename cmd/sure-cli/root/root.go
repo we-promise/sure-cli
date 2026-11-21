@@ -90,6 +90,8 @@ func New() *cobra.Command {
 	cmd.AddCommand(newAuthCmd())
 	cmd.AddCommand(newVersionCmd())
 
+	// cobra adds completion when it executes; add it now so it is guarded.
+	cmd.InitDefaultCompletionCmd()
 	guardCommandGroups(cmd)
 	return cmd
 }
@@ -117,6 +119,17 @@ func guardCommandGroups(cmd *cobra.Command) {
 	// them (`export transactions out.csv` wrote the default file).
 	if cmd.Runnable() && !cmd.HasSubCommands() && cmd.Args == nil {
 		cmd.Args = cobra.NoArgs
+	}
+	// A group that also runs on its own (users reset) sees an unknown
+	// subcommand as an argument: report it as one, not as bad arguments.
+	if cmd.Runnable() && cmd.HasSubCommands() {
+		takes := cmd.Args
+		cmd.Args = func(c *cobra.Command, args []string) error {
+			if len(args) > 0 && (takes == nil || takes(c, args) != nil) {
+				failUnknownCommand(c, args)
+			}
+			return nil
+		}
 	}
 	if cmd.HasSubCommands() && !cmd.Runnable() {
 		cmd.Args = cobra.ArbitraryArgs

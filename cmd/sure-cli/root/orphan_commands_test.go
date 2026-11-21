@@ -79,6 +79,9 @@ func TestUnknownSubcommandsFailWithEnvelope(t *testing.T) {
 		{"config fee-keywords", "config fee-keywords", "insights list"},
 		{"analyze nope", "analyze nope", ""},
 		{"insigts list", "insigts", ""},
+		// A group that also runs on its own, and cobra's completion group.
+		{"users reset statsu", "users reset statsu", ""},
+		{"completion bogus", "completion bogus", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.args, func(t *testing.T) {
