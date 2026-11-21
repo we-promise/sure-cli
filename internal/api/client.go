@@ -27,9 +27,8 @@ import (
 const MaxResponseBytes = 64 << 20
 
 type Client struct {
-	http       *resty.Client
-	timeout    time.Duration
-	refreshing bool
+	http    *resty.Client
+	timeout time.Duration
 	// invalid is the config.Validate failure that keeps every call from
 	// being sent.
 	invalid *errs.CLIError
@@ -102,9 +101,6 @@ func (c *Client) ensureFreshToken() error {
 	if config.AuthMode() == "api_key" {
 		return nil
 	}
-	if c.refreshing {
-		return nil
-	}
 
 	expiresAt, ok := config.TokenExpiresAt()
 	if !ok {
@@ -125,9 +121,6 @@ func (c *Client) ensureFreshToken() error {
 	if err := config.CheckWritable(); err != nil {
 		return errs.Wrap(errs.CodeConfigSaveFailed, "config file is not writable; cannot refresh the access token", err)
 	}
-
-	c.refreshing = true
-	defer func() { c.refreshing = false }()
 
 	// Refresh fails on any 4xx/5xx. Without that, a 401 body would decode
 	// into an empty TokenResponse and we'd persist empty tokens, silently
@@ -189,6 +182,22 @@ func (c *Client) do(ctx context.Context, method, path string, out any, build fun
 	if err := c.prepare(); err != nil {
 		return nil, err
 	}
+	return c.call(ctx, method, path, out, build)
+}
+
+// postAuth posts to an auth endpoint (login, refresh). It skips the token
+// refresh do runs first: these calls replace the session, so refreshing it
+// beforehand would block a login behind a dead refresh token and spend the
+// refresh token an explicit refresh is about to send.
+func (c *Client) postAuth(path string, body, out any) (*resty.Response, error) {
+	if err := c.Err(); err != nil {
+		return nil, err
+	}
+	return c.call(context.Background(), http.MethodPost, path, out, withBody(body))
+}
+
+// call is do after prepare: it bounds the call with the client timeout.
+func (c *Client) call(ctx context.Context, method, path string, out any, build func(*resty.Request)) (*resty.Response, error) {
 	if c.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)

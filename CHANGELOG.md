@@ -121,6 +121,7 @@ The `heuristics.*` config keys are no longer read.
 - The global `--timeout` flag and `timeout` config key.
 
 ### Fixed
+- `login` no longer refreshes the session it replaces: with an expired token and a refresh token Sure had revoked, it failed with `login_failed: Invalid refresh token` before sending the password, and kept failing until the config was edited by hand. `refresh` sends one refresh; near expiry it refreshed automatically first and then sent the revoked token, reporting failure after the pair had already been rotated and saved.
 - `recurring-transactions update --notes ""` and `--payment-url ""` clear the field. The empty value was dropped, so the command failed with "no fields provided to update", or left the stored value unchanged when another flag was given.
 - A `--config` file of any name is read as YAML. One without a `.yaml` extension (`~/.sure-cli`, `--config <(...)`) failed with `Unsupported Config Type`. An unreadable config is one `validation_failed` error, without the usage text.
 - The HTTP library no longer prints its own `WARN RESTY` and `ERROR RESTY` lines to stderr on retries and refused redirects.
