@@ -90,8 +90,8 @@ func PrintTable(env Envelope) bool {
 	return false
 }
 
-// render prints one table row per item where envelopes go. Cells are Sure data, so
-// they are made Printable first.
+// render prints one table row per item where envelopes go. Cells are Sure
+// data, so they are made Printable first.
 func render(header table.Row, items []map[string]any, row func(map[string]any) table.Row) {
 	tw := table.NewWriter()
 	tw.SetOutputMirror(envelopes())

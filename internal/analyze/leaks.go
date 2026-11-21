@@ -186,5 +186,3 @@ func DetectLeaks(txs []models.Transaction, start, end time.Time, p LeakParams) [
 func InclusiveDays(start, end time.Time) int {
 	return int(models.CalendarDate(end).Sub(models.CalendarDate(start)).Hours()/24) + 1
 }
-
-// day truncates t to its calendar date in UTC, as Sure's dates are parsed.

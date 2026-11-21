@@ -64,9 +64,9 @@ func parsePairedDateRange(start, end string) (bool, error) {
 	return true, nil
 }
 
-// today is now's calendar date where now is, as a midnight UTC date like
-// those parseISODate returns.
-func today(now time.Time) time.Time { return models.CalendarDate(now) }
+// today is t's calendar date where t is, as a midnight UTC date like those
+// parseISODate returns.
+func today(t time.Time) time.Time { return models.CalendarDate(t) }
 
 // familyClock is the time now in the family's time zone. Sure dates entries
 // and resolves "today" in that zone (Localize#switch_timezone), so a window
