@@ -227,6 +227,7 @@ func runAnalyze(t *testing.T, out any, args ...string) {
 			t.Fatalf("execute: %v", err)
 		}
 	})
+	assertMatchesItsSchema(t, stdout)
 	var env struct {
 		Data json.RawMessage `json:"data"`
 	}
@@ -328,5 +329,16 @@ func TestAnalyzeRunway_UnreadableBalanceIsAnInvalidResponse(t *testing.T) {
 	}
 	if env.Error.Code != "invalid_response" || env.Error.Details["account_id"] != "a1" || env.Error.Details["status"] != float64(200) {
 		t.Fatalf("error = %+v, want invalid_response with account_id and status", env.Error)
+	}
+}
+
+func TestAnalyzeRunway_AnOverdrawnAccountHasNoRunway(t *testing.T) {
+	today := time.Now().UTC().Format(time.DateOnly)
+	analyzeServer(t, "UTC", `{"id":"a1","balance_cents":-50000,"currency":"EUR"}`,
+		txJSON("rent", today, "Rent", "standard", "EUR", "100.0", false))
+	var s analyze.RunwaySummary
+	runAnalyze(t, &s, "runway", "--account-id", "a1", "--days", "30")
+	if s.Balance != -500 || s.RunwayMonths != 0 {
+		t.Fatalf("runway = %+v, want balance -500 and 0 months, not a negative runway", s)
 	}
 }

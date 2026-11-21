@@ -44,7 +44,7 @@ func ProposeRules(txs []models.Transaction) ProposeResult {
 		byName[name] = append(byName[name], tx)
 	}
 
-	var proposals []RuleProposal
+	proposals := []RuleProposal{} // [] in JSON, never null
 	var uncategorized int
 
 	// Analyze each merchant group

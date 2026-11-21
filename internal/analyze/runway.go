@@ -42,8 +42,9 @@ func ComputeRunway(balance float64, currency string, txs []models.Transaction, s
 	}
 
 	avgMonthly := spent / float64(windowDays) * 30.0
+	// An overdrawn account has no runway, not a negative one.
 	runway := 0.0
-	if avgMonthly > 0 {
+	if avgMonthly > 0 && balance > 0 {
 		runway = balance / avgMonthly
 	}
 
