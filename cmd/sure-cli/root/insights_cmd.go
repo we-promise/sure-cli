@@ -34,8 +34,11 @@ func newInsightsListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List the visible insights (active and read)",
-		Long:  "Lists the insights Sure shows in its feed, active and read." + jsonOnly,
-		Args:  cobra.NoArgs,
+		Long: "Lists the insights Sure generates nightly (spending anomalies, cash flow warnings, " +
+			"subscription audits, bank fees, budgets at risk, ...), active and read. " +
+			"They need Preview features on (Sure: Settings > Preferences); otherwise Sure answers 403 " +
+			"with details.api_error feature_disabled." + jsonOnly,
+		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			res, status, ce := fetchInsights()
 			if ce != nil {

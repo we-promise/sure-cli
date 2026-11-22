@@ -20,6 +20,30 @@ func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Financial snapshot (net worth, accounts, spend, runway, alerts)",
+		Long: `Financial snapshot (net worth, accounts, spend, runway, alerts).
+
+net_worth is Sure's balance sheet: family currency, FX-converted, without
+accounts marked exclude_from_reports. accounts.by_currency totals assets,
+liabilities, net worth and cash per currency with the same exclusions; it
+cannot leave out accounts a user took out of their finances
+(include_in_finances is not in the API).
+
+monthly is Sure's own income and spending over the last month, today included
+(monthly.period gives the dates), from GET /api/v1/cash_flow?view=sankey:
+FX-converted to the family currency and netted per category, so a refund
+lowers its category's spending. A server before Sure v0.7.5 has no such
+endpoint and fails with not_found. monthly.subscriptions is Sure's active
+recurring outflows priced per month, in the family currency;
+subscriptions_by_currency lists each currency apart.
+
+runway uses depository cash in the family currency only, since the API has no
+rate to convert the rest. With cash in other currencies runway.partial is
+true, runway.cash_currencies_left_out lists them, and no low_runway alert is
+raised.
+
+budget_pacing lists each current budget in its own currency: budgeted, actual
+and available spending, and percent spent against percent of the period
+elapsed. Amounts use each currency's own decimals.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			client := api.New()
 

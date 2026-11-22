@@ -26,6 +26,13 @@ func newProposeRulesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rules",
 		Short: "Propose categorization rules based on transaction patterns",
+		Long: `Propose categorization rules based on transaction patterns.
+
+No rule is created in Sure. With --apply, each
+proposal whose confidence reaches --min-confidence sets its category on the
+transactions it matched. If any update fails the command exits 1 with
+apply_incomplete, and error.details lists what was applied, skipped and
+failed. A 429 stops the run; the updates left are skipped as rate_limited.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// Confidence is a share of the affected rows: 0 applies everything,
 			// above 1 nothing.

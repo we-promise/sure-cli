@@ -180,6 +180,10 @@ func newRecurringTransactionsCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create recurring transaction (default dry-run; use --apply to execute)",
+		Long: `Create recurring transaction (default dry-run; use --apply to execute).
+
+Amounts follow Sure's entry convention: positive is a bill, negative an
+income.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := buildRecurringCreatePayload(o)
 			failValidation(err)
@@ -210,7 +214,10 @@ func newRecurringTransactionsUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <id>",
 		Short: "Update recurring transaction (default dry-run; use --apply to execute)",
-		Args:  cobra.ExactArgs(1),
+		Long: `Update recurring transaction (default dry-run; use --apply to execute).
+
+An empty --notes or --payment-url ("") clears the field.`,
+		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			o.Empty = emptyFlags(cmd, "notes", "payment-url")
 			payload, err := buildRecurringUpdatePayload(o)
