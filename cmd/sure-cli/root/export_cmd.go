@@ -50,9 +50,9 @@ split_parent mark the rows to leave out of a sum. A JSON file is
 The file is readable only by you (0600) and appears only once complete, so a
 failed export leaves an earlier file as it was. --out naming a named pipe or
 a device is written directly. With --out /dev/stdout the result envelope goes
-to stderr, so stdout holds only the file. Ctrl-C until the file is in place
-cancels the export and removes the partial file; a second Ctrl-C kills the
-process. CSV text cells starting with = + - @ get a leading ' so a
+to stderr, so stdout holds only the file. Ctrl-C while the export reads or
+writes rows cancels it and removes the partial file; a second Ctrl-C kills
+the process. CSV text cells starting with = + - @ get a leading ' so a
 spreadsheet does not run them as formulas.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			write, ok := transactionWriters[exportFormat]
