@@ -387,14 +387,20 @@ func addPagingFlags(cmd *cobra.Command, page, perPage *int) {
 // range Sure serves: given more than 100 rows a page, some endpoints serve
 // 100 and others 25.
 func addPagingQuery(q url.Values, page, perPage int) {
-	if page < 1 {
-		failValidation(fmt.Errorf("--page must be 1 or more, got %d", page))
-	}
+	addPageQuery(q, page)
 	if perPage < 1 || perPage > api.MaxPerPage {
 		failValidation(fmt.Errorf("--per-page must be between 1 and %d, got %d", api.MaxPerPage, perPage))
 	}
-	q.Set("page", strconv.Itoa(page))
 	q.Set("per_page", strconv.Itoa(perPage))
+}
+
+// addPageQuery sets page, failing validation below 1. Lists with a fixed page
+// size (chats) take only this.
+func addPageQuery(q url.Values, page int) {
+	if page < 1 {
+		failValidation(fmt.Errorf("--page must be 1 or more, got %d", page))
+	}
+	q.Set("page", strconv.Itoa(page))
 }
 
 // addRepeatedQuery appends q[key][]=v for each non-empty v, Rails' array
