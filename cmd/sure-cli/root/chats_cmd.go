@@ -30,13 +30,11 @@ func newChatsListCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			q := url.Values{}
-			if page > 0 {
-				q.Set("page", fmt.Sprintf("%d", page))
-			}
+			addPageQuery(q, page)
 			printGet(pathWithQuery("/api/v1/chats", q))
 		},
 	}
-	cmd.Flags().IntVar(&page, "page", 0, "page number (upstream uses a fixed page size of 20)")
+	cmd.Flags().IntVar(&page, "page", 1, "page number (Sure serves 20 chats a page)")
 	return cmd
 }
 
@@ -48,13 +46,11 @@ func newChatsShowCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			q := url.Values{}
-			if page > 0 {
-				q.Set("page", fmt.Sprintf("%d", page))
-			}
+			addPageQuery(q, page)
 			printGet(pathWithQuery(fmt.Sprintf("/api/v1/chats/%s", url.PathEscape(args[0])), q))
 		},
 	}
-	cmd.Flags().IntVar(&page, "page", 0, "messages page number")
+	cmd.Flags().IntVar(&page, "page", 1, "messages page number")
 	return cmd
 }
 

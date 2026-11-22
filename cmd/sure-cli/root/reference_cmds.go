@@ -3,9 +3,11 @@ package root
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -189,18 +191,14 @@ type tagWriteOpts struct {
 func newTagsCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "tags", Short: "Tags"}
 
-	var page, perPage int
-	list := &cobra.Command{
+	// Sure renders every tag in one unpaginated array.
+	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List tags",
 		Run: func(cmd *cobra.Command, args []string) {
-			q := url.Values{}
-			addPagingQuery(q, page, perPage)
-			printGet(pathWithQuery("/api/v1/tags", q))
+			printGet("/api/v1/tags")
 		},
-	}
-	addPagingFlags(list, &page, &perPage)
-	cmd.AddCommand(list)
+	})
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show <id>",
@@ -382,16 +380,27 @@ func newRuleRunsCmd() *cobra.Command {
 
 func addPagingFlags(cmd *cobra.Command, page, perPage *int) {
 	cmd.Flags().IntVar(page, "page", 1, "page number")
-	cmd.Flags().IntVar(perPage, "per-page", 25, "items per page (maps to per_page)")
+	cmd.Flags().IntVar(perPage, "per-page", 25, fmt.Sprintf("items per page, 1 to %d", api.MaxPerPage))
 }
 
+// addPagingQuery sets page and per_page, failing validation outside the
+// range Sure serves: given more than 100 rows a page, some endpoints serve
+// 100 and others 25.
 func addPagingQuery(q url.Values, page, perPage int) {
-	if page > 0 {
-		q.Set("page", fmt.Sprintf("%d", page))
+	addPageQuery(q, page)
+	if perPage < 1 || perPage > api.MaxPerPage {
+		failValidation(fmt.Errorf("--per-page must be between 1 and %d, got %d", api.MaxPerPage, perPage))
 	}
-	if perPage > 0 {
-		q.Set("per_page", fmt.Sprintf("%d", perPage))
+	q.Set("per_page", strconv.Itoa(perPage))
+}
+
+// addPageQuery sets page, failing validation below 1. Lists with a fixed page
+// size (chats) take only this.
+func addPageQuery(q url.Values, page int) {
+	if page < 1 {
+		failValidation(fmt.Errorf("--page must be 1 or more, got %d", page))
 	}
+	q.Set("page", strconv.Itoa(page))
 }
 
 // addRepeatedQuery appends q[key][]=v for each non-empty v, Rails' array
@@ -432,10 +441,16 @@ func printPatch(path string, body any) {
 	respond(r, err, res)
 }
 
+// printDelete sends DELETE path. Sure answers some deletes (tags, chats,
+// transaction splits) with 204 and no body: data then names the path
+// deleted, which in a nested route does not end in the id.
 func printDelete(path string) {
 	client := api.New()
 	var res any
 	r, err := client.Delete(path, &res)
+	if err == nil && r != nil && r.StatusCode() == http.StatusNoContent {
+		res = map[string]any{"path": path, "deleted": true}
+	}
 	respond(r, err, res)
 }
 

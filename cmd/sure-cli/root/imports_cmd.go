@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -46,6 +47,21 @@ type importConfig struct {
 	RowsToSkip                string
 }
 
+// importTypes is Sure's Import::TYPES. Sure creates a TransactionImport for
+// any other type, so the CLI refuses one it does not list.
+var importTypes = []string{
+	"TransactionImport", "TradeImport", "AccountImport", "MintImport", "ActualImport", "YnabImport", "MonarchImport",
+	"CategoryImport", "RuleImport", "MerchantImport", "PdfImport", "QifImport", "SureImport",
+}
+
+// checkImportType fails unless typ is empty or one of importTypes.
+func checkImportType(typ string) error {
+	if typ == "" || slices.Contains(importTypes, typ) {
+		return nil
+	}
+	return fmt.Errorf("--type %q is not an import type: use one of %s", typ, strings.Join(importTypes, ", "))
+}
+
 func newImportsCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "imports", Short: "Imports"}
 
@@ -56,6 +72,7 @@ func newImportsCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List imports",
 		Run: func(cmd *cobra.Command, args []string) {
+			failValidation(checkImportType(importType))
 			q := url.Values{}
 			if status != "" {
 				q.Set("status", status)
@@ -69,7 +86,7 @@ func newImportsCmd() *cobra.Command {
 	}
 
 	list.Flags().StringVar(&status, "status", "", "filter by status")
-	list.Flags().StringVar(&importType, "type", "", "filter by import type")
+	list.Flags().StringVar(&importType, "type", "", "filter by import type (TransactionImport, TradeImport, ...)")
 	addPagingFlags(list, &page, &perPage)
 	cmd.AddCommand(list)
 
@@ -128,7 +145,7 @@ func newImportsCreateCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&o.File, "file", "", "path to import file")
 	cmd.Flags().StringVar(&o.RawFileContent, "raw-file-content", "", "raw import file content")
-	cmd.Flags().StringVar(&o.Type, "type", "", "import type (TransactionImport|SureImport; a .ndjson/.json --file defaults to SureImport)")
+	cmd.Flags().StringVar(&o.Type, "type", "", "import type, as Sure names it (TransactionImport, TradeImport, SureImport, ...; a .ndjson/.json --file defaults to SureImport)")
 	cmd.Flags().BoolVar(&o.Publish, "publish", false, "queue processing when the import is configured")
 	addImportConfigFlags(cmd, &o.importConfig)
 	cmd.Flags().BoolVar(&o.Apply, "apply", false, "execute the create (otherwise dry-run)")
@@ -137,6 +154,9 @@ func newImportsCreateCmd() *cobra.Command {
 }
 
 func buildImportCreatePayload(o importCreateOpts) (upload, error) {
+	if err := checkImportType(o.Type); err != nil {
+		return upload{}, err
+	}
 	importType := o.Type
 	if importType == "" && o.File != "" {
 		switch strings.ToLower(filepath.Ext(o.File)) {

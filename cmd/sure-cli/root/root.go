@@ -191,6 +191,7 @@ func Execute() { run(New()) }
 // with a validation_failed envelope like every input the CLI rejects.
 func run(cli *cobra.Command) {
 	cli.SilenceErrors = true // failValidation prints the message once
+	cli.SilenceUsage = true  // the envelope names the problem; --help shows usage
 	if err := cli.Execute(); err != nil {
 		failValidation(err)
 	}

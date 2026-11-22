@@ -37,14 +37,20 @@ func TestMain(m *testing.M) {
 // once Wait returns.
 func startCLI(t *testing.T, args ...string) (*exec.Cmd, *bytes.Buffer) {
 	t.Helper()
-	child := exec.Command(os.Args[0], "-test.run=^$")
-	child.Env = append(os.Environ(), cliArgsEnv+"="+strings.Join(args, "\n"))
+	child := cliCommand(args...)
 	var stdout bytes.Buffer
 	child.Stdout = &stdout
 	if err := child.Start(); err != nil {
 		t.Fatal(err)
 	}
 	return child, &stdout
+}
+
+// cliCommand returns an unstarted child process that runs sure-cli with args.
+func cliCommand(args ...string) *exec.Cmd {
+	child := exec.Command(os.Args[0], "-test.run=^$")
+	child.Env = append(os.Environ(), cliArgsEnv+"="+strings.Join(args, "\n"))
+	return child
 }
 
 // apiClientFor returns a fresh api.Client targeting the given test server URL

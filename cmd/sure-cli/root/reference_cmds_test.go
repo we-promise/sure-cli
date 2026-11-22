@@ -11,13 +11,54 @@ import (
 	"testing"
 )
 
-// Sure renders the merchants index as a bare, unpaginated array and ignores
+// Sure renders the merchants and tags indexes unpaginated and ignores
 // page/per_page, so the CLI does not offer flags that would do nothing.
-func TestMerchantsList_NoPagingFlags(t *testing.T) {
-	list := findSub(t, findSub(t, New(), "merchants"), "list")
-	for _, name := range []string{"page", "per-page"} {
-		if list.Flags().Lookup(name) != nil {
-			t.Fatalf("merchants list must not offer --%s: Sure ignores it", name)
+func TestUnpaginatedLists_NoPagingFlags(t *testing.T) {
+	for _, group := range []string{"merchants", "tags"} {
+		list := findSub(t, findSub(t, New(), group), "list")
+		for _, name := range []string{"page", "per-page"} {
+			if list.Flags().Lookup(name) != nil {
+				t.Errorf("%s list must not offer --%s: Sure ignores it", group, name)
+			}
+		}
+	}
+}
+
+// Sure serves pages of 1 to 100 rows. Outside that range some endpoints
+// serve 100 and others 25, so the CLI refuses the value instead.
+func TestPagingFlagsOutOfRangeFailValidation(t *testing.T) {
+	queries := make(chan string, 16)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case queries <- r.URL.RawQuery:
+		default:
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"categories":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	cfg := apiKeyConfig(t, t.TempDir(), srv.URL)
+	for _, args := range [][]string{
+		{"categories", "list", "--per-page", "101"}, {"categories", "list", "--per-page", "0"},
+		{"categories", "list", "--per-page", "-1"}, {"categories", "list", "--page", "0"},
+		// Chats have a fixed page size, but --page follows the same rule.
+		{"chats", "list", "--page", "0"}, {"chats", "show", "c1", "--page", "-1"},
+	} {
+		flag := args[len(args)-2]
+		if ce := cliError(t, append([]string{"--config", cfg}, args...)...); ce == nil || ce.Code != "validation_failed" || !strings.Contains(ce.Message, flag) {
+			t.Errorf("%v: error = %v, want validation_failed naming %s", args, ce, flag)
+		}
+	}
+	if len(queries) > 0 {
+		t.Fatalf("sent %q for a refused paging flag", <-queries)
+	}
+	for flags, want := range map[string]string{"--per-page 100": "page=1&per_page=100", "--per-page 1 --page 3": "page=3&per_page=1"} {
+		args := append([]string{"--config", cfg, "categories", "list"}, strings.Fields(flags)...)
+		if ce := cliError(t, args...); ce != nil {
+			t.Fatalf("%s: %v", flags, ce)
+		}
+		if got := <-queries; got != want {
+			t.Errorf("%s: sent ?%s, want ?%s", flags, got, want)
 		}
 	}
 }

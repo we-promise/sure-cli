@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -133,25 +132,38 @@ func TestLoginRejectsAnInvalidConfigBeforePrompting(t *testing.T) {
 	}
 }
 
-func TestUnreadableConfigIsOneErrorWithoutUsage(t *testing.T) {
+// A usage error is one validation_failed envelope on stdout, without cobra's
+// usage text on stderr.
+func TestUsageErrorsAreOneErrorWithoutUsage(t *testing.T) {
 	cfg := writeConfig(t, "api_url: [unclosed\n")
-	child := exec.Command(os.Args[0], "-test.run=^$")
-	child.Env = append(os.Environ(), cliArgsEnv+"="+strings.Join([]string{"--config", cfg, "accounts", "list"}, "\n"))
-	var stdout, stderr bytes.Buffer
-	child.Stdout, child.Stderr = &stdout, &stderr
-	if err := child.Run(); err == nil {
-		t.Fatalf("exit 0: %s", stdout.String())
+	cases := []struct {
+		name, message string
+		args          []string
+	}{
+		{"unreadable config", "read config", []string{"--config", cfg, "accounts", "list"}},
+		{"stray argument", "unknown command \"out.csv\"", []string{"export", "transactions", "out.csv"}},
+		{"unknown flag", "unknown flag: --nope", []string{"accounts", "list", "--nope"}},
 	}
-	var env struct {
-		Error struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil || env.Error.Code != "validation_failed" || !strings.Contains(env.Error.Message, "read config") {
-		t.Fatalf("stdout = %s (%v), want a validation_failed envelope about the config", stdout.String(), err)
-	}
-	if strings.Contains(stderr.String(), "Usage:") {
-		t.Fatalf("stderr prints usage for a config error:\n%s", stderr.String())
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			child := cliCommand(c.args...)
+			var stdout, stderr bytes.Buffer
+			child.Stdout, child.Stderr = &stdout, &stderr
+			if err := child.Run(); err == nil {
+				t.Fatalf("exit 0: %s", stdout.String())
+			}
+			var env struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &env); err != nil || env.Error.Code != "validation_failed" || !strings.Contains(env.Error.Message, c.message) {
+				t.Fatalf("stdout = %s (%v), want a validation_failed envelope containing %q", stdout.String(), err, c.message)
+			}
+			if strings.Contains(stderr.String(), "Usage:") {
+				t.Fatalf("stderr prints usage:\n%s", stderr.String())
+			}
+		})
 	}
 }

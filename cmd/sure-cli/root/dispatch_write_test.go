@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -90,7 +91,7 @@ func TestDispatchWrite_ApplySendsEachMethod(t *testing.T) {
 	}{
 		{[]string{"create", "--name", "renamed", "--apply"}, call{"POST", "/api/v1/tags", map[string]any{"tag": map[string]any{"name": "renamed"}}}, `"renamed"`},
 		{[]string{"update", "t1", "--name", "renamed", "--apply"}, call{"PATCH", "/api/v1/tags/t1", map[string]any{"tag": map[string]any{"name": "renamed"}}}, `"renamed"`},
-		{[]string{"delete", "t1", "--apply"}, call{"DELETE", "/api/v1/tags/t1", nil}, `"status": 204`},
+		{[]string{"delete", "t1", "--apply"}, call{"DELETE", "/api/v1/tags/t1", nil}, `"deleted": true`},
 	} {
 		got = nil
 		cmd := newTagsCmd()
@@ -102,5 +103,32 @@ func TestDispatchWrite_ApplySendsEachMethod(t *testing.T) {
 		if !strings.Contains(out, c.out) {
 			t.Errorf("%v: printed %s, want it to contain %s", c.args, out, c.out)
 		}
+	}
+}
+
+// A delete Sure answers with 204 and no body (tags, chats, transaction
+// splits) still prints data naming what was deleted, so the envelope has data
+// or error like every other. The path names it: in a split's path the last
+// segment is "split", not an id.
+func TestPrintDelete_NoContentNamesTheDeletedPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	apiClientFor(t, srv.URL)
+
+	path := "/api/v1/transactions/" + url.PathEscape("a/b c") + "/split"
+	out := captureStdout(t, func() { printDelete(path) })
+	var env struct {
+		Data map[string]any `json:"data"`
+		Meta struct {
+			Status int `json:"status"`
+		} `json:"meta"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if fmt.Sprint(env.Data) != fmt.Sprint(map[string]any{"path": path, "deleted": true}) || env.Meta.Status != http.StatusNoContent {
+		t.Fatalf("printed %s, want data {path: %q, deleted: true} and meta.status 204", out, path)
 	}
 }

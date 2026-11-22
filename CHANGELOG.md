@@ -26,6 +26,7 @@ The `heuristics.*` config keys are no longer read.
 
 - `imports create --file-format` and `--source`: Sure neither permits nor reads them.
 - `merchants list --page` and `--per-page`: the endpoint returns every merchant.
+- `tags list --page` and `--per-page`: the endpoint returns every tag.
 - `transactions update --currency`: Sure ignores it on update.
 - `trades create --category-id` and `--investment-activity-label`, `trades update --category-id`: Sure no longer permits a category, and it sets the activity label from `--type`.
 - `trades update --currency`: Sure changed only the entry's currency, not the trade's, leaving the two apart.
@@ -62,11 +63,13 @@ The `heuristics.*` config keys are no longer read.
 - `export transactions` CSV: a text cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet reads it as text instead of running it as a formula. `amount` is unchanged.
 - `export transactions` writes the file readable only by you (0600), through a temp file renamed into place: a failed export leaves no file and keeps an earlier one, and a symlink at `--out` is replaced, not followed. The default file name carries the window's end date. A file it replaces keeps its mode tightened to the owner's bits: 0644 becomes 0600 and 0400 stays 0400 (financial data is never left readable by others). `--out` naming an existing pipe, terminal, socket or other character device, such as `/dev/stdout` or `/dev/fd/3`, is written directly. `family-exports download --out` follows the same rules.
 - `--format table` and the error line on stderr drop control characters from Sure's text, so a name or message cannot send terminal escape sequences.
+- A delete Sure answers with 204 and no body (`tags delete`, `chats delete`) prints `data: {"path": ..., "deleted": true}`, `path` being the request's; the envelope had neither `data` nor `error`.
+- `login` writes its `Email:` and `Password:` prompts to stderr, so stdout holds only the envelope.
 - The `imports create` dry run lists the request fields; it printed the internal Go struct. A raw `import-sessions add-chunk` dry run shows `sequence` as a string.
 
 #### Stricter input
 
-- Commands that take no arguments refuse them with `validation_failed`. `export transactions out.csv` ignored `out.csv` and wrote the default file; `transactions create Coffee ...` dropped `Coffee`.
+- Commands that take no arguments refuse them with `validation_failed`. `export transactions out.csv` ignored `out.csv` and wrote the default file; `transactions create Coffee ...` dropped `Coffee`. A wrong number of arguments no longer prints the command's usage on stderr; `--help` shows it.
 - `sync` is a dry run unless `--apply` is given, like every other write; it triggered a sync straight away.
 - Decimal flags are plain decimal text: `3.` and `.5` are rejected. This covers `valuations create` and `update --amount` and the `recurring-transactions create` amounts, which were sent as typed: Sure read `1,234.56` as 1 and `abc` as 0.
 - `transactions create` and `update`: `--amount` must be a positive decimal with at most 4 decimals and 15 digits; `--nature` gives the sign. It was a float sent with two decimals. `update --nature` without `--amount` fails instead of being dropped.
@@ -78,6 +81,8 @@ The `heuristics.*` config keys are no longer read.
 - `propose rules --months` and `export transactions --months` of 0 or less fail with `validation_failed`; they fell back to 3 and 12. `analyze leaks --months` and `analyze runway --days` reject them too.
 - `export transactions` checks `--out-format` before fetching anything.
 - `insights ack` requires a UUID.
+- `--page` must be 1 or more and `--per-page` 1 to 100 on every paginated list (`chats list` and `chats show` take `--page` only). Above 100, some Sure endpoints served 100 rows and others 25.
+- `imports create --type` and `imports list --type` must be one of Sure's import types (`TransactionImport`, `TradeImport`, `SureImport`, ...). Sure created a transaction import for any other value.
 - `transactions list`: `--start-date`/`--end-date` (and `--from`/`--to`) must be `YYYY-MM-DD` and in order, `--min-amount`/`--max-amount` plain decimals (Sure's sign: an expense is positive), `--type` `income` or `expense`. Sure answered a bad date with a 500, read `abc` as 0 and ignored an unknown type.
 - `recurring-transactions create` and `update`: `--status` accepts only `active` or `inactive`; `--expected-day-of-month` is a whole number from 1 to 31 and the dates are `YYYY-MM-DD`. `create` requires `--amount`, `--currency` and `--expected-day-of-month`, which Sure validates and does not fill in, so a create without them always failed with a 422.
 - A `--file` must be a regular file: devices, pipes and directories are rejected before any request. `merchants import` requires a `.csv` file.
@@ -126,6 +131,8 @@ The `heuristics.*` config keys are no longer read.
 - The global `--timeout` flag and `timeout` config key.
 
 ### Fixed
+- `export transactions --out-format json --out /dev/stdout` works when the shell redirects stdout to a file: the JSON spool went next to `/dev/stdout`, in `/dev`, and the export failed for a normal user.
+- `login` with both the email and the password piped on stdin reads both lines; the email prompt's reader could take the password line with it, and login failed with `password_read_failed`.
 - A list read across pages fails with `list_changed` when a later page comes back without its pagination block before every counted row was read; the read ended as a success, short of rows.
 - `--format table` leaves null cells blank in the accounts and transactions tables; they printed `<nil>`.
 - `--out` naming a named pipe writes to it again (this release's stdout check had opened and closed it, ending the reader's stream), and `--out /dev/stdout` works when the shell redirects stdout to a file.
